@@ -1088,6 +1088,9 @@ export default function EquipamentosPreventivosPage() {
         },
       });
       if (eB) throw eB;
+      if (dB?.success === false || dB?.consolidado?.ok === false) {
+        throw new Error(dB?.consolidado?.error || "As tarefas foram importadas, mas a consolidação das preventivas falhou");
+      }
       const pB = dB?.phase2_equipment_tasks;
       const totalRelUpserted = pB?.relationship_rows_upserted || 0;
       const totalRelDeleted = pB?.relationship_rows_deleted || 0;
@@ -1112,6 +1115,9 @@ export default function EquipamentosPreventivosPage() {
         },
       });
       if (eF) throw eF;
+      if (dF?.success === false || dF?.consolidado?.ok === false) {
+        throw new Error(dF?.consolidado?.error || "As tarefas agendadas foram importadas, mas a consolidação das preventivas falhou");
+      }
       const pF = dF?.phase2_equipment_tasks;
       toast.success(`Agendadas: ${pF?.relationship_rows_upserted || 0} atualizadas, ${pF?.relationship_rows_deleted || 0} removidas`);
       await Promise.all([

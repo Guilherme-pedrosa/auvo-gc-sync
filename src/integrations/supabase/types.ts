@@ -474,10 +474,13 @@ export type Database = {
           bairro: string | null
           cep: string | null
           cidade: string | null
+          cpf_cnpj: string | null
           endereco: string | null
           estado: string | null
+          external_id: string | null
           id: string
           nome: string
+          nome_legal: string | null
         }
         Insert: {
           ativo?: boolean | null
@@ -486,10 +489,13 @@ export type Database = {
           bairro?: string | null
           cep?: string | null
           cidade?: string | null
+          cpf_cnpj?: string | null
           endereco?: string | null
           estado?: string | null
+          external_id?: string | null
           id?: string
           nome: string
+          nome_legal?: string | null
         }
         Update: {
           ativo?: boolean | null
@@ -498,10 +504,13 @@ export type Database = {
           bairro?: string | null
           cep?: string | null
           cidade?: string | null
+          cpf_cnpj?: string | null
           endereco?: string | null
           estado?: string | null
+          external_id?: string | null
           id?: string
           nome?: string
+          nome_legal?: string | null
         }
         Relationships: []
       }
@@ -1072,6 +1081,7 @@ export type Database = {
       equipamentos_auvo: {
         Row: {
           atualizado_em: string | null
+          auvo_customer_id: number | null
           auvo_equipment_id: string | null
           categoria: string | null
           cliente: string | null
@@ -1091,6 +1101,7 @@ export type Database = {
         }
         Insert: {
           atualizado_em?: string | null
+          auvo_customer_id?: number | null
           auvo_equipment_id?: string | null
           categoria?: string | null
           cliente?: string | null
@@ -1110,6 +1121,7 @@ export type Database = {
         }
         Update: {
           atualizado_em?: string | null
+          auvo_customer_id?: number | null
           auvo_equipment_id?: string | null
           categoria?: string | null
           cliente?: string | null
@@ -2195,6 +2207,10 @@ export type Database = {
         Row: {
           ativo: boolean
           atualizado_em: string
+          auvo_cliente_id: number | null
+          auvo_external_id: string | null
+          auvo_sync_em: string | null
+          auvo_sync_erro: string | null
           cep: string | null
           cidade: string | null
           cpf_cnpj: string | null
@@ -2207,7 +2223,9 @@ export type Database = {
           integration_validity_days: number | null
           integration_validity_months: number | null
           nome: string
+          nome_auvo: string | null
           nome_fantasia: string | null
+          nome_gc: string | null
           nome_normalizado: string
           observacoes: string | null
           origem: string
@@ -2217,10 +2235,17 @@ export type Database = {
           sync_em: string | null
           telefone: string | null
           uf: string | null
+          vinculo_confianca: number | null
+          vinculo_metodo: string | null
+          vinculo_status: string
         }
         Insert: {
           ativo?: boolean
           atualizado_em?: string
+          auvo_cliente_id?: number | null
+          auvo_external_id?: string | null
+          auvo_sync_em?: string | null
+          auvo_sync_erro?: string | null
           cep?: string | null
           cidade?: string | null
           cpf_cnpj?: string | null
@@ -2233,7 +2258,9 @@ export type Database = {
           integration_validity_days?: number | null
           integration_validity_months?: number | null
           nome: string
+          nome_auvo?: string | null
           nome_fantasia?: string | null
+          nome_gc?: string | null
           nome_normalizado: string
           observacoes?: string | null
           origem?: string
@@ -2243,10 +2270,17 @@ export type Database = {
           sync_em?: string | null
           telefone?: string | null
           uf?: string | null
+          vinculo_confianca?: number | null
+          vinculo_metodo?: string | null
+          vinculo_status?: string
         }
         Update: {
           ativo?: boolean
           atualizado_em?: string
+          auvo_cliente_id?: number | null
+          auvo_external_id?: string | null
+          auvo_sync_em?: string | null
+          auvo_sync_erro?: string | null
           cep?: string | null
           cidade?: string | null
           cpf_cnpj?: string | null
@@ -2259,7 +2293,9 @@ export type Database = {
           integration_validity_days?: number | null
           integration_validity_months?: number | null
           nome?: string
+          nome_auvo?: string | null
           nome_fantasia?: string | null
+          nome_gc?: string | null
           nome_normalizado?: string
           observacoes?: string | null
           origem?: string
@@ -2269,6 +2305,9 @@ export type Database = {
           sync_em?: string | null
           telefone?: string | null
           uf?: string | null
+          vinculo_confianca?: number | null
+          vinculo_metodo?: string | null
+          vinculo_status?: string
         }
         Relationships: []
       }
