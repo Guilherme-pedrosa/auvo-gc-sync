@@ -192,23 +192,14 @@ export function useRhVinculosDuplicados() {
         if (chunk.length < page) break;
       }
 
-      // Espelho do Auvo: external_id guarda o ID do cliente no GC.
-      const { data: auvoCache, error: cacheError } = await sb
-        .from("auvo_clientes_cache")
-        .select("auvo_id, external_id")
-        .limit(10000);
-      if (cacheError) throw cacheError;
-
-      // Pares GC ↔ Auvo vindos do cadastro central e do espelho do Auvo.
+      // Duplicidade só existe entre vínculos efetivamente salvos no cadastro central.
+      // O external_id do espelho do Auvo pertence a outro domínio de identificação e
+      // não pode ser comparado diretamente ao gc_cliente_id.
       const pares: Array<{ gc: string; auvo: string }> = [];
       for (const r of rows) {
         if (r.gc_cliente_id && r.auvo_cliente_id) {
           pares.push({ gc: String(r.gc_cliente_id), auvo: String(r.auvo_cliente_id) });
         }
-      }
-      for (const c of (auvoCache ?? []) as Array<{ auvo_id: number; external_id: string | null }>) {
-        const gc = (c.external_id ?? "").trim();
-        if (gc && /^\d+$/.test(gc)) pares.push({ gc, auvo: String(c.auvo_id) });
       }
 
       const auvosPorGc = new Map<string, Set<string>>();

@@ -52,7 +52,7 @@ export default function ClientesRhPage() {
     search,
     filterVinculo === "duplicado" ? "all" : filterVinculo,
   );
-  const { data: duplicados } = useRhVinculosDuplicados();
+  const { data: duplicados, isLoading: isLoadingDuplicados, isError: isErrorDuplicados, refetch: refetchDuplicados } = useRhVinculosDuplicados();
   const clientes = useMemo(
     () =>
       filterVinculo === "duplicado"
@@ -195,6 +195,14 @@ export default function ClientesRhPage() {
         </div>
       )}
 
+      {isErrorDuplicados && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <span className="text-sm">Não foi possível verificar vínculos duplicados.</span>
+          <Button size="sm" variant="outline" onClick={() => refetchDuplicados()}>Tentar novamente</Button>
+        </div>
+      )}
+
       {filterVinculo === "duplicado" && totalDuplicados > 0 && (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
@@ -242,8 +250,10 @@ export default function ClientesRhPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell></TableRow>
+            ) : filterVinculo === "duplicado" && isLoadingDuplicados ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8">Verificando vínculos duplicados...</TableCell></TableRow>
             ) : clientes.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">{filterVinculo === "duplicado" ? "Nenhum vínculo duplicado real encontrado." : "Nenhum cliente encontrado."}</TableCell></TableRow>
             ) : clientes.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>
