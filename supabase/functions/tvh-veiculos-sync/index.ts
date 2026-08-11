@@ -154,31 +154,29 @@ Deno.serve(async (req) => {
       console.warn(`[tvh-veiculos-sync] ${maintenanceWarning}`);
     }
 
-    // Não conformidade mais recente de cada veículo que contenha dano/manutenção real
-    const porVeiculo = new Map<string, string>();
+    // Somente o ÚLTIMO checklist de cada veículo. Se o checklist mais recente
+    // não apontar avaria real, o veículo não exibe alerta — checklists antigos
+    // nunca podem voltar à tela.
+    const ultimoChecklist = new Map<string, Ticket>();
     for (const t of tickets) {
       const titulo = String(t.titulo || "");
       const desc = String(t.descricao || "");
-      // Descarta alertas de "rodou X km sem checklist" / veículo bloqueado por checklist
-      if (IGNORAR_TITULO.test(titulo)) continue;
-      // Exige menção a problema/avaria/manutenção no título ou na descrição
-      if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
-      if (porVeiculo.has(t.vehicle_id)) continue;
-      
-      // Se o ticket mais recente de não conformidade estiver fechado, 
-      // significa que o problema foi resolvido no checklist posterior.
-      if (CLOSED_STATUSES.includes(t.status)) {
-        porVeiculo.set(t.vehicle_id, "RESOLVIDO"); // Marcador interno para ignorar
-        continue;
-      }
-
-      const detalhe = detalharNaoConformidade(t);
-      if (detalhe) porVeiculo.set(t.vehicle_id, detalhe);
+      const ehChecklist = /checklist/i.test(titulo) || /checklist\s+pr[ée]-?opera/i.test(desc);
+      // Alertas de "rodou X km" / veículo bloqueado não são checklist
+      if (!ehChecklist || IGNORAR_TITULO.test(titulo)) continue;
+      if (ultimoChecklist.has(t.vehicle_id)) continue; // lista vem em created_at desc
+      ultimoChecklist.set(t.vehicle_id, t);
     }
 
-    // Limpa os marcadores de resolvido para não salvar texto "RESOLVIDO" no banco
-    for (const [vid, val] of porVeiculo.entries()) {
-      if (val === "RESOLVIDO") porVeiculo.delete(vid);
+    const porVeiculo = new Map<string, string>();
+    for (const [vehicleId, t] of ultimoChecklist.entries()) {
+      // Ticket já concluído = problema resolvido
+      if (CLOSED_STATUSES.includes(t.status)) continue;
+      const titulo = String(t.titulo || "");
+      const desc = String(t.descricao || "");
+      if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
+      const detalhe = detalharNaoConformidade(t);
+      if (detalhe) porVeiculo.set(vehicleId, detalhe);
     }
 
     const admin = createClient(
