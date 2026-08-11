@@ -247,7 +247,7 @@ function Celula({
             {comparativoOs.plannedMinutes > 0 && (
               <div
                 className="flex items-center gap-1 rounded-sm border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
-                title="Soma somente a duração planejada das OS do GestãoClick. Preventivas, contratos e tarefas sem OS não entram."
+                title="Soma a duração planejada das OS do GestãoClick e das Previsões de continuidade. Preventivas e tarefas sem OS/previsão não entram."
               >
                 <CalendarClock className="h-3 w-3 shrink-0" />
                 <span>Planejado OS: {formatWorkedMinutes(comparativoOs.plannedMinutes)}</span>
