@@ -609,6 +609,15 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
     }
     if (candidates.length > 1) {
       ambiguous++;
+      await supabase.from("rh_clientes").update({
+        vinculo_status: "ambiguo",
+        vinculo_metodo: "cpf_cnpj",
+        vinculo_confianca: 0.4,
+        auvo_sync_erro: `CPF/CNPJ encontrado em ${candidates.length} cadastros do Auvo: ${candidates
+          .map((c) => `#${c.id} (${c.name})`)
+          .join(" | ")}`,
+        atualizado_em: new Date().toISOString(),
+      }).eq("id", row.id);
       details.push({
         id: row.id,
         nome: row.nome,
