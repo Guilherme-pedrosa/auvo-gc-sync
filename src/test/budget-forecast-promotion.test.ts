@@ -63,6 +63,8 @@ describe("promoção da previsão do orçamento", () => {
     expect(taskStartMinuteKey(task)).toBe("2026-08-24T08:00");
     expect(taskAssignedUserId(task)).toBe(42);
     expect(taskTypeId(task)).toBe(77);
+    expect(taskTypeId({ taskType: { taskTypeID: 78 } })).toBe(78);
+    expect(taskTypeId({ taskTypeID: 79 })).toBe(79);
   });
 
   it("mantém o número do orçamento mesmo quando a tarefa já possui OS", () => {

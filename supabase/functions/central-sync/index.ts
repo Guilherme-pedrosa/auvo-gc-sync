@@ -8,6 +8,10 @@ import {
   isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
 } from "../_shared/agenda-forecast-promotion.ts";
+import {
+  auvoTaskTypeDescription,
+  auvoTaskTypeId,
+} from "../_shared/auvo-task-type.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -279,29 +283,10 @@ function chooseBestExistingMirror(current: any | undefined, candidate: any): str
 }
 
 function resolveTaskType(task: any): string {
-  const candidates = [
-    task?.taskTypeDescription,
-    task?.taskType?.description,
-    task?.taskType?.name,
-    task?.typeDescription,
-    task?.serviceTypeDescription,
-    task?.description,
-  ];
-
-  for (const candidate of candidates) {
-    const value = String(candidate ?? "").trim();
-    if (value && value !== "null" && value !== "undefined") {
-      return value.substring(0, 500);
-    }
-  }
-
-  const taskTypeId = task?.taskTypeId ?? (typeof task?.taskType === "number" ? task.taskType : null);
-  if (taskTypeId !== null && taskTypeId !== undefined) {
-    const idValue = String(taskTypeId).trim();
-    if (idValue) return `Tipo ${idValue}`;
-  }
-
-  return "";
+  const description = auvoTaskTypeDescription(task);
+  if (description) return description;
+  const id = auvoTaskTypeId(task);
+  return id ? `Tipo ${id}` : "";
 }
 
 function extractAddress(addr: unknown): string {
@@ -1896,12 +1881,7 @@ async function runReportsOnlySync(
       check_out_iso: checkOutIso,
       deslocamento_inicio: displacementStartRaw || null,
       duracao_deslocamento: duracaoDeslocamento || null,
-      task_type_id: (() => {
-        const tt = task.taskType ?? task.TaskType;
-        if (tt == null) return null;
-        if (typeof tt === "object") return String(tt.id ?? tt.taskTypeId ?? "") || null;
-        return String(tt) || null;
-      })(),
+      task_type_id: auvoTaskTypeId(task) || null,
       status_auvo: (() => {
         if (statusCode === 6) return "Pausada";
         if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
@@ -3168,8 +3148,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
       const tecnico = resolveAuvoTechnicianName(task);
-      const taskTypeId = String(task.taskType || "");
-      const taskTypeDesc = String(task.taskTypeDescription || "");
+      const taskTypeId = auvoTaskTypeId(task);
+      const taskTypeDesc = auvoTaskTypeDescription(task);
 
       for (const eqId of allEquipIds) {
         equipTaskRelRows.push({

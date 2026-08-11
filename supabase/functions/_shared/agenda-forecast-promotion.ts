@@ -1,3 +1,5 @@
+import { auvoTaskTypeId } from "./auvo-task-type.ts";
+
 export const BUDGET_EXECUTION_FORECAST = "ORCAMENTO_EXECUCAO";
 
 export function normalizeGcDocumentCode(value: unknown): string {
@@ -96,6 +98,6 @@ export function taskAssignedUserId(task: any): number | null {
 }
 
 export function taskTypeId(task: any): number | null {
-  const value = Number(task?.taskType?.id ?? task?.taskTypeId ?? task?.taskType);
+  const value = Number(auvoTaskTypeId(task));
   return Number.isFinite(value) && value > 0 ? value : null;
 }
