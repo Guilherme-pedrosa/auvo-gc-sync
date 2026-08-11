@@ -178,20 +178,16 @@ export function useRhVinculosDuplicados() {
     queryKey: ["rh_clientes", "duplicados"],
     staleTime: 60 * 1000,
     queryFn: async () => {
-      type Row = {
-        id: string; nome: string; auvo_cliente_id: number | null; gc_cliente_id: string | null;
-        cpf_cnpj: string | null; nome_auvo: string | null;
-      };
-      const rows: Row[] = [];
+      const rows: RhCliente[] = [];
       const page = 1000;
       for (let from = 0; from < 10000; from += page) {
         const { data, error } = await sb
           .from("rh_clientes")
-          .select("id, nome, auvo_cliente_id, gc_cliente_id, cpf_cnpj, nome_auvo")
+          .select("*")
           .order("id")
           .range(from, from + page - 1);
         if (error) throw error;
-        const chunk = (data ?? []) as Row[];
+        const chunk = (data ?? []) as RhCliente[];
         rows.push(...chunk);
         if (chunk.length < page) break;
       }
@@ -227,21 +223,25 @@ export function useRhVinculosDuplicados() {
       const gcConflitantes = new Set([...auvosPorGc.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
       const auvoConflitantes = new Set([...gcsPorAuvo.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
 
-      const motivos = new Map<string, string>();
+       const motivos = new Map<string, string>();
       for (const r of rows) {
         const gc = r.gc_cliente_id ? String(r.gc_cliente_id) : "";
         const auvo = r.auvo_cliente_id ? String(r.auvo_cliente_id) : "";
+         const conflitos: string[] = [];
         if (gc && gcConflitantes.has(gc)) {
           const outros = [...(auvosPorGc.get(gc) ?? [])].join(", ");
-          motivos.set(r.id, `GC #${gc} vinculado a ${auvosPorGc.get(gc)!.size} Auvo (${outros})`);
-        } else if (auvo && auvoConflitantes.has(auvo)) {
+           conflitos.push(`GC #${gc} → Auvo #${outros}`);
+         }
+         if (auvo && auvoConflitantes.has(auvo)) {
           const outros = [...(gcsPorAuvo.get(auvo) ?? [])].join(", ");
-          motivos.set(r.id, `Auvo #${auvo} vinculado a ${gcsPorAuvo.get(auvo)!.size} GC (${outros})`);
+           conflitos.push(`Auvo #${auvo} → GC #${outros}`);
         }
+         if (conflitos.length) motivos.set(r.id, conflitos.join(" | "));
       }
 
       const clientesDuplicados = new Set(motivos.keys());
-      return { gcConflitantes, auvoConflitantes, clientesDuplicados, motivos };
+       const clientesDuplicadosRows = rows.filter((r) => clientesDuplicados.has(r.id));
+       return { gcConflitantes, auvoConflitantes, clientesDuplicados, clientesDuplicadosRows, motivos };
     },
   });
 }
