@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,25 @@ import {
   summarizeAgendaWorkedTime,
 } from "@/lib/agendaWorkedTime";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useAgendaTagLinks,
+  useAgendaTags,
+  type AgendaTag,
+} from "@/hooks/operacional/useAgendaTags";
+import {
+  agendaMatchesTagFilter,
+  agendaTagTextColor,
+  normalizeAgendaTagColor,
+} from "@/lib/agendaTags";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -143,6 +162,8 @@ interface CelulaProps {
   onDrop: () => void;
   colorir?: boolean;
   clientesInfo?: any[];
+  tagsPorAgendamento: Map<string, AgendaTag[]>;
+  tagsSelecionadas: string[];
 }
 
 function Celula({
@@ -156,6 +177,8 @@ function Celula({
   onDrop,
   colorir = true,
   clientesInfo = [],
+  tagsPorAgendamento,
+  tagsSelecionadas,
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
@@ -223,6 +246,8 @@ function Celula({
           </div>
         )}
         {itens.map((a) => {
+          const itemTags = tagsPorAgendamento.get(a.id) ?? [];
+          const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
           const tempoTrabalhado = agendaTaskWorkedTime(a);
           const tipoTarefa = a.auvo_task_id
@@ -245,7 +270,14 @@ function Celula({
             : a.cliente;
 
           return (
-            <div key={a.id} className="group/item relative flex items-center">
+            <div
+              key={a.id}
+              className={cn(
+                "group/item relative flex items-center rounded-sm transition-all",
+                tagsSelecionadas.length > 0 && !correspondeAoFiltro && "opacity-20 grayscale",
+                tagsSelecionadas.length > 0 && correspondeAoFiltro && "ring-2 ring-primary/70 ring-offset-1",
+              )}
+            >
               <button
                 type="button"
                 draggable
@@ -272,6 +304,23 @@ function Celula({
               >
                 <div className="flex flex-col">
                   <span className="truncate">{label}</span>
+                  {itemTags.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1 normal-case">
+                      {itemTags.map((tag) => {
+                        const color = normalizeAgendaTagColor(tag.color);
+                        return (
+                          <span
+                            key={tag.id}
+                            className="max-w-full truncate rounded-full px-1.5 py-0.5 text-[8px] font-bold leading-none"
+                            style={{ backgroundColor: color, color: agendaTagTextColor(color) }}
+                            title={tag.name}
+                          >
+                            {tag.name}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
                   {tempoTrabalhado.hasCheckIn && (
                     <span className="flex items-center gap-1 text-[9px] font-semibold normal-case opacity-90 truncate">
                       <Clock3 className="h-2.5 w-2.5 shrink-0" />
@@ -411,6 +460,7 @@ export default function AgendamentoEquipePage() {
   const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
+  const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
@@ -448,6 +498,12 @@ export default function AgendamentoEquipePage() {
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data: rhClientes = [] } = useRhClientes();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(diasTodos);
+  const agendaIds = useMemo(
+    () => (data?.agendamentos ?? []).map((agendamento) => agendamento.id),
+    [data?.agendamentos],
+  );
+  const { data: agendaTags = [], isLoading: loadingTags } = useAgendaTags();
+  const { data: agendaTagLinks = [] } = useAgendaTagLinks(agendaIds);
   const [isSyncing, setIsSyncing] = useState(false);
   const customerSyncPromise = useRef<Promise<void> | null>(null);
 
@@ -721,6 +777,22 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
+  const tagsPorAgendamento = useMemo(() => {
+    const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
+    const resultado = new Map<string, AgendaTag[]>();
+    for (const link of agendaTagLinks) {
+      const tag = tagPorId.get(link.tag_id);
+      if (!tag) continue;
+      const atuais = resultado.get(link.agendamento_id) ?? [];
+      atuais.push(tag);
+      resultado.set(link.agendamento_id, atuais);
+    }
+    for (const itemTags of resultado.values()) {
+      itemTags.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return resultado;
+  }, [agendaTagLinks, agendaTags]);
+
   const mapVei = useMemo(() => {
     const m = new Map<string, string>();
     for (const v of data?.veiculoDias ?? []) m.set(`${v.veiculo_id}|${v.data}`, v.texto);
@@ -832,6 +904,49 @@ export default function AgendamentoEquipePage() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant={tagsSelecionadas.length > 0 ? "default" : "outline"} size="sm" className="gap-2">
+                <TagsIcon className="h-4 w-4" />
+                Tags{tagsSelecionadas.length > 0 ? ` (${tagsSelecionadas.length})` : ""}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72 w-72 overflow-y-auto">
+              <DropdownMenuLabel>Filtrar escala por tag</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {agendaTags.map((tag) => (
+                <DropdownMenuCheckboxItem
+                  key={tag.id}
+                  checked={tagsSelecionadas.includes(tag.id)}
+                  onCheckedChange={(checked) => {
+                    setTagsSelecionadas((atuais) => checked === true
+                      ? [...new Set([...atuais, tag.id])]
+                      : atuais.filter((id) => id !== tag.id));
+                  }}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  <span
+                    className="mr-2 h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: normalizeAgendaTagColor(tag.color) }}
+                  />
+                  <span className="truncate">{tag.name}</span>
+                </DropdownMenuCheckboxItem>
+              ))}
+              {!loadingTags && agendaTags.length === 0 && (
+                <div className="px-2 py-3 text-xs text-muted-foreground">
+                  Crie uma tag no modal de uma tarefa ou OS.
+                </div>
+              )}
+              {tagsSelecionadas.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setTagsSelecionadas([])} className="gap-2 text-destructive">
+                    <X className="h-4 w-4" /> Limpar filtro
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
             <Printer className="h-4 w-4" /> Exportar PDF
           </Button>
@@ -915,6 +1030,8 @@ export default function AgendamentoEquipePage() {
                               key={dia}
                               itens={itens}
                               clientesInfo={rhClientes}
+                              tagsPorAgendamento={tagsPorAgendamento}
+                              tagsSelecionadas={tagsSelecionadas}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
