@@ -201,7 +201,7 @@ export default function ClientesRhPage() {
             <AlertTriangle className="h-4 w-4 text-amber-600" /> Conflitos encontrados
           </div>
           <div className="space-y-1 font-mono text-xs">
-            {[...new Set(clientes.map((c) => duplicados?.motivos.get(c.id)).filter(Boolean))].map((motivo) => (
+            {[...new Set(clientes.map((c) => duplicados?.motivos.get(c.id)).filter((motivo): motivo is string => Boolean(motivo)))].map((motivo) => (
               <div key={motivo} className="break-words">{motivo}</div>
             ))}
           </div>
