@@ -1,5 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { gcHeaders } from "../_shared/gc-user.ts";
+import { gcHeaders, installGcUsuarioId } from "../_shared/gc-user.ts";
+
+// Todas as chamadas ao GestãoClick precisam ser contabilizadas no usuário
+// técnico da API, inclusive se uma chamada futura esquecer gcHeaders().
+installGcUsuarioId();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

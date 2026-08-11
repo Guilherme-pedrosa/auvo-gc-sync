@@ -71,14 +71,45 @@ const gcHeaders = {
   "Content-Type": "application/json",
 };
 
-async function gcPage(page: number): Promise<{ rows: any[]; hasNext: boolean }> {
-  const response = await fetch(`${GC_BASE}/clientes?pagina=${page}&limite=100`, { headers: gcHeaders });
+async function gcPage(
+  page: number,
+  params: Record<string, string> = {},
+): Promise<{ rows: any[]; hasNext: boolean }> {
+  const url = new URL(`${GC_BASE}/clientes`);
+  url.searchParams.set("pagina", String(page));
+  url.searchParams.set("limite", "100");
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  const response = await fetch(url.toString(), { headers: gcHeaders });
   const raw = await response.text();
   if (response.status === 404) return { rows: [], hasNext: false };
   if (!response.ok) throw new Error(`GestãoClick /clientes página ${page} respondeu ${response.status}: ${raw.slice(0, 300)}`);
   const json = raw ? JSON.parse(raw) : {};
   const rows = Array.isArray(json?.data) ? json.data : [];
   return { rows, hasNext: Boolean(json?.meta?.proxima_pagina) && rows.length > 0 };
+}
+
+async function fetchNewGcCustomers(knownIds: Set<string>): Promise<any[]> {
+  if (knownIds.size === 0) return fetchAllGcCustomers();
+
+  const newCustomers: any[] = [];
+  // IDs do GC são crescentes. Ordenando do mais novo para o mais antigo, a
+  // varredura automática normalmente consome uma única requisição e para ao
+  // encontrar o primeiro cliente que já existe no cadastro central.
+  for (let page = 1; page <= 300; page++) {
+    const result = await gcPage(page, { ordenacao: "id", direcao: "desc" });
+    let reachedKnownCustomer = false;
+    for (const customer of result.rows) {
+      const id = String(customer?.id ?? customer?.codigo ?? "").trim();
+      if (id && knownIds.has(id)) {
+        reachedKnownCustomer = true;
+        break;
+      }
+      if (id) newCustomers.push(customer);
+    }
+    if (reachedKnownCustomer || !result.hasNext) break;
+    await new Promise((resolve) => setTimeout(resolve, 360));
+  }
+  return newCustomers;
 }
 
 async function fetchAllGcCustomers(): Promise<any[]> {
@@ -411,8 +442,7 @@ Deno.serve(async (req) => {
 
     if (!GC_ACCESS_TOKEN || !GC_SECRET_TOKEN) throw new Error("Credenciais do GestãoClick não configuradas");
     const autoCreateAuvo = body?.autoCreateAuvo !== false;
-    const [gcCustomers, accessToken] = await Promise.all([fetchAllGcCustomers(), auvoLogin()]);
-    const auvoCustomers = await fetchAllAuvoCustomers(accessToken);
+    const syncMode = body?.mode === "incremental" ? "incremental" : "full";
 
     const { data: localRows, error: localError } = await supabase
       .from("rh_clientes")
@@ -420,6 +450,33 @@ Deno.serve(async (req) => {
       .limit(10000);
     if (localError) throw localError;
     const locals = (localRows ?? []) as LocalCustomer[];
+    const knownGcIds = new Set(
+      locals.map((row) => String(row.gc_cliente_id || "").trim()).filter(Boolean),
+    );
+    const gcCustomers = syncMode === "incremental"
+      ? await fetchNewGcCustomers(knownGcIds)
+      : await fetchAllGcCustomers();
+
+    // O polling de dez minutos existe só para descobrir novos cadastros do GC.
+    // Se não há novidade, não varre o Auvo nem regrava mil clientes.
+    if (syncMode === "incremental" && gcCustomers.length === 0) {
+      return new Response(JSON.stringify({
+        ok: true,
+        mode: syncMode,
+        gcTotal: 0,
+        auvoTotal: 0,
+        linked: 0,
+        createdInAuvo: 0,
+        ambiguous: 0,
+        auvoOnly: 0,
+        inserted: 0,
+        updated: 0,
+        errors: 0,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const accessToken = await auvoLogin();
+    const auvoCustomers = await fetchAllAuvoCustomers(accessToken);
 
     const localByGcId = new Map(locals.filter((row) => row.gc_cliente_id).map((row) => [String(row.gc_cliente_id), row]));
     const localByAuvoId = new Map(locals.filter((row) => row.auvo_cliente_id).map((row) => [Number(row.auvo_cliente_id), row]));
@@ -460,7 +517,14 @@ Deno.serve(async (req) => {
     let errors = 0;
     let inserted = 0;
     let updated = 0;
-    const matchedAuvoIds = new Set<number>();
+    // No modo incremental os clientes antigos do GC não entram em gcCustomers,
+    // mas seus vínculos continuam válidos e não podem virar "somente Auvo".
+    const matchedAuvoIds = new Set<number>(
+      locals
+        .filter((row) => row.gc_cliente_id && row.auvo_cliente_id)
+        .map((row) => Number(row.auvo_cliente_id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
     const existingGcRows: any[] = [];
     const newGcRows: any[] = [];
 
@@ -649,6 +713,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: errors === 0,
+      mode: syncMode,
       gcTotal: gcCustomers.length,
       auvoTotal: auvoCustomers.length,
       linked,
