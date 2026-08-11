@@ -113,7 +113,7 @@ export default function PortalPlanosPreventivosPage() {
         supabase.from("grupo_cliente_membros").select("cliente_nome").eq("grupo_id", grupoId),
         supabase.from("grupos_clientes").select("id, nome"),
         supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
-        supabase.from("rh_clientes").select("nome, nome_gc, nome_auvo").eq("ativo", true).limit(5000),
+        supabase.from("rh_clientes").select("nome, nome_fantasia").eq("ativo", true).limit(5000),
       ]);
       if (grupoResult.error) throw new Error(`Falha ao carregar o grupo do portal: ${grupoResult.error.message}`);
       if (membrosResult.error) throw new Error(`Falha ao carregar os clientes da rede: ${membrosResult.error.message}`);
