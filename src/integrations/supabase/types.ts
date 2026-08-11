@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      agenda_agendamento_tags: {
+        Row: {
+          agendamento_id: string
+          criado_em: string
+          tag_id: string
+        }
+        Insert: {
+          agendamento_id: string
+          criado_em?: string
+          tag_id: string
+        }
+        Update: {
+          agendamento_id?: string
+          criado_em?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_agendamento_tags_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agenda_agendamento_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agenda_agendamentos: {
         Row: {
           atualizado_em: string
@@ -2757,6 +2790,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tags: {
+        Row: {
+          atualizado_em: string
+          color: string
+          criado_em: string
+          id: string
+          name: string
+        }
+        Insert: {
+          atualizado_em?: string
+          color?: string
+          criado_em?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          atualizado_em?: string
+          color?: string
+          criado_em?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       tarefas_central: {
         Row: {
