@@ -786,8 +786,15 @@ export default function AgendamentoEquipePage() {
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <Button variant="outline" size="sm" onClick={() => {
-            const el = document.getElementById("hoje-col");
-            if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'start' });
+            document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
+              const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+              if (!container) return;
+              const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+              container.scrollTo({
+                left: Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0)),
+                behavior: "smooth",
+              });
+            });
           }}>
             Ir para Hoje
           </Button>
@@ -833,7 +840,7 @@ export default function AgendamentoEquipePage() {
                 <Users className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
-              <div className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
+              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
@@ -847,6 +854,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
+                            data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
