@@ -779,21 +779,19 @@ export default function AgendamentoEquipePage() {
 
   const carregando = isLoading || loadingCol || loadingVei;
 
-  // A grade contém dias passados (histórico), mas sempre inicia no dia atual.
-  const posicionadoNoHoje = useRef(false);
+  // A visão sempre começa no dia atual, inclusive ao liberar o histórico.
   useEffect(() => {
-    if (carregando || posicionadoNoHoje.current) return;
-    const alvos = document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']");
-    if (!alvos.length) return;
-    alvos.forEach((th) => {
-      const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-      if (!container) return;
-      const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-      const offsetFixo = primeiraColuna?.offsetWidth ?? 0;
-      container.scrollLeft = Math.max(0, th.offsetLeft - offsetFixo);
-    });
-    posicionadoNoHoje.current = true;
-  }, [carregando]);
+    if (carregando) return;
+    const id = window.setTimeout(() => {
+      document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
+        const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+        if (!container) return;
+        const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+        container.scrollLeft = Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0));
+      });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [carregando, mostrarHistorico]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
