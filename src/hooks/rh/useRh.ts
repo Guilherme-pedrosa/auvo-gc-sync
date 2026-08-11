@@ -169,7 +169,7 @@ export function useAuvoClientesCache() {
   });
 }
 
-/** Cadastros repetidos: mesmo Auvo/GC, mesmo CPF/CNPJ ou mesmo cadastro do Auvo pelo nome. */
+/** Conflito de vínculo: um mesmo GC apontando para 2+ Auvo, ou um mesmo Auvo apontando para 2+ GC. */
 export function useRhVinculosDuplicados() {
   return useQuery({
     queryKey: ["rh_clientes", "duplicados"],
@@ -192,35 +192,53 @@ export function useRhVinculosDuplicados() {
         rows.push(...chunk);
         if (chunk.length < page) break;
       }
-      const onlyDigits = (v: string | null) => (v ?? "").replace(/\D/g, "");
-      const countBy = <T,>(key: (r: typeof rows[number]) => T | null) => {
-        const map = new Map<string, number>();
-        for (const r of rows) {
-          const v = key(r);
-          if (v === null || v === undefined || v === "") continue;
-          const k = String(v);
-          map.set(k, (map.get(k) ?? 0) + 1);
+
+      // Espelho do Auvo: external_id guarda o ID do cliente no GC.
+      const { data: auvoCache, error: cacheError } = await sb
+        .from("auvo_clientes_cache")
+        .select("auvo_id, external_id")
+        .limit(10000);
+      if (cacheError) throw cacheError;
+
+      // Pares GC ↔ Auvo vindos do cadastro central e do espelho do Auvo.
+      const pares: Array<{ gc: string; auvo: string }> = [];
+      for (const r of rows) {
+        if (r.gc_cliente_id && r.auvo_cliente_id) {
+          pares.push({ gc: String(r.gc_cliente_id), auvo: String(r.auvo_cliente_id) });
         }
-        return new Set([...map.entries()].filter(([, n]) => n > 1).map(([k]) => k));
-      };
-      const auvoDuplicados = countBy((r) => r.auvo_cliente_id);
-      const gcDuplicados = countBy((r) => r.gc_cliente_id);
-      const docDuplicados = countBy((r) => (onlyDigits(r.cpf_cnpj).length >= 11 ? onlyDigits(r.cpf_cnpj) : null));
-      const nomeAuvoDuplicados = countBy((r) => (r.nome_auvo ? r.nome_auvo.trim().toLowerCase() : null));
+      }
+      for (const c of (auvoCache ?? []) as Array<{ auvo_id: number; external_id: string | null }>) {
+        const gc = (c.external_id ?? "").trim();
+        if (gc && /^\d+$/.test(gc)) pares.push({ gc, auvo: String(c.auvo_id) });
+      }
+
+      const auvosPorGc = new Map<string, Set<string>>();
+      const gcsPorAuvo = new Map<string, Set<string>>();
+      for (const p of pares) {
+        if (!auvosPorGc.has(p.gc)) auvosPorGc.set(p.gc, new Set());
+        auvosPorGc.get(p.gc)!.add(p.auvo);
+        if (!gcsPorAuvo.has(p.auvo)) gcsPorAuvo.set(p.auvo, new Set());
+        gcsPorAuvo.get(p.auvo)!.add(p.gc);
+      }
+
+      const gcConflitantes = new Set([...auvosPorGc.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
+      const auvoConflitantes = new Set([...gcsPorAuvo.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
 
       const motivos = new Map<string, string>();
       for (const r of rows) {
-        const doc = onlyDigits(r.cpf_cnpj);
-        const nomeAuvo = r.nome_auvo?.trim().toLowerCase() ?? "";
-        let motivo: string | null = null;
-        if (r.auvo_cliente_id && auvoDuplicados.has(String(r.auvo_cliente_id))) motivo = "Mesmo cadastro do Auvo";
-        else if (r.gc_cliente_id && gcDuplicados.has(String(r.gc_cliente_id))) motivo = "Mesmo cadastro do GC";
-        else if (doc && docDuplicados.has(doc)) motivo = "Mesmo CPF/CNPJ";
-        else if (nomeAuvo && nomeAuvoDuplicados.has(nomeAuvo)) motivo = "Mesmo nome no Auvo";
-        if (motivo) motivos.set(r.id, motivo);
+        const gc = r.gc_cliente_id ? String(r.gc_cliente_id) : "";
+        const auvo = r.auvo_cliente_id ? String(r.auvo_cliente_id) : "";
+        if (gc && gcConflitantes.has(gc)) {
+          const outros = [...(auvosPorGc.get(gc) ?? [])].join(", ");
+          motivos.set(r.id, `GC #${gc} vinculado a ${auvosPorGc.get(gc)!.size} Auvo (${outros})`);
+        } else if (auvo && auvoConflitantes.has(auvo)) {
+          const outros = [...(gcsPorAuvo.get(auvo) ?? [])].join(", ");
+          motivos.set(r.id, `Auvo #${auvo} vinculado a ${gcsPorAuvo.get(auvo)!.size} GC (${outros})`);
+        }
       }
+
       const clientesDuplicados = new Set(motivos.keys());
-      return { auvoDuplicados, gcDuplicados, docDuplicados, nomeAuvoDuplicados, clientesDuplicados, motivos };
+      return { gcConflitantes, auvoConflitantes, clientesDuplicados, motivos };
     },
   });
 }
