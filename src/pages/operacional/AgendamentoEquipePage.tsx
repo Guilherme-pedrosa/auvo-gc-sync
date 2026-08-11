@@ -727,6 +727,20 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
+  // Histórico: apenas dias passados que realmente possuem agendamento registrado.
+  const diasHistorico = useMemo(() => {
+    const comDados = new Set<string>();
+    for (const a of data?.agendamentos ?? []) comDados.add(a.data);
+    for (const v of data?.veiculoDias ?? []) if (v.texto?.trim()) comDados.add(v.data);
+    return diasAnteriores.filter((d) => comDados.has(d));
+  }, [data, diasAnteriores]);
+
+  // Colunas renderizadas: sempre iniciam em hoje; o histórico entra antes só quando liberado.
+  const dias = useMemo(
+    () => (mostrarHistorico ? [...diasHistorico, ...diasFuturos] : diasFuturos),
+    [mostrarHistorico, diasHistorico, diasFuturos],
+  );
+
   const adicionarVeiculo = async () => {
     const nome = window.prompt("Nome do veículo (ex: ETIOS PRATA)");
     if (!nome?.trim()) return;
