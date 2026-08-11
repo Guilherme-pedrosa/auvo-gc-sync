@@ -18,6 +18,10 @@ import {
   joinAuvoEquipmentInfo,
   type AuvoEquipmentInfo,
 } from "../_shared/auvo-equipment.ts";
+import {
+  findMissingAuvoTaskIds,
+  isConfirmedDeletedAuvoStatus,
+} from "../_shared/auvo-deleted-task-reconciliation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -508,10 +512,30 @@ async function loadAuvoEquipmentCatalog(
   return catalog;
 }
 
-// Fetch Auvo tasks for a single month window
-async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
+type AuvoTaskFetchWindow = {
+  startDate: string;
+  endDate: string;
+  complete: boolean;
+  error?: string;
+};
+
+type AuvoTaskFetchResult = {
+  tasks: any[];
+  complete: boolean;
+  windows: AuvoTaskFetchWindow[];
+};
+
+// Fetch Auvo tasks for a single bounded window. `complete` is intentionally
+// strict: only a successful, fully paginated response can authorize deletion.
+async function fetchAuvoTasksForPeriod(
+  bearerToken: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ tasks: any[]; complete: boolean; error?: string }> {
   const allTasks: any[] = [];
   let page = 1;
+  let complete = true;
+  let error: string | undefined;
   const pageSize = 100;
   const MAX_PAGES = 30;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
@@ -533,21 +557,39 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
       break;
     }
     
-    if (!response) break;
+    if (!response) {
+      complete = false;
+      error = `sem resposta na página ${page}`;
+      break;
+    }
 
     if (response.status === 404) {
       console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 404 (fim)`);
+      // A primeira página 404 não é uma fotografia vazia confiável. Pode ser
+      // indisponibilidade/roteamento e, portanto, nunca autoriza exclusão.
+      if (page === 1) {
+        complete = false;
+        error = "primeira página respondeu 404";
+      }
       break;
     }
     if (!response.ok) {
       const text = await response.text();
       console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status} (após ${MAX_RETRIES} tentativas): ${text.substring(0, 200)}`);
+      complete = false;
+      error = `página ${page} respondeu ${response.status}`;
       break;
     }
 
     const json = await response.json();
     const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
-    if (!Array.isArray(tasks) || tasks.length === 0) {
+    if (!Array.isArray(tasks)) {
+      complete = false;
+      error = `página ${page} retornou payload inesperado`;
+      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: payload inesperado`);
+      break;
+    }
+    if (tasks.length === 0) {
       console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 0 tasks (fim)`);
       break;
     }
@@ -561,17 +603,20 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
 
   if (page > MAX_PAGES) {
     console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks (${startDate}→${endDate})`);
+    complete = false;
+    error = `limite de ${MAX_PAGES} páginas atingido`;
   }
 
-  return allTasks;
+  return { tasks: allTasks, complete, error };
 }
 
 // Fetch ALL Auvo tasks in short date windows. The Auvo /tasks endpoint becomes
 // very slow on full-month ranges and can hit the 150s function idle timeout;
 // short windows keep each request bounded while still collecting every task.
-async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
+async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<AuvoTaskFetchResult> {
   const allTasks: any[] = [];
   const seenTaskIds = new Set<string>();
+  const windows: AuvoTaskFetchWindow[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
 
@@ -584,20 +629,211 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
     const chunkEnd = chunkEndDate.toISOString().split("T")[0];
 
     console.log(`[central-sync] Buscando Auvo: ${chunkStart} → ${chunkEnd}`);
-    const tasks = await fetchAuvoTasksForPeriod(bearerToken, chunkStart, chunkEnd);
-    for (const task of tasks) {
+    const result = await fetchAuvoTasksForPeriod(bearerToken, chunkStart, chunkEnd);
+    windows.push({
+      startDate: chunkStart,
+      endDate: chunkEnd,
+      complete: result.complete,
+      error: result.error,
+    });
+    for (const task of result.tasks) {
       const taskId = String(task?.taskID || "").trim();
       if (taskId && seenTaskIds.has(taskId)) continue;
       if (taskId) seenTaskIds.add(taskId);
       allTasks.push(task);
     }
-    console.log(`[central-sync] Janela ${chunkStart}: ${tasks.length} tarefas (${allTasks.length} únicas acumuladas)`);
+    console.log(`[central-sync] Janela ${chunkStart}: ${result.tasks.length} tarefas (${allTasks.length} únicas acumuladas), completa=${result.complete}`);
 
     current.setTime(chunkEndDate.getTime());
     current.setDate(current.getDate() + 1);
   }
 
-  return allTasks;
+  return {
+    tasks: allTasks,
+    complete: windows.length > 0 && windows.every((window) => window.complete),
+    windows,
+  };
+}
+
+type DeletedTaskReconciliation = {
+  candidates: number;
+  checked: number;
+  confirmedDeleted: number;
+  preserved: number;
+  unknown: number;
+  skipped: number;
+  archived: number;
+  activeRowsRemoved: number;
+  error?: string;
+};
+
+async function loadLocalAuvoTaskCandidates(
+  sbClient: any,
+  table: string,
+  dateColumn: string,
+  startDate: string,
+  endDate: string,
+): Promise<Array<{ auvo_task_id: string; task_date: string }>> {
+  const result: Array<{ auvo_task_id: string; task_date: string }> = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sbClient
+      .from(table)
+      .select(`auvo_task_id,${dateColumn}`)
+      .gte(dateColumn, startDate)
+      .lte(dateColumn, endDate)
+      .not("auvo_task_id", "is", null)
+      .range(from, from + 999);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    const rows = data || [];
+    for (const row of rows) {
+      const taskId = String(row?.auvo_task_id || "").trim();
+      if (!isValidAuvoTaskId(taskId)) continue;
+      result.push({ auvo_task_id: taskId, task_date: String(row?.[dateColumn] || "") });
+    }
+    if (rows.length < 1000) break;
+  }
+  return result;
+}
+
+type AuvoTaskExistence = "exists" | "deleted" | "unknown";
+
+async function requestAuvoTaskForExistence(
+  bearerToken: string,
+  taskId: string,
+): Promise<Response | null> {
+  const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    } catch (error) {
+      console.warn(`[central-sync] confirmação tarefa ${taskId}, tentativa ${attempt}: ${(error as Error).message}`);
+      response = null;
+    }
+    if (!response || [429, 502, 503, 504].includes(response.status)) {
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1200));
+      continue;
+    }
+    return response;
+  }
+  return response;
+}
+
+async function inspectAuvoTaskExistence(
+  bearerToken: string,
+  taskId: string,
+): Promise<AuvoTaskExistence> {
+  const first = await requestAuvoTaskForExistence(bearerToken, taskId);
+  if (first?.ok) return "exists";
+  if (!first || ![404, 410].includes(first.status)) return "unknown";
+
+  // Uma única resposta de ausência ainda não remove nada. A confirmação é
+  // repetida no endpoint individual para evitar um 404 transitório do gateway.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const second = await requestAuvoTaskForExistence(bearerToken, taskId);
+  if (second?.ok) return "exists";
+  return isConfirmedDeletedAuvoStatus(first.status, second?.status ?? null) ? "deleted" : "unknown";
+}
+
+async function reconcileDeletedAuvoTasks(
+  sbClient: any,
+  bearerToken: string,
+  startDate: string,
+  endDate: string,
+  fetchResult: AuvoTaskFetchResult,
+  source: string,
+): Promise<DeletedTaskReconciliation> {
+  const summary: DeletedTaskReconciliation = {
+    candidates: 0,
+    checked: 0,
+    confirmedDeleted: 0,
+    preserved: 0,
+    unknown: 0,
+    skipped: 0,
+    archived: 0,
+    activeRowsRemoved: 0,
+  };
+  const completeWindows = fetchResult.windows.filter((window) => window.complete);
+  if (completeWindows.length === 0) {
+    summary.skipped = 1;
+    summary.error = "nenhuma janela Auvo completa; exclusão desativada";
+    return summary;
+  }
+
+  let localRows: Array<{ auvo_task_id: string; task_date: string }> = [];
+  try {
+    const sources = await Promise.all([
+      loadLocalAuvoTaskCandidates(sbClient, "tarefas_central", "data_tarefa", startDate, endDate),
+      loadLocalAuvoTaskCandidates(sbClient, "equipamento_tarefas_auvo", "data_tarefa", startDate, endDate),
+      loadLocalAuvoTaskCandidates(sbClient, "agenda_agendamentos", "data", startDate, endDate),
+      loadLocalAuvoTaskCandidates(sbClient, "atividades_nao_executadas", "data_planejada", startDate, endDate),
+    ]);
+    localRows = sources.flat();
+  } catch (error) {
+    summary.skipped = 1;
+    summary.error = `leitura local incompleta: ${(error as Error).message}`;
+    return summary;
+  }
+
+  const observed = new Set(fetchResult.tasks
+    .map((task) => String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim())
+    .filter((taskId) => isValidAuvoTaskId(taskId)));
+  const candidateIds = findMissingAuvoTaskIds(localRows, observed, completeWindows);
+
+  summary.candidates = candidateIds.length;
+  if (candidateIds.length === 0) return summary;
+
+  // Limite defensivo: uma rodada não faz uma varredura individual ilimitada.
+  // O restante fica intacto e será reavaliado nas próximas sincronizações.
+  const MAX_CHECKS_PER_SYNC = 25;
+  const idsToCheck = candidateIds.slice(0, MAX_CHECKS_PER_SYNC);
+  summary.skipped = Math.max(0, candidateIds.length - idsToCheck.length);
+
+  const confirmedDeleted: string[] = [];
+  const PARALLEL = 5;
+  for (let index = 0; index < idsToCheck.length; index += PARALLEL) {
+    const batch = idsToCheck.slice(index, index + PARALLEL);
+    const states = await Promise.all(batch.map((taskId) => inspectAuvoTaskExistence(bearerToken, taskId)));
+    states.forEach((state, position) => {
+      summary.checked += 1;
+      if (state === "deleted") {
+        confirmedDeleted.push(batch[position]);
+        summary.confirmedDeleted += 1;
+      } else if (state === "exists") {
+        summary.preserved += 1;
+      } else {
+        summary.unknown += 1;
+      }
+    });
+  }
+
+  if (confirmedDeleted.length === 0) return summary;
+
+  const { data, error } = await sbClient.rpc("arquivar_tarefas_auvo_excluidas", {
+    p_task_ids: confirmedDeleted,
+    p_origem_sync: source,
+    p_periodo_inicio: startDate,
+    p_periodo_fim: endDate,
+  });
+  if (error) {
+    // A RPC é transacional. Em caso de erro, nada foi removido.
+    summary.error = `arquivamento transacional falhou: ${error.message}`;
+    return summary;
+  }
+
+  const archived = Array.isArray(data) ? data[0] : data;
+  summary.archived = Number(archived?.arquivadas || 0);
+  summary.activeRowsRemoved = [
+    archived?.central_removidas,
+    archived?.equipamentos_removidos,
+    archived?.agenda_removida,
+    archived?.atividades_removidas,
+  ].reduce((total, value) => total + Number(value || 0), 0);
+  console.log(
+    `[central-sync] tarefas excluídas: ${summary.archived} arquivadas, ` +
+    `${summary.activeRowsRemoved} espelhos ativos removidos (${confirmedDeleted.join(",")})`,
+  );
+  return summary;
 }
 
 // Fetch ALL GC orçamentos (no date filter)
@@ -1882,7 +2118,8 @@ async function runReportsOnlySync(
     }
   }
 
-  const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
+  const auvoFetch = await fetchAuvoTasks(bearerToken, startDate, endDate);
+  const auvoTasks = auvoFetch.tasks;
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
 
   const taskIds = auvoTasks
@@ -2087,6 +2324,30 @@ async function runReportsOnlySync(
     }
   }
 
+  const deletedTaskReconciliation = errors === 0
+    ? await reconcileDeletedAuvoTasks(
+        sbClient,
+        bearerToken,
+        startDate,
+        endDate,
+        auvoFetch,
+        "central-sync:reports-only",
+      )
+    : {
+        candidates: 0,
+        checked: 0,
+        confirmedDeleted: 0,
+        preserved: 0,
+        unknown: 0,
+        skipped: 1,
+        archived: 0,
+        activeRowsRemoved: 0,
+        error: "gravação atual teve erro; exclusão desativada",
+      } satisfies DeletedTaskReconciliation;
+  if (deletedTaskReconciliation.error) {
+    console.warn(`[central-sync] reconciliação de excluídas ignorada: ${deletedTaskReconciliation.error}`);
+  }
+
   let gcStatusRefresh = { checked: 0, updated: 0, transitioned: 0, remaining: 0, complete: true, errors: 0 };
   if (gcOsOpen) {
     try {
@@ -2110,6 +2371,14 @@ async function runReportsOnlySync(
     gc_os_transitioned: gcStatusRefresh.transitioned,
     gc_os_status_remaining: gcStatusRefresh.remaining,
     gc_os_reconciliation_complete: gcStatusRefresh.complete,
+    auvo_excluidas_candidatas: deletedTaskReconciliation.candidates,
+    auvo_excluidas_verificadas: deletedTaskReconciliation.checked,
+    auvo_excluidas_confirmadas: deletedTaskReconciliation.confirmedDeleted,
+    auvo_excluidas_arquivadas: deletedTaskReconciliation.archived,
+    auvo_excluidas_espelhos_removidos: deletedTaskReconciliation.activeRowsRemoved,
+    auvo_excluidas_preservadas: deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
+    auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
+    auvo_paginacao_completa: auvoFetch.complete,
     errors: errors + gcStatusRefresh.errors,
   };
 }
@@ -2274,11 +2543,15 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // breaking the Horas Trabalhadas tab (which depends on Auvo data).
     const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
     const isLiteSync = body?.lite === true;
-    const auvoTasksPromise: Promise<any[]> = isFastGcOnly
-      ? Promise.resolve([])
+    const auvoTasksPromise: Promise<AuvoTaskFetchResult> = isFastGcOnly
+      ? Promise.resolve({ tasks: [], complete: false, windows: [] })
       : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
           console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
-          return [];
+          return {
+            tasks: [],
+            complete: false,
+            windows: [{ startDate, endDate, complete: false, error: (err as Error).message }],
+          };
         });
     if (!isFastGcOnly) {
       console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
@@ -2684,7 +2957,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     // Step 3: NOW await Auvo (kicked off earlier in parallel with GC refresh)
     console.log(`[central-sync] Aguardando Auvo (iniciado em paralelo): ${startDate} → ${endDate}`);
-    const auvoTasks = await auvoTasksPromise;
+    const auvoFetch = await auvoTasksPromise;
+    const auvoTasks = auvoFetch.tasks;
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
 
     if (auvoTasks.length === 0) {
@@ -3370,6 +3644,30 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       console.log(`[central-sync] Equipment-task relationships upserted: ${relUpserted}`);
     }
 
+    const deletedTaskReconciliation: DeletedTaskReconciliation = errors === 0
+      ? await reconcileDeletedAuvoTasks(
+          sbClient,
+          bearerToken,
+          startDate,
+          endDate,
+          auvoFetch,
+          "central-sync:full",
+        )
+      : {
+          candidates: 0,
+          checked: 0,
+          confirmedDeleted: 0,
+          preserved: 0,
+          unknown: 0,
+          skipped: 1,
+          archived: 0,
+          activeRowsRemoved: 0,
+          error: "gravação atual teve erro; exclusão desativada",
+        };
+    if (deletedTaskReconciliation.error) {
+      console.warn(`[central-sync] reconciliação de excluídas ignorada: ${deletedTaskReconciliation.error}`);
+    }
+
 
     // ── Post-sync: persist atrasos AND pendências permanently ──
     // 1) Tasks past due and NOT finalized (still open)
@@ -3446,10 +3744,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
-    // Ausência em uma listagem não prova exclusão: paginação, janela, filtro ou
-    // instabilidade podem omitir tarefas válidas. O espelho é incremental e
-    // preserva o último estado conhecido até uma atualização explícita.
-    const ghostsDeleted = 0;
+    // Ausência simples continua sem apagar nada. `ghostsDeleted` contabiliza
+    // somente IDs confirmados duas vezes no endpoint individual e já arquivados.
+    const ghostsDeleted = deletedTaskReconciliation.archived;
 
     const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
     console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
@@ -3467,6 +3764,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       errors,
       deleted: deleted || 0,
       ghosts_deleted: ghostsDeleted,
+      auvo_excluidas_candidatas: deletedTaskReconciliation.candidates,
+      auvo_excluidas_verificadas: deletedTaskReconciliation.checked,
+      auvo_excluidas_confirmadas: deletedTaskReconciliation.confirmedDeleted,
+      auvo_excluidas_espelhos_removidos: deletedTaskReconciliation.activeRowsRemoved,
+      auvo_excluidas_preservadas: deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
+      auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
+      auvo_paginacao_completa: auvoFetch.complete,
       previsoes_orcamento: forecastPromotionSummary,
     };
 
