@@ -422,11 +422,22 @@ export default function AgendamentoEquipePage() {
   }, [qc]);
 
   const inicioEscala = useMemo(() => new Date(), []);
-  
+
+  // Histórico: mantemos 60 dias passados na grade (não somem mais),
+  // mas a página sempre abre posicionada no dia atual.
+  const DIAS_PASSADOS = 60;
+  const DIAS_FUTUROS = 90;
+
   const dias = useMemo(
-    () => Array.from({ length: 90 }, (_, i) => format(addDays(inicioEscala, i), "yyyy-MM-dd")),
+    () =>
+      Array.from({ length: DIAS_PASSADOS + DIAS_FUTUROS }, (_, i) =>
+        format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd"),
+      ),
     [inicioEscala],
   );
+
+  // Sincronização do Auvo continua olhando apenas de hoje em diante.
+  const diasFuturos = useMemo(() => dias.slice(DIAS_PASSADOS), [dias]);
 
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
