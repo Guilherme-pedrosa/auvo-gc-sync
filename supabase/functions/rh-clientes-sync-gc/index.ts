@@ -535,6 +535,14 @@ async function fetchAuvoCustomersLight(accessToken: string): Promise<AuvoCustome
   return all;
 }
 
+function namesLookCompatible(a: string, b: string): boolean {
+  const tokensA = new Set(normalize(a).split(" ").filter((t) => t.length >= 3));
+  const tokensB = new Set(normalize(b).split(" ").filter((t) => t.length >= 3));
+  if (tokensA.size === 0 || tokensB.size === 0) return false;
+  for (const token of tokensA) if (tokensB.has(token)) return true;
+  return false;
+}
+
 async function handleDocumentLookup(supabase: any, body: any): Promise<Record<string, unknown>> {
   const ids = Array.isArray(body?.rhClientIds)
     ? body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
@@ -609,10 +617,28 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
       });
       continue;
     }
+    const candidate = candidates[0];
+    if (!namesLookCompatible(row.nome, candidate.name) && !namesLookCompatible(row.nome, candidate.legalName || "")) {
+      ambiguous++;
+      await supabase.from("rh_clientes").update({
+        vinculo_status: "ambiguo",
+        vinculo_metodo: "cpf_cnpj_nome_divergente",
+        vinculo_confianca: 0.4,
+        auvo_sync_erro: `CPF/CNPJ igual ao Auvo #${candidate.id} (${candidate.name}), mas o nome diverge`,
+        atualizado_em: new Date().toISOString(),
+      }).eq("id", row.id);
+      details.push({
+        id: row.id,
+        nome: row.nome,
+        resultado: "nome_divergente",
+        candidatos: [{ auvoId: candidate.id, nome: candidate.name }],
+      });
+      continue;
+    }
     try {
-      await handleManualLink(supabase, { rhClientId: row.id, auvoCustomerId: candidates[0].id });
+      await handleManualLink(supabase, { rhClientId: row.id, auvoCustomerId: candidate.id });
       linked++;
-      details.push({ id: row.id, nome: row.nome, resultado: "vinculado", auvoId: candidates[0].id, auvoNome: candidates[0].name });
+      details.push({ id: row.id, nome: row.nome, resultado: "vinculado", auvoId: candidate.id, auvoNome: candidate.name });
     } catch (linkError) {
       errors++;
       details.push({ id: row.id, nome: row.nome, resultado: "erro", mensagem: String((linkError as Error)?.message || linkError) });
