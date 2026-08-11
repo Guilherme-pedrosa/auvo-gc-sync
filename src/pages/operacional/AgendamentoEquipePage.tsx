@@ -759,6 +759,22 @@ export default function AgendamentoEquipePage() {
   };
 
   const carregando = isLoading || loadingCol || loadingVei;
+
+  // A grade contém dias passados (histórico), mas sempre inicia no dia atual.
+  const posicionadoNoHoje = useRef(false);
+  useEffect(() => {
+    if (carregando || posicionadoNoHoje.current) return;
+    const alvos = document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']");
+    if (!alvos.length) return;
+    alvos.forEach((th) => {
+      const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+      if (!container) return;
+      const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+      const offsetFixo = primeiraColuna?.offsetWidth ?? 0;
+      container.scrollLeft = Math.max(0, th.offsetLeft - offsetFixo);
+    });
+    posicionadoNoHoje.current = true;
+  }, [carregando]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
