@@ -481,7 +481,7 @@ export default function AgendamentoEquipePage() {
       const [colaboradoresResult, agendaResult] = await Promise.all([
         refetchColaboradores(),
         supabase.functions.invoke("auvo-agenda", {
-          body: { startDate: dias[0], endDate: dias[dias.length - 1], fast: true },
+          body: { startDate: diasFuturos[0], endDate: diasFuturos[diasFuturos.length - 1], fast: true },
         }),
       ]);
       if (colaboradoresResult.error) throw colaboradoresResult.error;
