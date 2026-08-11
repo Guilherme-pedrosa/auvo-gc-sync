@@ -89,7 +89,8 @@ describe("sincronização incremental do Agendamento Equipe", () => {
 
     expect(page).not.toContain("!sourceKeys.has(taskKey(row))");
     expect(page).toContain("existingByTaskId");
-    expect(page).toContain('a.gc_os_codigo ? `OS ${a.gc_os_codigo}`');
+    expect(page).toContain('`OS ${a.gc_os_codigo}${situacaoGc ? ` [${situacaoGc}]` : ""}`');
+    expect(page).toContain('Situação GC: ${situacaoGc}');
     expect(page).toContain('a.auvo_task_id ? `Tarefa ${a.auvo_task_id}`');
     expect(central).not.toContain("Mirror Auvo: removidas");
     expect(central).not.toContain("vínculos de OS inválidos (não-73343)");
