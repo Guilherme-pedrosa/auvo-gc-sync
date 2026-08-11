@@ -36,6 +36,8 @@ const metodoLabel: Record<string, string> = {
   cpf_cnpj: "CPF/CNPJ",
   nome_exato_normalizado: "Nome idêntico",
   historico_os_orcamento: "Histórico de OS/orçamentos",
+  cpf_cnpj_nome_divergente: "CPF/CNPJ igual, nome divergente",
+  manual: "Vínculo manual",
   criado_por_gc: "Criado no Auvo pelo GC",
 };
 
