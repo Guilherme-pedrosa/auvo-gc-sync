@@ -254,6 +254,13 @@ export default function ClientesRhPage() {
                 <TableCell className="text-xs uppercase">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
                 <TableCell>
                   {linkBadge(c.vinculo_status)}
+                  {isDuplicado(c) && (
+                    <div className="mt-1">
+                      <Badge className="bg-amber-600 hover:bg-amber-600">
+                        <AlertTriangle className="h-3 w-3 mr-1" /> Vínculo duplicado
+                      </Badge>
+                    </div>
+                  )}
                   {c.vinculo_metodo && (
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       {metodoLabel[c.vinculo_metodo] ?? c.vinculo_metodo}
