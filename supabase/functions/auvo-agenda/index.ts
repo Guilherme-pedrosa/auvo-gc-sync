@@ -308,6 +308,8 @@ Deno.serve(async (req) => {
     const fetchTasks = async () => {
       const allTasks: any[] = [];
       let page = 1;
+      let complete = true;
+      let truncated = false;
       const pageSize = 100;
       const MAX_PAGES = 20;
       const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
@@ -320,23 +322,41 @@ Deno.serve(async (req) => {
           delaysMs: [3000, 6000, 9000],
           label: `Auvo tasks page ${page}`,
         });
-        if (response.status === 404) break;
+        if (response.status === 404) {
+          // 404 na primeira página não é uma listagem vazia confiável. Sem essa
+          // trava, uma indisponibilidade do endpoint poderia apagar a agenda.
+          if (page === 1) complete = false;
+          break;
+        }
         if (!response.ok) {
           const text = await response.text();
           console.error(`[auvo-agenda] page ${page} error ${response.status}: ${text.substring(0, 200)}`);
+          complete = false;
           break;
         }
         const json = await response.json();
         const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
-        if (!Array.isArray(tasks) || tasks.length === 0) break;
+        if (!Array.isArray(tasks)) {
+          complete = false;
+          console.error(`[auvo-agenda] page ${page} returned an unexpected payload`);
+          break;
+        }
+        if (tasks.length === 0) break;
         allTasks.push(...tasks);
         if (tasks.length < pageSize) break;
         page++;
       }
       if (page > MAX_PAGES) {
         console.warn(`[auvo-agenda] Auvo tasks truncated at MAX_PAGES=${MAX_PAGES}`);
+        complete = false;
+        truncated = true;
       }
-      return allTasks;
+      return {
+        tasks: allTasks,
+        complete,
+        truncated,
+        pagesFetched: Math.min(page, MAX_PAGES),
+      };
     };
 
     // Run in parallel: Auvo tasks + GC OS + GC Orçamentos
@@ -348,13 +368,13 @@ Deno.serve(async (req) => {
       d.setUTCMonth(d.getUTCMonth() - 18);
       return d.toISOString().substring(0, 10);
     })();
-    const [allTasksFetched, gcOsMap, gcOrcMap] = await Promise.all([
+    const [taskFetch, gcOsMap, gcOrcMap] = await Promise.all([
       fetchTasks(),
       hasGc ? fetchGcOsMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
       hasGc ? fetchGcOrcMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
     ]);
 
-    const allTasks = allTasksFetched;
+    const allTasks = taskFetch.tasks;
 
     // A mesma fonte do Controle OS é a autoridade para o vínculo tarefa → OS principal.
     // O documento pode ser antigo e não aparecer na janela consultada na API do GC.
@@ -787,6 +807,9 @@ Deno.serve(async (req) => {
         persisted_tasks: persistedTasks,
         forecast_promotions: promotionResults,
         mode: fastMode ? "fast" : "full",
+        sync_complete: taskFetch.complete,
+        sync_truncated: taskFetch.truncated,
+        sync_pages: taskFetch.pagesFetched,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
