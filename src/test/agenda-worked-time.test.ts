@@ -34,6 +34,7 @@ describe("horas efetivamente trabalhadas na agenda", () => {
   });
 
   it("soma tarefas únicas do técnico no dia", () => {
+    // placeholder
     const summary = summarizeAgendaWorkedTime([
       { auvo_task_id: "1", check_in_iso: "2026-08-10T08:00:00-03:00", check_out_iso: "2026-08-10T10:00:00-03:00", duracao_decimal: 2 },
       { auvo_task_id: "1", check_in_iso: "2026-08-10T08:00:00-03:00", check_out_iso: "2026-08-10T10:00:00-03:00", duracao_decimal: 2 },
