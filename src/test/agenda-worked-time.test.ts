@@ -44,4 +44,14 @@ describe("horas efetivamente trabalhadas na agenda", () => {
     expect(summary).toEqual({ totalMinutes: 210, tasksWithWork: 2, inProgress: 0 });
     expect(formatWorkedMinutes(summary.totalMinutes)).toBe("3h30");
   });
+
+  it("exibe o relógio original do Auvo mesmo gravado com marcação +00", () => {
+    const worked = agendaTaskWorkedTime({
+      check_in_iso: "2026-08-10T20:34:49+00:00",
+      check_out_iso: "2026-08-10T20:37:48+00:00",
+      duracao_decimal: 0.0497,
+    });
+    expect(formatWorkedClock(worked.checkIn)).toBe("20:34");
+    expect(formatWorkedClock(worked.checkOut)).toBe("20:37");
+  });
 });
