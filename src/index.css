@@ -246,3 +246,18 @@
   /* Alvos de toque mínimos em botões de ícone. */
   main button svg { flex-shrink: 0; }
 }
+
+/* Legenda da agenda: recolhida no mobile, sempre aberta no desktop. */
+@media (min-width: 768px) {
+  details.legenda-agenda > summary { display: none; }
+  details.legenda-agenda > div { display: flex !important; margin-top: 0; }
+}
+
+/* A escala usa colunas fixas (sticky): manter como <table> mesmo no mobile. */
+@media (max-width: 767px) {
+  main [data-agenda-scroll="1"] table { display: table; }
+  main [data-agenda-scroll="1"] table > thead,
+  main [data-agenda-scroll="1"] table > tbody,
+  main [data-agenda-scroll="1"] table > tfoot { display: table-row-group; width: auto; min-width: 0; }
+  main [data-agenda-scroll="1"] table > thead { display: table-header-group; }
+}
