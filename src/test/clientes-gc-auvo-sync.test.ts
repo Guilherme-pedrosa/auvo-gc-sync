@@ -8,10 +8,25 @@ const migration = readFileSync(
   resolve(root, "supabase/migrations/20260811130000_portal_preventivas_clientes_gc_auvo.sql"),
   "utf8",
 );
+const duplicateNamesMigration = readFileSync(
+  resolve(root, "supabase/migrations/20260811143000_allow_duplicate_customer_names.sql"),
+  "utf8",
+);
 const page = readFileSync(resolve(root, "src/pages/rh/ClientesRhPage.tsx"), "utf8");
 const hook = readFileSync(resolve(root, "src/hooks/rh/useRh.ts"), "utf8");
 
 describe("cadastro central RH > Clientes", () => {
+  it("usa IDs como referência e aceita homônimos reais", () => {
+    expect(duplicateNamesMigration).toContain("DROP CONSTRAINT IF EXISTS rh_clientes_nome_normalizado_key");
+    expect(duplicateNamesMigration).toContain("idx_rh_clientes_nome_normalizado");
+    expect(duplicateNamesMigration).toContain("DROP INDEX IF EXISTS public.uq_rh_clientes_auvo_cliente_id");
+    expect(duplicateNamesMigration).toContain("UNIQUE (auvo_cliente_id)");
+    expect(sync).toContain("upsertWithIsolation");
+    expect(sync).toContain("mergeLocalCustomerDependencies");
+    expect(sync).toContain("mergedDuplicates");
+    expect(sync).toContain("errorSamples");
+  });
+
   it("rejeita backend legado em vez de exibir contadores undefined", () => {
     expect(sync).toContain('RESPONSE_CONTRACT = "gc-auvo-v2"');
     expect(hook).toContain('data?.apiVersion !== "gc-auvo-v2"');

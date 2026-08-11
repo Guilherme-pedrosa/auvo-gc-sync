@@ -287,6 +287,82 @@ function uniqueMatch(map: Map<string, AuvoCustomer[]>, key: string): AuvoCustome
   return values.length === 1 ? values[0] : null;
 }
 
+type SafeUpsertResult = { saved: number; errors: number; errorSamples: string[] };
+
+async function upsertWithIsolation(
+  supabase: any,
+  table: string,
+  rows: any[],
+  options: Record<string, unknown>,
+  context: string,
+): Promise<SafeUpsertResult> {
+  if (rows.length === 0) return { saved: 0, errors: 0, errorSamples: [] };
+
+  const { error } = await supabase.from(table).upsert(rows, options);
+  if (!error) return { saved: rows.length, errors: 0, errorSamples: [] };
+
+  // Um conflito isolado não pode invalidar centenas de clientes do mesmo lote.
+  // Divide o lote até identificar somente as linhas realmente problemáticas.
+  if (rows.length > 1) {
+    const middle = Math.ceil(rows.length / 2);
+    const [left, right] = await Promise.all([
+      upsertWithIsolation(supabase, table, rows.slice(0, middle), options, context),
+      upsertWithIsolation(supabase, table, rows.slice(middle), options, context),
+    ]);
+    return {
+      saved: left.saved + right.saved,
+      errors: left.errors + right.errors,
+      errorSamples: [...left.errorSamples, ...right.errorSamples].slice(0, 10),
+    };
+  }
+
+  const rowId = String(rows[0]?.auvo_cliente_id ?? rows[0]?.gc_cliente_id ?? rows[0]?.id ?? "sem-id");
+  const detail = `${context} ${rowId}: ${error.message}`;
+  console.error(`[rh-clientes-sync] ${detail}`);
+  return { saved: 0, errors: 1, errorSamples: [detail] };
+}
+
+async function mergeLocalCustomerDependencies(
+  supabase: any,
+  targetId: string,
+  holderId: string,
+): Promise<void> {
+  const { data: requirements, error: reqError } = await supabase
+    .from("rh_client_requirements")
+    .select("document_type_id, required_for, is_required, observacoes")
+    .eq("client_id", holderId);
+  if (reqError) throw reqError;
+  if (requirements?.length) {
+    const { error } = await supabase.from("rh_client_requirements").upsert(
+      requirements.map((row: any) => ({ ...row, client_id: targetId })),
+      { onConflict: "client_id,document_type_id,required_for" },
+    );
+    if (error) throw error;
+  }
+
+  const { error: integrationsError } = await supabase
+    .from("rh_integrations")
+    .update({ client_id: targetId })
+    .eq("client_id", holderId);
+  if (integrationsError) throw integrationsError;
+
+  const { data: sharedLinks, error: sharedError } = await supabase
+    .from("rh_integration_clients")
+    .select("integration_id")
+    .eq("client_id", holderId);
+  if (sharedError) throw sharedError;
+  if (sharedLinks?.length) {
+    const { error } = await supabase.from("rh_integration_clients").upsert(
+      sharedLinks.map((row: any) => ({ integration_id: row.integration_id, client_id: targetId })),
+      { onConflict: "integration_id,client_id", ignoreDuplicates: true },
+    );
+    if (error) throw error;
+  }
+
+  const { error: deleteError } = await supabase.from("rh_clientes").delete().eq("id", holderId);
+  if (deleteError) throw deleteError;
+}
+
 async function handleManualLink(supabase: any, body: any): Promise<Record<string, unknown>> {
   const rhClientId = String(body?.rhClientId || "").trim();
   const rawAuvoId = body?.auvoCustomerId;
@@ -363,40 +439,7 @@ async function handleManualLink(supabase: any, body: any): Promise<Record<string
   // O cliente Auvo pode já existir como uma linha isolada. Antes de unir as
   // linhas, transfere os relacionamentos do RH para não apagar histórico.
   if (holder?.id) {
-    const { data: requirements, error: reqError } = await supabase
-      .from("rh_client_requirements")
-      .select("document_type_id, required_for, is_required, observacoes")
-      .eq("client_id", holder.id);
-    if (reqError) throw reqError;
-    if (requirements?.length) {
-      const { error } = await supabase.from("rh_client_requirements").upsert(
-        requirements.map((row: any) => ({ ...row, client_id: rhClientId })),
-        { onConflict: "client_id,document_type_id,required_for" },
-      );
-      if (error) throw error;
-    }
-
-    const { error: integrationsError } = await supabase
-      .from("rh_integrations")
-      .update({ client_id: rhClientId })
-      .eq("client_id", holder.id);
-    if (integrationsError) throw integrationsError;
-
-    const { data: sharedLinks, error: sharedError } = await supabase
-      .from("rh_integration_clients")
-      .select("integration_id")
-      .eq("client_id", holder.id);
-    if (sharedError) throw sharedError;
-    if (sharedLinks?.length) {
-      const { error } = await supabase.from("rh_integration_clients").upsert(
-        sharedLinks.map((row: any) => ({ integration_id: row.integration_id, client_id: rhClientId })),
-        { onConflict: "integration_id,client_id", ignoreDuplicates: true },
-      );
-      if (error) throw error;
-    }
-
-    const { error: deleteError } = await supabase.from("rh_clientes").delete().eq("id", holder.id);
-    if (deleteError) throw deleteError;
+    await mergeLocalCustomerDependencies(supabase, rhClientId, holder.id);
   }
 
   const { error: updateError } = await supabase.from("rh_clientes").update({
@@ -522,7 +565,13 @@ Deno.serve(async (req) => {
 
     const localByGcId = new Map(locals.filter((row) => row.gc_cliente_id).map((row) => [String(row.gc_cliente_id), row]));
     const localByAuvoId = new Map(locals.filter((row) => row.auvo_cliente_id).map((row) => [Number(row.auvo_cliente_id), row]));
-    const localByName = new Map(locals.map((row) => [normalize(row.nome), row]));
+    const localByName = new Map<string, LocalCustomer[]>();
+    for (const row of locals) {
+      const key = normalize(row.nome);
+      const bucket = localByName.get(key) ?? [];
+      bucket.push(row);
+      localByName.set(key, bucket);
+    }
     const auvoById = new Map(auvoCustomers.map((customer) => [customer.id, customer]));
     const auvoByExternalId = new Map(auvoCustomers.filter((customer) => customer.externalId).map((customer) => [String(customer.externalId).toUpperCase(), customer]));
     const auvoByDocument = new Map<string, AuvoCustomer[]>();
@@ -557,8 +606,10 @@ Deno.serve(async (req) => {
     let createdInAuvo = 0;
     let ambiguous = 0;
     let errors = 0;
+    const errorSamples: string[] = [];
     let inserted = 0;
     let updated = 0;
+    let mergedDuplicates = 0;
     // No modo incremental os clientes antigos do GC não entram em gcCustomers,
     // mas seus vínculos continuam válidos e não podem virar "somente Auvo".
     const matchedAuvoIds = new Set<number>(
@@ -576,7 +627,8 @@ Deno.serve(async (req) => {
       if (!gcId || !name) continue;
       const document = gcDocument(gc);
       const externalId = `GC:${gcId}`;
-      let local = localByGcId.get(gcId) || localByName.get(normalize(name)) || null;
+      const localNameCandidates = localByName.get(normalize(name)) ?? [];
+      let local = localByGcId.get(gcId) || (localNameCandidates.length === 1 ? localNameCandidates[0] : null);
 
       let match: AuvoCustomer | null = null;
       let method = "";
@@ -599,15 +651,32 @@ Deno.serve(async (req) => {
         confidence = 0.9;
       }
 
+      let syncError: string | null = null;
       let holderConflict = false;
       if (match) {
         const holder = localByAuvoId.get(match.id);
         if (!local && holder) local = holder;
         else if (local && holder && holder.id !== local.id) {
-          match = null;
-          method = "id_auvo_ja_vinculado_a_outro_cliente";
-          confidence = 0;
-          holderConflict = true;
+          if (!holder.gc_cliente_id) {
+            try {
+              await mergeLocalCustomerDependencies(supabase, local.id, holder.id);
+              localByAuvoId.set(match.id, local);
+              mergedDuplicates++;
+            } catch (error) {
+              syncError = `Falha ao unir cadastro Auvo duplicado: ${(error as Error).message}`;
+              match = null;
+              method = "falha_uniao_cadastro_auvo";
+              confidence = 0;
+              holderConflict = true;
+              errors++;
+              if (errorSamples.length < 10) errorSamples.push(`GC ${gcId}: ${syncError}`);
+            }
+          } else {
+            match = null;
+            method = "id_auvo_vinculado_a_outro_gc";
+            confidence = 0;
+            holderConflict = true;
+          }
         }
       }
 
@@ -615,7 +684,6 @@ Deno.serve(async (req) => {
       const nameCandidates = auvoByName.get(normalize(name)) ?? [];
       const isAmbiguous = holderConflict || (!match && (documentCandidates.length > 1 || nameCandidates.length > 1));
 
-      let syncError: string | null = null;
       if (!match && !isAmbiguous && autoCreateAuvo) {
         try {
           match = await upsertCustomerInAuvo(gc, accessToken);
@@ -641,6 +709,7 @@ Deno.serve(async (req) => {
         } catch (error) {
           syncError = (error as Error).message;
           errors++;
+          if (errorSamples.length < 10) errorSamples.push(`GC ${gcId}: ${syncError}`);
         }
       }
 
@@ -682,22 +751,29 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < existingGcRows.length; i += 500) {
       const batch = existingGcRows.slice(i, i + 500);
-      const { error } = await supabase.from("rh_clientes").upsert(batch, { onConflict: "id" });
-      if (error) {
-        errors += batch.length;
-        console.error("[rh-clientes-sync] lote de atualização", error);
-      } else updated += batch.length;
+      const result = await upsertWithIsolation(
+        supabase,
+        "rh_clientes",
+        batch,
+        { onConflict: "id" },
+        "atualização GC",
+      );
+      updated += result.saved;
+      errors += result.errors;
+      errorSamples.push(...result.errorSamples.slice(0, Math.max(0, 10 - errorSamples.length)));
     }
     for (let i = 0; i < newGcRows.length; i += 500) {
       const batch = newGcRows.slice(i, i + 500);
-      const { error } = await supabase.from("rh_clientes").upsert(batch, {
-        onConflict: "gc_cliente_id",
-        defaultToNull: false,
-      });
-      if (error) {
-        errors += batch.length;
-        console.error("[rh-clientes-sync] lote de inserção GC", error);
-      } else inserted += batch.length;
+      const result = await upsertWithIsolation(
+        supabase,
+        "rh_clientes",
+        batch,
+        { onConflict: "gc_cliente_id", defaultToNull: false },
+        "inserção GC",
+      );
+      inserted += result.saved;
+      errors += result.errors;
+      errorSamples.push(...result.errorSamples.slice(0, Math.max(0, 10 - errorSamples.length)));
     }
 
     // Clientes que existem apenas no Auvo também aparecem em RH > Clientes.
@@ -739,18 +815,29 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < existingAuvoOnlyRows.length; i += 500) {
       const batch = existingAuvoOnlyRows.slice(i, i + 500);
-      const { error } = await supabase.from("rh_clientes").upsert(batch, { onConflict: "id" });
-      if (error) errors += batch.length;
-      else auvoOnly += batch.length;
+      const result = await upsertWithIsolation(
+        supabase,
+        "rh_clientes",
+        batch,
+        { onConflict: "id" },
+        "atualização Auvo",
+      );
+      auvoOnly += result.saved;
+      errors += result.errors;
+      errorSamples.push(...result.errorSamples.slice(0, Math.max(0, 10 - errorSamples.length)));
     }
     for (let i = 0; i < newAuvoOnlyRows.length; i += 500) {
       const batch = newAuvoOnlyRows.slice(i, i + 500);
-      const { error } = await supabase.from("rh_clientes").upsert(batch, {
-        onConflict: "auvo_cliente_id",
-        defaultToNull: false,
-      });
-      if (error) errors += batch.length;
-      else auvoOnly += batch.length;
+      const result = await upsertWithIsolation(
+        supabase,
+        "rh_clientes",
+        batch,
+        { onConflict: "auvo_cliente_id", defaultToNull: false },
+        "inserção Auvo",
+      );
+      auvoOnly += result.saved;
+      errors += result.errors;
+      errorSamples.push(...result.errorSamples.slice(0, Math.max(0, 10 - errorSamples.length)));
     }
 
     return new Response(JSON.stringify({
@@ -765,7 +852,9 @@ Deno.serve(async (req) => {
       auvoOnly,
       inserted,
       updated,
+      mergedDuplicates,
       errors,
+      errorSamples,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("[rh-clientes-sync]", error);
