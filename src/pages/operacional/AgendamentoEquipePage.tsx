@@ -33,7 +33,6 @@ import {
   mergeAgendaTaskSnapshot,
 } from "@/lib/agendaIncrementalSync";
 import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
-import { taskTypeRequiresGcOs } from "@/lib/agendaTaskType";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
@@ -229,12 +228,6 @@ function Celula({
           const tipoTarefa = a.auvo_task_id
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
-          const exigeOs = Boolean(
-            a.auvo_task_id
-            && tipoTarefa
-            && taskTypeRequiresGcOs(a.tipo_tarefa_auvo_descricao, tipoTarefa, a.tipo_tarefa_auvo_id),
-          );
-          const osNaoVinculada = exigeOs && !a.gc_os_codigo;
           const identificadores = [
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
@@ -275,11 +268,6 @@ function Celula({
               >
                 <div className="flex flex-col">
                   <span className="truncate">{label}</span>
-                  {osNaoVinculada && (
-                    <span className="text-[9px] font-bold normal-case text-red-700 dark:text-red-300 truncate">
-                      OS do GestãoClick não vinculada
-                    </span>
-                  )}
                   {tempoTrabalhado.hasCheckIn && (
                     <span className="flex items-center gap-1 text-[9px] font-semibold normal-case opacity-90 truncate">
                       <Clock3 className="h-2.5 w-2.5 shrink-0" />
@@ -800,7 +788,6 @@ export default function AgendamentoEquipePage() {
           <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
           <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
           <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
-          <span className="rounded border border-red-300 bg-card px-2 py-1 font-semibold text-red-700">OS do GC não vinculada: revisar cadastro</span>
           <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">
             <Clock3 className="h-3 w-3" /> Horas reais: check-in/checkout do Auvo
           </span>

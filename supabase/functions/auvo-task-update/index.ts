@@ -12,6 +12,7 @@ import {
   auvoCheckOutDate,
   computeAuvoWorkedHours,
 } from "../_shared/auvo-worked-time.ts";
+import { auvoTaskTypeDescription } from "../_shared/auvo-task-type.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
   auvoTaskHasStarted,
@@ -698,12 +699,7 @@ Deno.serve(async (req) => {
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
       const orientation = String(task?.orientation ?? task?.description ?? "").trim();
       const currentTaskTypeId = taskTypeId(task);
-      let currentTaskTypeDescription = String(
-        task?.taskTypeDescription
-        ?? task?.taskType?.description
-        ?? task?.taskType?.name
-        ?? "",
-      ).trim();
+      let currentTaskTypeDescription = auvoTaskTypeDescription(task);
       if (currentTaskTypeId && !currentTaskTypeDescription) {
         try {
           const taskType = await fetchTaskTypeById(currentTaskTypeId, headers);

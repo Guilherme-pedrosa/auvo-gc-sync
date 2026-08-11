@@ -6,6 +6,11 @@ import {
   computeAuvoWorkedHours,
 } from "../_shared/auvo-worked-time.ts";
 import {
+  auvoTaskTypeDescription,
+  auvoTaskTypeId,
+  isConcreteAuvoTaskTypeDescription,
+} from "../_shared/auvo-task-type.ts";
+import {
   isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
 } from "../_shared/agenda-forecast-promotion.ts";
@@ -37,26 +42,6 @@ function timeToMinutes(value: string): number {
 function minutesToClock(value: number): string {
   const normalized = ((Math.round(value) % 1440) + 1440) % 1440;
   return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
-}
-
-function taskTypeId(task: any): string {
-  const value = task?.taskType?.id ?? task?.taskTypeId ?? task?.taskType ?? task?.TaskType;
-  return String(value ?? "").trim();
-}
-
-function inlineTaskTypeDescription(task: any): string {
-  const candidates = [
-    task?.taskTypeDescription,
-    task?.taskType?.description,
-    task?.taskType?.name,
-    task?.typeDescription,
-    task?.serviceTypeDescription,
-  ];
-  for (const candidate of candidates) {
-    const value = String(candidate ?? "").trim();
-    if (value && value !== "null" && value !== "undefined") return value.substring(0, 500);
-  }
-  return "";
 }
 
 async function fetchMissingTaskTypes(
@@ -467,17 +452,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // A listagem semanal normalmente já devolve a descrição. Só consulta
-    // /taskTypes/{id} para os poucos tipos realmente ausentes, sem varrer todo
-    // o cadastro de tipos e sem tornar a sincronização lenta.
-    const unresolvedTaskTypeIds = allTasks
-      .filter((task: any) => {
-        const id = String(task.taskID || task.taskId || task.id || "").trim();
-        return !inlineTaskTypeDescription(task) && !localDocumentMap.get(id)?.task_type_description;
-      })
-      .map((task: any) => taskTypeId(task));
-    const taskTypesMap = await fetchMissingTaskTypes(headers, unresolvedTaskTypeIds);
-
     console.log(`[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
 
     // A listagem costuma omitir checkInDate/checkOutDate. Busca o detalhe apenas
@@ -489,8 +463,10 @@ Deno.serve(async (req) => {
       duration: unknown;
       durationDecimal: unknown;
       timeControl: unknown;
+      taskTypeId: string;
+      taskTypeDescription: string;
     }>();
-    const finishedIds: string[] = [];
+    const detailTaskIds = new Set<string>();
     for (const t of allTasks) {
       const tid = String(t.taskID || t.taskId || t.id || "");
       const normalizedStatus = String(t.taskStatus?.description || t.status?.description || "")
@@ -505,12 +481,20 @@ Deno.serve(async (req) => {
       const hasCheckInDate = !!auvoCheckInDate(t);
       const hasCheckOutDate = !!auvoCheckOutDate(t);
       if (hasStarted && tid && (!hasCheckInDate || (isFinished && !hasCheckOutDate))) {
-        finishedIds.push(tid);
+        detailTaskIds.add(tid);
+      }
+      if (
+        tid
+        && !auvoTaskTypeDescription(t)
+        && !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(tid)?.task_type_description)
+      ) {
+        detailTaskIds.add(tid);
       }
     }
+    const detailIds = [...detailTaskIds];
     const CONCURRENCY = 5;
-    for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
-      const batch = finishedIds.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < detailIds.length; i += CONCURRENCY) {
+      const batch = detailIds.slice(i, i + CONCURRENCY);
       await Promise.all(batch.map(async (tid) => {
         try {
           const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
@@ -528,11 +512,32 @@ Deno.serve(async (req) => {
             duration: r.duration ?? r.Duration ?? null,
             durationDecimal: r.durationDecimal ?? r.DurationDecimal ?? null,
             timeControl: r.timeControl ?? r.TimeControl ?? null,
+            taskTypeId: auvoTaskTypeId(r),
+            taskTypeDescription: auvoTaskTypeDescription(r),
           });
         } catch (_) { /* ignore */ }
       }));
     }
-    console.log(`[auvo-agenda] work snapshot fetched for ${snapshotMap.size}/${finishedIds.length} started/finished tasks`);
+    console.log(`[auvo-agenda] task detail fetched for ${snapshotMap.size}/${detailIds.length} tasks missing work/type data`);
+
+    // A listagem semanal normalmente já devolve o tipo. Para os poucos ausentes,
+    // consulta o detalhe e por último o cadastro do tipo, sem varrer todos eles.
+    const unresolvedTaskTypeIds = allTasks
+      .filter((task: any) => {
+        const id = String(task.taskID || task.taskId || task.id || "").trim();
+        const detail = snapshotMap.get(id);
+        return !auvoTaskTypeDescription(task)
+          && !detail?.taskTypeDescription
+          && !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(id)?.task_type_description);
+      })
+      .map((task: any) => {
+        const id = String(task.taskID || task.taskId || task.id || "").trim();
+        return auvoTaskTypeId(task)
+          || snapshotMap.get(id)?.taskTypeId
+          || localDocumentMap.get(id)?.task_type_id
+          || "";
+      });
+    const taskTypesMap = await fetchMissingTaskTypes(headers, unresolvedTaskTypeIds);
 
     // Map to simplified format + enrich with GC
     const enriched = allTasks.map((t: any) => {
@@ -598,10 +603,16 @@ Deno.serve(async (req) => {
       const localDocument = localDocumentMap.get(taskId);
       const os = gcOsMap.get(taskId);
       const orc = gcOrcMap.get(taskId);
-      const resolvedTaskTypeId = taskTypeId(t);
-      const taskTypeDescription = inlineTaskTypeDescription(t)
+      const resolvedTaskTypeId = auvoTaskTypeId(t)
+        || snap?.taskTypeId
+        || localDocument?.task_type_id
+        || "";
+      const taskTypeDescription = auvoTaskTypeDescription(t)
+        || snap?.taskTypeDescription
         || taskTypesMap.get(resolvedTaskTypeId)
-        || localDocument?.task_type_description
+        || (isConcreteAuvoTaskTypeDescription(localDocument?.task_type_description)
+          ? localDocument?.task_type_description
+          : "")
         || (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
 
       return {

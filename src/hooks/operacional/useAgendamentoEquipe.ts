@@ -96,6 +96,19 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     return ["FINALIZ", "CONCLUI", "ANDAMENTO", "DESLOCAMENTO", "PAUSAD", "ABERTA", "AGENDAD"]
       .some((token) => normalized.includes(token));
   };
+  const taskTypeDescriptionScore = (value: string | null | undefined) => {
+    const description = String(value || "").trim();
+    if (!description) return 0;
+    const normalized = description.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (/^Tipo\s+\d+$/i.test(normalized) || /TIPO\s+NAO\s+INFORMADO/i.test(normalized)) return 1;
+    return 10;
+  };
+  const preferTaskTypeDescription = (
+    current: string | null | undefined,
+    candidate: string | null | undefined,
+  ) => taskTypeDescriptionScore(candidate) > taskTypeDescriptionScore(current)
+    ? candidate || null
+    : current || candidate || null;
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
@@ -155,8 +168,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         check_in: atual?.check_in || row.check_in_iso || null,
         check_out: atual?.check_out || row.check_out_iso || null,
         tipo_id: atual?.tipo_id || row.task_type_id || null,
-        tipo_descricao: atual?.tipo_descricao || row.descricao || null,
-        tarefa_os: atual?.tarefa_os || row.auvo_task_id || null,
+        tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, row.descricao),
+        tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
         tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
       });
     }
