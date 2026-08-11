@@ -15,6 +15,7 @@ export const AGENDA_TASK_SYNC_FIELDS = [
   "origem",
   "gc_os_codigo",
   "gc_orcamento_codigo",
+  "duracao_planejada_minutos",
 ] as const;
 
 const PRESERVE_WHEN_MISSING = [
@@ -28,6 +29,7 @@ const PRESERVE_WHEN_MISSING = [
   "origem",
   "gc_os_codigo",
   "gc_orcamento_codigo",
+  "duracao_planejada_minutos",
 ] as const;
 
 function isMissingSnapshotValue(field: string, value: unknown): boolean {

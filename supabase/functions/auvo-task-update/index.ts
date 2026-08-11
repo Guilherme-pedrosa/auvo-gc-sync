@@ -450,6 +450,13 @@ async function promoteBudgetForecast(
     if (promotionError) throw promotionError;
 
     const promotedRow = Array.isArray(promoted) ? promoted[0] : promoted;
+    const { data: plannedAgenda, error: plannedAgendaError } = await admin
+      .from("agenda_agendamentos")
+      .update({ duracao_planejada_minutos: durationMinutes })
+      .eq("id", forecast.id)
+      .select("*")
+      .single();
+    if (plannedAgendaError) throw plannedAgendaError;
     await admin
       .from("tarefas_central")
       .update({
@@ -474,7 +481,7 @@ async function promoteBudgetForecast(
       osCode,
       execTaskId,
       patches,
-      agenda: promotedRow,
+      agenda: plannedAgenda || promotedRow,
     };
   } catch (error) {
     const message = (error as Error).message || String(error);
@@ -698,6 +705,9 @@ Deno.serve(async (req) => {
       const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
       const orientation = String(task?.orientation ?? task?.description ?? "").trim();
+      const plannedDurationMinutes = parseAuvoDurationMinutes(
+        task?.estimatedDuration ?? task?.estimated_duration,
+      );
       const currentTaskTypeId = taskTypeId(task);
       let currentTaskTypeDescription = auvoTaskTypeDescription(task);
       if (currentTaskTypeId && !currentTaskTypeDescription) {
@@ -736,6 +746,14 @@ Deno.serve(async (req) => {
       setKnown("check_out_iso", checkOutDate);
       if (hasOwn(task, "checkIn") || checkInDate) patch.check_in = task?.checkIn === true || !!checkInDate;
       if (hasOwn(task, "checkOut") || checkOutDate) patch.check_out = task?.checkOut === true || !!checkOutDate;
+
+      if (plannedDurationMinutes > 0) {
+        const { error: agendaDurationError } = await admin
+          .from("agenda_agendamentos")
+          .update({ duracao_planejada_minutos: plannedDurationMinutes })
+          .eq("auvo_task_id", String(taskId));
+        if (agendaDurationError) throw agendaDurationError;
+      }
 
       const existingMirrorKey = String(existing?.mirror_key || "").trim();
       const mirrorKey = existingMirrorKey || `${taskId}::os:::orc:`;
