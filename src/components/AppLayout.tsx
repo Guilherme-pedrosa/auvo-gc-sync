@@ -88,7 +88,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, isAdmin, signOut } = useAuth();
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // No mobile a sidebar é sempre expandida (drawer), nunca "colapsada".
+  const isCollapsed = isMobile ? false : collapsed;
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  const go = (path: string) => {
+    navigate(path);
+    setMobileOpen(false);
+  };
 
   const allGroups: NavGroup[] = isAdmin
     ? [
