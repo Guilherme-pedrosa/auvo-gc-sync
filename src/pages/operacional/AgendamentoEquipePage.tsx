@@ -815,6 +815,21 @@ export default function AgendamentoEquipePage() {
           }}>
             Ir para Hoje
           </Button>
+          <Button
+            variant={mostrarHistorico ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setMostrarHistorico((v) => !v)}
+            disabled={carregando || (!mostrarHistorico && diasHistorico.length === 0)}
+            title={
+              diasHistorico.length === 0
+                ? "Nenhum dia anterior com agendamento nos últimos 60 dias"
+                : "Exibe os dias anteriores que possuem agendamento"
+            }
+          >
+            {mostrarHistorico
+              ? "Ocultar histórico"
+              : `Ver histórico${diasHistorico.length ? ` (${diasHistorico.length})` : ""}`}
+          </Button>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
