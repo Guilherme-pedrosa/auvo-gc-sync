@@ -217,14 +217,32 @@ async function ensureTaskTypeDuration(
   }
 
   const payload = taskTypeClonePayload(base, managedDescription, durationMinutes);
-  const response = await fetch(`${AUVO_BASE_URL}/tasktypes/`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(`Auvo recusou o tipo com duração ${durationMinutes} min (${response.status}): ${JSON.stringify(data).substring(0, 500)}`);
+  let response: Response | null = null;
+  let data: any = {};
+  try {
+    response = await fetch(`${AUVO_BASE_URL}/tasktypes/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    data = await response.json().catch(() => ({}));
+  } catch (err) {
+    console.warn(`[auvo-task-update][reqId=${reqId}] falha de rede ao criar tipo gerenciado:`, err);
+  }
+  if (!response || !response.ok) {
+    // Auvo pode recusar a criação do tipo (500). Não bloquear a tarefa:
+    // seguir com o tipo base e sua duração padrão.
+    console.warn(
+      `[auvo-task-update][reqId=${reqId}] Auvo recusou tipo com duração ${durationMinutes} min (${response?.status ?? "network"}): ${JSON.stringify(data).substring(0, 300)} — usando tipo base ${baseId}`,
+    );
+    return {
+      id: baseId,
+      baseId,
+      description: baseDescription,
+      durationMinutes: taskTypeDurationMinutes(base) || durationMinutes,
+      managed: false,
+      raw: base,
+    };
   }
   const created = data?.result || data;
   let createdId = Number(created?.id ?? created?.taskTypeId);
@@ -240,7 +258,15 @@ async function ensureTaskTypeDuration(
     createdRecord = createdFromList || created;
   }
   if (!Number.isFinite(createdId) || createdId <= 0) {
-    throw new Error("Auvo criou o tipo de tarefa, mas não devolveu o ID");
+    console.warn(`[auvo-task-update][reqId=${reqId}] tipo criado sem ID retornado — usando tipo base ${baseId}`);
+    return {
+      id: baseId,
+      baseId,
+      description: baseDescription,
+      durationMinutes: taskTypeDurationMinutes(base) || durationMinutes,
+      managed: false,
+      raw: base,
+    };
   }
   console.log(`[auvo-task-update][reqId=${reqId}] tipo gerenciado criado id=${createdId} base=${baseId} duração=${durationMinutes}`);
   return {
