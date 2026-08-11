@@ -257,7 +257,8 @@ export default function ClientesRhPage() {
                   {isDuplicado(c) && (
                     <div className="mt-1">
                       <Badge className="bg-amber-600 hover:bg-amber-600">
-                        <AlertTriangle className="h-3 w-3 mr-1" /> Vínculo duplicado
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        {duplicados?.motivos.get(c.id) ?? "Vínculo duplicado"}
                       </Badge>
                     </div>
                   )}

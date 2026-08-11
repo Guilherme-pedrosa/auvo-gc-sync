@@ -169,18 +169,30 @@ export function useAuvoClientesCache() {
   });
 }
 
-/** IDs do Auvo (e do GC) vinculados a mais de um cliente central. */
+/** Cadastros repetidos: mesmo Auvo/GC, mesmo CPF/CNPJ ou mesmo cadastro do Auvo pelo nome. */
 export function useRhVinculosDuplicados() {
   return useQuery({
     queryKey: ["rh_clientes", "duplicados"],
     staleTime: 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await sb
-        .from("rh_clientes")
-        .select("id, nome, auvo_cliente_id, gc_cliente_id")
-        .limit(5000);
-      if (error) throw error;
-      const rows = (data ?? []) as Array<{ id: string; nome: string; auvo_cliente_id: number | null; gc_cliente_id: string | null }>;
+      type Row = {
+        id: string; nome: string; auvo_cliente_id: number | null; gc_cliente_id: string | null;
+        cpf_cnpj: string | null; nome_auvo: string | null;
+      };
+      const rows: Row[] = [];
+      const page = 1000;
+      for (let from = 0; from < 10000; from += page) {
+        const { data, error } = await sb
+          .from("rh_clientes")
+          .select("id, nome, auvo_cliente_id, gc_cliente_id, cpf_cnpj, nome_auvo")
+          .order("id")
+          .range(from, from + page - 1);
+        if (error) throw error;
+        const chunk = (data ?? []) as Row[];
+        rows.push(...chunk);
+        if (chunk.length < page) break;
+      }
+      const onlyDigits = (v: string | null) => (v ?? "").replace(/\D/g, "");
       const countBy = <T,>(key: (r: typeof rows[number]) => T | null) => {
         const map = new Map<string, number>();
         for (const r of rows) {
@@ -193,16 +205,22 @@ export function useRhVinculosDuplicados() {
       };
       const auvoDuplicados = countBy((r) => r.auvo_cliente_id);
       const gcDuplicados = countBy((r) => r.gc_cliente_id);
-      const clientesDuplicados = new Set(
-        rows
-          .filter(
-            (r) =>
-              (r.auvo_cliente_id && auvoDuplicados.has(String(r.auvo_cliente_id))) ||
-              (r.gc_cliente_id && gcDuplicados.has(String(r.gc_cliente_id))),
-          )
-          .map((r) => r.id),
-      );
-      return { auvoDuplicados, gcDuplicados, clientesDuplicados };
+      const docDuplicados = countBy((r) => (onlyDigits(r.cpf_cnpj).length >= 11 ? onlyDigits(r.cpf_cnpj) : null));
+      const nomeAuvoDuplicados = countBy((r) => (r.nome_auvo ? r.nome_auvo.trim().toLowerCase() : null));
+
+      const motivos = new Map<string, string>();
+      for (const r of rows) {
+        const doc = onlyDigits(r.cpf_cnpj);
+        const nomeAuvo = r.nome_auvo?.trim().toLowerCase() ?? "";
+        let motivo: string | null = null;
+        if (r.auvo_cliente_id && auvoDuplicados.has(String(r.auvo_cliente_id))) motivo = "Mesmo cadastro do Auvo";
+        else if (r.gc_cliente_id && gcDuplicados.has(String(r.gc_cliente_id))) motivo = "Mesmo cadastro do GC";
+        else if (doc && docDuplicados.has(doc)) motivo = "Mesmo CPF/CNPJ";
+        else if (nomeAuvo && nomeAuvoDuplicados.has(nomeAuvo)) motivo = "Mesmo nome no Auvo";
+        if (motivo) motivos.set(r.id, motivo);
+      }
+      const clientesDuplicados = new Set(motivos.keys());
+      return { auvoDuplicados, gcDuplicados, docDuplicados, nomeAuvoDuplicados, clientesDuplicados, motivos };
     },
   });
 }
