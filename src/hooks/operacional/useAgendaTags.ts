@@ -15,6 +15,18 @@ export interface AgendaTagLink {
   tag_id: string;
 }
 
+export function isAgendaTagsSchemaMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = String(candidate.code ?? "").toUpperCase();
+  const message = String(candidate.message ?? "").toLowerCase();
+  return code === "PGRST205"
+    || (message.includes("schema cache") && message.includes("tags"))
+    || (message.includes("relation") && message.includes("tags") && message.includes("does not exist"));
+}
+
+const missingSchemaMessage = "A estrutura de tags ainda não foi aplicada no banco. Publique novamente para executar a migration de reparo.";
+
 export function useAgendaTags(enabled = true) {
   return useQuery({
     queryKey: ["agenda_tags"],
@@ -25,9 +37,14 @@ export function useAgendaTags(enabled = true) {
         .from("tags")
         .select("id,name,color,criado_em,atualizado_em")
         .order("name", { ascending: true });
+      if (isAgendaTagsSchemaMissing(error)) {
+        console.warn("[agenda-tags] tabela tags ainda não disponível no schema cache");
+        return [];
+      }
       if (error) throw error;
       return (data ?? []) as AgendaTag[];
     },
+    retry: (failureCount, error) => !isAgendaTagsSchemaMissing(error) && failureCount < 2,
   });
 }
 
@@ -45,11 +62,16 @@ export function useAgendaTagLinks(agendamentoIds: string[], enabled = true) {
           .from("agenda_agendamento_tags")
           .select("agendamento_id,tag_id")
           .in("agendamento_id", ids.slice(index, index + 500));
+        if (isAgendaTagsSchemaMissing(error)) {
+          console.warn("[agenda-tags] tabela de vínculos ainda não disponível no schema cache");
+          return [];
+        }
         if (error) throw error;
         links.push(...((data ?? []) as AgendaTagLink[]));
       }
       return links;
     },
+    retry: (failureCount, error) => !isAgendaTagsSchemaMissing(error) && failureCount < 2,
   });
 }
 
@@ -83,6 +105,7 @@ export function useCreateAgendaTag() {
         .insert({ name: normalizedName, color: normalizeAgendaTagColor(color) })
         .select("id,name,color,criado_em,atualizado_em")
         .single();
+      if (isAgendaTagsSchemaMissing(error)) throw new Error(missingSchemaMessage);
       if (error) throw error;
       return data as AgendaTag;
     },
@@ -99,6 +122,7 @@ export function useSetAgendaTags() {
         .from("agenda_agendamento_tags")
         .select("tag_id")
         .eq("agendamento_id", agendamentoId);
+      if (isAgendaTagsSchemaMissing(currentError)) throw new Error(missingSchemaMessage);
       if (currentError) throw currentError;
 
       const current = new Set((currentRows ?? []).map((row) => row.tag_id));
