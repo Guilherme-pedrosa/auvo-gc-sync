@@ -223,20 +223,28 @@ export function useRhVinculosDuplicados() {
       const gcConflitantes = new Set([...auvosPorGc.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
       const auvoConflitantes = new Set([...gcsPorAuvo.entries()].filter(([, s]) => s.size > 1).map(([k]) => k));
 
+       const paresConflitantes = pares.filter(
+         (p) => gcConflitantes.has(p.gc) || auvoConflitantes.has(p.auvo),
+       );
        const motivos = new Map<string, string>();
       for (const r of rows) {
         const gc = r.gc_cliente_id ? String(r.gc_cliente_id) : "";
         const auvo = r.auvo_cliente_id ? String(r.auvo_cliente_id) : "";
          const conflitos: string[] = [];
-        if (gc && gcConflitantes.has(gc)) {
-          const outros = [...(auvosPorGc.get(gc) ?? [])].join(", ");
-           conflitos.push(`GC #${gc} → Auvo #${outros}`);
-         }
-         if (auvo && auvoConflitantes.has(auvo)) {
-          const outros = [...(gcsPorAuvo.get(auvo) ?? [])].join(", ");
-           conflitos.push(`Auvo #${auvo} → GC #${outros}`);
+         const paresDaLinha = paresConflitantes.filter(
+           (p) => (gc && p.gc === gc) || (auvo && p.auvo === auvo),
+         );
+         for (const par of paresDaLinha) {
+           if (gcConflitantes.has(par.gc)) {
+             const outros = [...(auvosPorGc.get(par.gc) ?? [])].map((id) => `#${id}`).join(", ");
+             conflitos.push(`GC #${par.gc} está ligado aos Auvo ${outros}`);
+           }
+           if (auvoConflitantes.has(par.auvo)) {
+             const outros = [...(gcsPorAuvo.get(par.auvo) ?? [])].map((id) => `#${id}`).join(", ");
+             conflitos.push(`Auvo #${par.auvo} está ligado aos GC ${outros}`);
+           }
         }
-         if (conflitos.length) motivos.set(r.id, conflitos.join(" | "));
+         if (conflitos.length) motivos.set(r.id, [...new Set(conflitos)].join(" | "));
       }
 
       const clientesDuplicados = new Set(motivos.keys());
