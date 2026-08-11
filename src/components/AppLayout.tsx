@@ -281,7 +281,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 return (
                                   <button
                                     key={child.path}
-                                    onClick={() => navigate(child.path)}
+                                    onClick={() => go(child.path)}
                                     className={cn(
                                       "w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                                       isActive
@@ -304,7 +304,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={() => item.path && navigate(item.path)}
+                            onClick={() => item.path && go(item.path)}
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
                               isCollapsed && "justify-center px-0",
@@ -328,7 +328,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Expand button when isCollapsed */}
-        {isCollapsed && (
+        {isCollapsed && !isMobile && (
           <div className="px-2 py-2 border-t border-sidebar-border">
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
