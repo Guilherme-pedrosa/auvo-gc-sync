@@ -996,7 +996,7 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
+              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
@@ -1009,6 +1009,7 @@ export default function AgendamentoEquipePage() {
                         return (
                           <th 
                             key={diaStr}
+                            data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
