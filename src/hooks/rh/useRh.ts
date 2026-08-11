@@ -224,6 +224,36 @@ export function useLinkRhClienteAuvo() {
 }
 
 // ---------- Colaboradores ----------
+export function useConsultarClientesPorCnpj() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rhClientIds: string[]) => {
+      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
+        body: { action: "lookup_document", requestVersion: "gc-auvo-v2", rhClientIds },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Não foi possível consultar os CNPJs no Auvo");
+      return data as {
+        ok: true; checked: number; linked: number; alreadyLinked: number;
+        ambiguous: number; notFound: number; invalidDocument: number; errors: number;
+      };
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Consulta por CNPJ: ${data.linked} vinculado(s) de ${data.checked}` +
+          (data.alreadyLinked ? `, ${data.alreadyLinked} já vinculado(s)` : "") +
+          (data.ambiguous ? `, ${data.ambiguous} com mais de um cadastro` : "") +
+          (data.notFound ? `, ${data.notFound} sem cadastro no Auvo` : "") +
+          (data.invalidDocument ? `, ${data.invalidDocument} sem CPF/CNPJ` : "") +
+          (data.errors ? `, ${data.errors} com erro` : ""),
+      );
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+      qc.invalidateQueries({ queryKey: ["auvo_clientes_cache"] });
+    },
+    onError: (e: Error) => toast.error(`Falha na consulta por CNPJ: ${e.message}`),
+  });
+}
+
 export function useColaboradores() {
   return useQuery({
     queryKey: ["rh_colaboradores"],
