@@ -49,7 +49,7 @@ export function summarizeAgendaOsPlannedVsActual(
   items: AgendaOsPlanningSource[],
 ): AgendaOsDailyComparison {
   const byOs = new Map<string, AgendaOsPlanningSource[]>();
-  const independentPrevisoes: AgendaOsPlanningSource[] = [];
+  const otherPlannedTasks: AgendaOsPlanningSource[] = [];
 
   for (const item of items) {
     const osCode = normalizeOsCode(item.gc_os_codigo);
@@ -57,8 +57,10 @@ export function summarizeAgendaOsPlannedVsActual(
       const rows = byOs.get(osCode) ?? [];
       rows.push(item);
       byOs.set(osCode, rows);
-    } else if ((item as any).previsao_continuidade) {
-      independentPrevisoes.push(item);
+    } else if ((item as any).previsao_continuidade || plannedMinutes(item.duracao_planejada_minutos) > 0) {
+      // Se não tem OS vinculada, mas tem duração planejada (ex: preventiva no Auvo ou contrato), 
+      // ou é uma previsão manual, incluímos no cálculo de tempo planejado.
+      otherPlannedTasks.push(item);
     }
   }
 
@@ -102,8 +104,8 @@ export function summarizeAgendaOsPlannedVsActual(
     }
   }
 
-  // Processar Previsões independentes (não vinculadas a uma OS agrupada)
-  for (const item of independentPrevisoes) {
+  // Processar outras tarefas planejadas (não vinculadas a uma OS agrupada, ex: Preventivas ou Previsões)
+  for (const item of otherPlannedTasks) {
     const prevPlannedMinutes = plannedMinutes(item.duracao_planejada_minutos);
     if (prevPlannedMinutes > 0) {
       plannedMinutesTotal += prevPlannedMinutes;
