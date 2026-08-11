@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2, FileSearch } from "lucide-react";
+import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2, FileSearch, AlertTriangle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -18,6 +18,7 @@ import {
   useSaveRhCliente,
   useSyncClientesGc,
   useConsultarClientesPorCnpj,
+  useRhVinculosDuplicados,
   type RhCliente,
 } from "@/hooks/rh/useRh";
 import {
@@ -47,7 +48,18 @@ export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filterVinculo, setFilterVinculo] = useState<string>("all");
-  const { data: clientes = [], isLoading } = useRhClientes(search, filterVinculo);
+  const { data: clientesRaw = [], isLoading } = useRhClientes(
+    search,
+    filterVinculo === "duplicado" ? "all" : filterVinculo,
+  );
+  const { data: duplicados } = useRhVinculosDuplicados();
+  const clientes = useMemo(
+    () =>
+      filterVinculo === "duplicado"
+        ? clientesRaw.filter((c) => duplicados?.clientesDuplicados.has(c.id))
+        : clientesRaw,
+    [clientesRaw, duplicados, filterVinculo],
+  );
   const { data: auvoClientes = [] } = useAuvoClientesCache();
   const save = useSaveRhCliente();
   const linkAuvo = useLinkRhClienteAuvo();
@@ -58,6 +70,9 @@ export default function ClientesRhPage() {
   const [form, setForm] = useState<Partial<RhCliente>>({});
   const [auvoChoice, setAuvoChoice] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+
+  const isDuplicado = (c: RhCliente) => Boolean(duplicados?.clientesDuplicados.has(c.id));
+  const totalDuplicados = duplicados?.clientesDuplicados.size ?? 0;
 
   const stats = useMemo(() => ({
     total: clientes.length,
@@ -162,10 +177,23 @@ export default function ClientesRhPage() {
               <SelectItem value="nao_vinculado">Não vinculados (Pendente)</SelectItem>
               <SelectItem value="erro">Com erro</SelectItem>
               <SelectItem value="ambiguo">Ambiguidade</SelectItem>
+            <SelectItem value="duplicado">Vínculo duplicado</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
+
+      {totalDuplicados > 0 && filterVinculo !== "duplicado" && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <span className="text-sm">
+            <strong>{totalDuplicados}</strong> cliente(s) compartilham o mesmo cadastro do Auvo ou do GestãoClick (vínculo duplicado).
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setFilterVinculo("duplicado")}>
+            Filtrar duplicados
+          </Button>
+        </div>
+      )}
 
       {selected.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
