@@ -12,6 +12,12 @@ import {
   auvoTaskTypeDescription,
   auvoTaskTypeId,
 } from "../_shared/auvo-task-type.ts";
+import {
+  extractAuvoEquipmentIds,
+  extractAuvoInlineEquipmentInfo,
+  joinAuvoEquipmentInfo,
+  type AuvoEquipmentInfo,
+} from "../_shared/auvo-equipment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -415,23 +421,91 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const durationDecimal = result?.durationDecimal ?? result?.DurationDecimal ?? null;
   const timeControl = Array.isArray(result?.timeControl) ? result.timeControl : [];
 
-  // Extract equipment info from snapshot
-  let equipmentName = "";
-  let equipmentSerial = "";
-  const equipIds: string[] = Array.isArray(result?.equipmentsId) ? result.equipmentsId.map(String) :
-    Array.isArray(result?.equipmentsID) ? result.equipmentsID.map(String) :
-    Array.isArray(result?.equipmentIds) ? result.equipmentIds.map(String) : [];
-  
-  // Try equipment fields directly on task
-  if (result?.equipmentName || result?.equipment?.name || result?.equipment?.model) {
-    equipmentName = String(result?.equipmentName || result?.equipment?.name || result?.equipment?.model || "").trim();
-  }
-  if (result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial) {
-    equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
-  }
+  // A API de tarefa usa `equipmentsId`; nome/série são resolvidos depois pelo
+  // catálogo local. Também aceitamos respostas que já tragam o objeto embutido.
+  const equipIds = extractAuvoEquipmentIds(result);
+  const inlineEquipment = joinAuvoEquipmentInfo(extractAuvoInlineEquipmentInfo(result));
+  const equipmentName = inlineEquipment.name;
+  const equipmentSerial = inlineEquipment.identifier;
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
   return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires, duration, durationDecimal, timeControl };
+}
+
+async function loadAuvoEquipmentCatalog(
+  sbClient: any,
+  bearerToken: string,
+  equipmentIds: string[],
+): Promise<Map<string, AuvoEquipmentInfo>> {
+  const uniqueIds = [...new Set(equipmentIds.map(String).map((id) => id.trim()).filter(Boolean))];
+  const catalog = new Map<string, AuvoEquipmentInfo>();
+
+  for (let i = 0; i < uniqueIds.length; i += 200) {
+    const { data, error } = await sbClient
+      .from("equipamentos_auvo")
+      .select("auvo_equipment_id, nome, identificador")
+      .in("auvo_equipment_id", uniqueIds.slice(i, i + 200));
+    if (error) {
+      console.warn("[central-sync] Falha ao ler catálogo de equipamentos:", error.message);
+      continue;
+    }
+    for (const equipment of data || []) {
+      const id = String(equipment.auvo_equipment_id || "").trim();
+      if (!id) continue;
+      catalog.set(id, {
+        id,
+        name: String(equipment.nome || "").trim(),
+        identifier: String(equipment.identificador || "").trim(),
+      });
+    }
+  }
+
+  // Se o catálogo local estiver atrasado, busca apenas os IDs faltantes e o
+  // repara. Isso ocorre uma vez; leituras posteriores ficam totalmente locais.
+  const missingIds = uniqueIds.filter((id) => !catalog.has(id));
+  const rowsToPersist: any[] = [];
+  for (let i = 0; i < missingIds.length; i += 8) {
+    const batch = missingIds.slice(i, i + 8);
+    const details = await Promise.all(batch.map(async (equipmentId) => {
+      try {
+        const response = await rateLimitedFetch(
+          `${AUVO_BASE_URL}/equipments/${encodeURIComponent(equipmentId)}`,
+          { headers: auvoHeaders(bearerToken) },
+          "auvo",
+        );
+        if (!response.ok) return null;
+        const json = await response.json().catch(() => ({}));
+        const entity = json?.result?.entity || json?.result || json || null;
+        const joined = joinAuvoEquipmentInfo(extractAuvoInlineEquipmentInfo(entity));
+        if (!joined.name) return null;
+        return { id: equipmentId, name: joined.name, identifier: joined.identifier } as AuvoEquipmentInfo;
+      } catch (error) {
+        console.warn(`[central-sync] Falha ao buscar equipamento ${equipmentId}:`, error);
+        return null;
+      }
+    }));
+
+    for (const info of details) {
+      if (!info) continue;
+      catalog.set(info.id, info);
+      rowsToPersist.push({
+        auvo_equipment_id: info.id,
+        nome: info.name,
+        identificador: info.identifier || null,
+        status: "Ativo",
+        atualizado_em: new Date().toISOString(),
+      });
+    }
+  }
+
+  for (let i = 0; i < rowsToPersist.length; i += 100) {
+    const { error } = await sbClient
+      .from("equipamentos_auvo")
+      .upsert(rowsToPersist.slice(i, i + 100), { onConflict: "auvo_equipment_id", defaultToNull: false });
+    if (error) console.warn("[central-sync] Falha ao reparar catálogo de equipamentos:", error.message);
+  }
+
+  return catalog;
 }
 
 // Fetch Auvo tasks for a single month window
@@ -1347,6 +1421,17 @@ async function refreshSingleTasks(
     try {
       const snap = await fetchAuvoTaskSnapshot(bearerToken, taskId);
       if (snap) {
+        const equipmentCatalog = await loadAuvoEquipmentCatalog(
+          sbClient,
+          bearerToken,
+          snap.equipmentIds,
+        );
+        const resolvedEquipment = joinAuvoEquipmentInfo([
+          ...extractAuvoInlineEquipmentInfo(snap),
+          ...snap.equipmentIds
+            .map((equipmentId) => equipmentCatalog.get(equipmentId))
+            .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment),
+        ]);
         const auvoUpdate: Record<string, unknown> = {
           endereco: snap.address || null,
           orientacao: snap.orientation || null,
@@ -1367,8 +1452,8 @@ async function refreshSingleTasks(
           }),
           atualizado_em: new Date().toISOString(),
         };
-        if (snap.equipmentName) auvoUpdate.equipamento_nome = snap.equipmentName;
-        if (snap.equipmentSerial) auvoUpdate.equipamento_id_serie = snap.equipmentSerial;
+        if (resolvedEquipment.name) auvoUpdate.equipamento_nome = resolvedEquipment.name;
+        if (resolvedEquipment.identifier) auvoUpdate.equipamento_id_serie = resolvedEquipment.identifier;
         const questionnaire = resolveQuestionnaireData(QUESTIONNAIRE_ID, snap.questionnaires);
         if (questionnaire.answers.length) {
           auvoUpdate.questionario_id = questionnaire.questionnaireId;
@@ -1381,6 +1466,26 @@ async function refreshSingleTasks(
           .eq("auvo_task_id", taskId);
         if (upErr) { summary.errors++; console.error(`[central-sync] single-task ${taskId} auvo: ${upErr.message}`); }
         else summary.auvo_updated += count || 0;
+
+        if (snap.equipmentIds.length > 0) {
+          const relationshipRows = snap.equipmentIds.map((equipmentId) => ({
+            auvo_equipment_id: equipmentId,
+            auvo_task_id: taskId,
+            data_tarefa: normalizeDate(snap.taskDate),
+            data_conclusao: normalizeDate(snap.checkOutDate),
+            tecnico: snap.technicianName || null,
+            auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+            source: "native_equipment_relation",
+            synced_at: new Date().toISOString(),
+          }));
+          const { error: relationshipError } = await sbClient
+            .from("equipamento_tarefas_auvo")
+            .upsert(relationshipRows, { onConflict: "auvo_equipment_id,auvo_task_id" });
+          if (relationshipError) {
+            summary.errors++;
+            console.error(`[central-sync] single-task ${taskId} equipment link: ${relationshipError.message}`);
+          }
+        }
       }
     } catch (e) {
       summary.errors++;
@@ -1817,6 +1922,25 @@ async function runReportsOnlySync(
     console.log(`[central-sync] Reports-only: detalhes obtidos ${taskSnapshotById.size}/${detailIds.length}`);
   }
 
+  const reportTaskEquipmentIds = new Map<string, string[]>();
+  const reportEquipmentIds = new Set<string>();
+  for (const task of auvoTasks) {
+    const taskId = String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim();
+    if (!taskId) continue;
+    const snapshot = taskSnapshotById.get(taskId);
+    const equipmentIds = [...new Set([
+      ...extractAuvoEquipmentIds(task),
+      ...(snapshot?.equipmentIds || []),
+    ].map(String).map((id) => id.trim()).filter(Boolean))];
+    reportTaskEquipmentIds.set(taskId, equipmentIds);
+    equipmentIds.forEach((id) => reportEquipmentIds.add(id));
+  }
+  const reportEquipmentCatalog = await loadAuvoEquipmentCatalog(
+    sbClient,
+    bearerToken,
+    [...reportEquipmentIds],
+  );
+
   const rows = auvoTasks.map((task: any) => {
     const taskId = String(task.taskID || "").trim();
     if (!taskId) return null;
@@ -1833,6 +1957,12 @@ async function runReportsOnlySync(
           estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
         }
       : task;
+    const resolvedEquipment = joinAuvoEquipmentInfo([
+      ...extractAuvoInlineEquipmentInfo(taskWithDetail),
+      ...(reportTaskEquipmentIds.get(taskId) || [])
+        .map((equipmentId) => reportEquipmentCatalog.get(equipmentId))
+        .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment),
+    ]);
 
     const questionnaire = resolveQuestionnaireData(
       QUESTIONNAIRE_ID,
@@ -1904,6 +2034,8 @@ async function runReportsOnlySync(
       questionario_id: questionnaire.questionnaireId,
       questionario_respostas: answers,
       questionario_preenchido: hasFilledQ,
+      equipamento_nome: resolvedEquipment.name || null,
+      equipamento_id_serie: resolvedEquipment.identifier || null,
       atualizado_em: new Date().toISOString(),
       mirror_key: existingBestByTaskId.get(taskId)?.mirror_key || `${taskId}::os:::orc:`,
     };
@@ -1922,6 +2054,36 @@ async function runReportsOnlySync(
       errors++;
     } else {
       upserted += batch.length;
+    }
+  }
+
+  const relationshipRows: any[] = [];
+  for (const row of rows as any[]) {
+    const taskId = String(row.auvo_task_id || "").trim();
+    for (const equipmentId of reportTaskEquipmentIds.get(taskId) || []) {
+      relationshipRows.push({
+        auvo_equipment_id: equipmentId,
+        auvo_task_id: taskId,
+        auvo_task_type_id: row.task_type_id || null,
+        auvo_task_type_description: row.descricao || null,
+        status_auvo: row.status_auvo || null,
+        data_tarefa: row.data_tarefa || null,
+        data_conclusao: row.data_conclusao || null,
+        cliente: row.cliente || null,
+        tecnico: row.tecnico || null,
+        auvo_link: row.auvo_link || null,
+        source: "native_equipment_relation",
+        synced_at: new Date().toISOString(),
+      });
+    }
+  }
+  for (let i = 0; i < relationshipRows.length; i += 200) {
+    const { error } = await sbClient
+      .from("equipamento_tarefas_auvo")
+      .upsert(relationshipRows.slice(i, i + 200), { onConflict: "auvo_equipment_id,auvo_task_id" });
+    if (error) {
+      errors++;
+      console.error("[central-sync] Reports-only equipment links:", error.message);
     }
   }
 
@@ -2628,6 +2790,30 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       return { os, orc };
     }
 
+    // Resolve nome/série a partir do vínculo nativo da própria tarefa. O Auvo
+    // normalmente retorna apenas `equipmentsId`; esperar um `equipmentName` no
+    // detalhe fazia tarefas válidas ficarem sem equipamento no espelho.
+    const taskEquipmentIdsById = new Map<string, string[]>();
+    const allTaskEquipmentIds = new Set<string>();
+    for (const task of auvoTasks) {
+      const taskId = String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim();
+      if (!taskId) continue;
+      const snapshot = taskSnapshotById.get(taskId);
+      const ids = [...new Set([
+        ...extractAuvoEquipmentIds(task),
+        ...(snapshot?.equipmentIds || []),
+      ].map(String).map((id) => id.trim()).filter(Boolean))];
+      taskEquipmentIdsById.set(taskId, ids);
+      ids.forEach((id) => allTaskEquipmentIds.add(id));
+    }
+
+    const equipmentIdList = [...allTaskEquipmentIds];
+    const equipmentCatalogById = await loadAuvoEquipmentCatalog(
+      sbClient,
+      bearerToken,
+      equipmentIdList,
+    );
+
     // Build rows for upsert
     let secondaryMatches = 0;
     const rows: any[] = [];
@@ -2706,6 +2892,11 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
           }
         : task;
+      const inlineEquipment = extractAuvoInlineEquipmentInfo(taskWithDetail);
+      const catalogEquipment = (taskEquipmentIdsById.get(taskId) || [])
+        .map((equipmentId) => equipmentCatalogById.get(equipmentId))
+        .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment);
+      const resolvedEquipment = joinAuvoEquipmentInfo([...inlineEquipment, ...catalogEquipment]);
       // Always prefer snapshot (detail endpoint) - it's more reliable than list
       const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
       const resolvedAddress = snapshotAddr || baseAddress;
@@ -2796,9 +2987,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         orcamento_realizado: !!gcOrc,
         os_realizada: !!gcOs,
         atualizado_em: new Date().toISOString(),
-        // Equipment from snapshot (will be merged with existing DB values below)
-        equipamento_nome: snapshot?.equipmentName || null,
-        equipamento_id_serie: snapshot?.equipmentSerial || null,
+        // Fonte de verdade: equipmentsId da tarefa + catálogo Auvo local.
+        equipamento_nome: resolvedEquipment.name || snapshot?.equipmentName || null,
+        equipamento_id_serie: resolvedEquipment.identifier || snapshot?.equipmentSerial || null,
       };
 
       // GC Orçamento fields
@@ -3123,16 +3314,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const taskId = String(task.taskID || "");
       if (!taskId) continue;
 
-      // Get equipmentsId from list endpoint and/or snapshot
-      const listEquipIds: number[] = Array.isArray(task.equipmentsId) ? task.equipmentsId :
-        Array.isArray(task.equipmentsID) ? task.equipmentsID : [];
+      // Mesmo conjunto já normalizado acima (lista + detalhe + formatos legados).
+      const allEquipIds = new Set<string>(taskEquipmentIdsById.get(taskId) || []);
       const snapshot = taskSnapshotById.get(taskId);
-      const snapshotEquipIds = snapshot?.equipmentIds || [];
-
-      // Merge both sources, deduplicate
-      const allEquipIds = new Set<string>();
-      for (const id of listEquipIds) allEquipIds.add(String(id));
-      for (const id of snapshotEquipIds) allEquipIds.add(id);
 
       if (allEquipIds.size === 0) continue;
 

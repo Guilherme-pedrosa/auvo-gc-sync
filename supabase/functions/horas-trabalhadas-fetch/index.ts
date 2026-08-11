@@ -2,6 +2,12 @@ import { installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  extractAuvoEquipmentIds,
+  extractAuvoInlineEquipmentInfo,
+  joinAuvoEquipmentInfo,
+  type AuvoEquipmentInfo,
+} from "../_shared/auvo-equipment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -194,6 +200,30 @@ async function fetchAuvoTasks(
   return all;
 }
 
+async function fetchAuvoTaskDetail(token: string, taskId: string): Promise<any | null> {
+  const response = await fetchWithRetry(
+    `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`,
+    token,
+  );
+  if (!response?.ok) return null;
+  const json = await response.json().catch(() => ({}));
+  return json?.result?.entity || json?.result || json || null;
+}
+
+async function fetchAuvoEquipmentDetail(token: string, equipmentId: string): Promise<AuvoEquipmentInfo | null> {
+  const response = await fetchWithRetry(
+    `${AUVO_BASE_URL}/equipments/${encodeURIComponent(equipmentId)}`,
+    token,
+  );
+  if (!response?.ok) return null;
+  const json = await response.json().catch(() => ({}));
+  const entity = json?.result?.entity || json?.result || json || null;
+  const inline = extractAuvoInlineEquipmentInfo(entity);
+  const joined = joinAuvoEquipmentInfo(inline);
+  if (!joined.name && !joined.identifier) return null;
+  return { id: String(equipmentId), name: joined.name, identifier: joined.identifier };
+}
+
 function mapAuvoTask(t: any) {
   const taskId = String(t?.taskID ?? t?.taskId ?? t?.id ?? "").trim();
   const taskType = t?.taskType ?? t?.TaskType ?? null;
@@ -272,6 +302,8 @@ function mapAuvoTask(t: any) {
     displacement_start: isoTimestamp(displacementStart),
     displacement_hours: displacementHours,
     has_check_in: !!checkIn,
+    equipment_ids: extractAuvoEquipmentIds(t),
+    equipment_inline: extractAuvoInlineEquipmentInfo(t),
   };
 }
 
@@ -295,6 +327,197 @@ function chooseBestTaskRow(current: any | undefined, candidate: any): any {
   const curScore = taskRowQuality(current);
   if (candScore !== curScore) return candScore > curScore ? candidate : current;
   return String(candidate?.atualizado_em || "") > String(current?.atualizado_em || "") ? candidate : current;
+}
+
+async function repairMissingTaskEquipment(
+  supabase: any,
+  tasks: any[],
+  bearerToken: string | null,
+  allowLiveRepair = false,
+): Promise<{ resolved: number; bearerToken: string | null }> {
+  const missing = tasks.filter((task) =>
+    !String(task?.equipamento_nome || "").trim() &&
+    /^\d+$/.test(String(task?.auvo_task_id || "").trim())
+  );
+  if (missing.length === 0) return { resolved: 0, bearerToken };
+
+  const taskIds = missing.map((task) => String(task.auvo_task_id));
+  const equipmentIdsByTask = new Map<string, Set<string>>();
+  const inlineByTask = new Map<string, AuvoEquipmentInfo[]>();
+  const allEquipmentIds = new Set<string>();
+
+  const addIds = (taskId: string, ids: unknown[]) => {
+    const normalized = ids.map(String).map((id) => id.trim()).filter(Boolean);
+    if (normalized.length === 0) return;
+    if (!equipmentIdsByTask.has(taskId)) equipmentIdsByTask.set(taskId, new Set());
+    for (const equipmentId of normalized) {
+      equipmentIdsByTask.get(taskId)!.add(equipmentId);
+      allEquipmentIds.add(equipmentId);
+    }
+  };
+
+  for (const task of missing) {
+    const taskId = String(task.auvo_task_id);
+    addIds(taskId, task._auvo_equipment_ids || []);
+    const inline = Array.isArray(task._auvo_equipment_inline)
+      ? task._auvo_equipment_inline as AuvoEquipmentInfo[]
+      : [];
+    if (inline.length > 0) inlineByTask.set(taskId, inline);
+  }
+
+  for (let i = 0; i < taskIds.length; i += 200) {
+    const { data: links, error } = await supabase
+      .from("equipamento_tarefas_auvo")
+      .select("auvo_task_id, auvo_equipment_id")
+      .in("auvo_task_id", taskIds.slice(i, i + 200));
+    if (error) throw error;
+    for (const link of links || []) {
+      addIds(String(link.auvo_task_id || ""), [link.auvo_equipment_id]);
+    }
+  }
+
+  const tasksWithoutRelation = missing.filter((task) =>
+    (equipmentIdsByTask.get(String(task.auvo_task_id))?.size || 0) === 0
+  );
+  const relationshipRows: any[] = [];
+
+  if (allowLiveRepair && tasksWithoutRelation.length > 0) {
+    if (!bearerToken) {
+      const apiKey = Deno.env.get("AUVO_APP_KEY");
+      const apiToken = Deno.env.get("AUVO_TOKEN");
+      if (apiKey && apiToken) bearerToken = await auvoLogin(apiKey, apiToken);
+    }
+
+    if (bearerToken) {
+      for (let i = 0; i < tasksWithoutRelation.length; i += 8) {
+        const batch = tasksWithoutRelation.slice(i, i + 8);
+        const details = await Promise.all(
+          batch.map((task) => fetchAuvoTaskDetail(bearerToken!, String(task.auvo_task_id))),
+        );
+        details.forEach((detail, index) => {
+          if (!detail) return;
+          const task = batch[index];
+          const taskId = String(task.auvo_task_id);
+          const equipmentIds = extractAuvoEquipmentIds(detail);
+          addIds(taskId, equipmentIds);
+          const inline = extractAuvoInlineEquipmentInfo(detail);
+          if (inline.length > 0) inlineByTask.set(taskId, inline);
+
+          for (const equipmentId of equipmentIds) {
+            relationshipRows.push({
+              auvo_equipment_id: equipmentId,
+              auvo_task_id: taskId,
+              auvo_task_type_id: task.task_type_id || null,
+              auvo_task_type_description: task.task_type_description || task.descricao || null,
+              status_auvo: task.status_auvo || null,
+              data_tarefa: task.data_tarefa || null,
+              data_conclusao: task.data_conclusao || null,
+              cliente: task.cliente || null,
+              tecnico: task.tecnico || null,
+              auvo_link: task.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+              source: "native_equipment_relation",
+              synced_at: new Date().toISOString(),
+            });
+          }
+        });
+      }
+    }
+  }
+
+  for (let i = 0; i < relationshipRows.length; i += 200) {
+    const { error } = await supabase
+      .from("equipamento_tarefas_auvo")
+      .upsert(relationshipRows.slice(i, i + 200), { onConflict: "auvo_equipment_id,auvo_task_id" });
+    if (error) console.warn("[horas-trabalhadas-fetch] relationship repair failed:", error.message);
+  }
+
+  const catalog = new Map<string, AuvoEquipmentInfo>();
+  const equipmentIdList = [...allEquipmentIds];
+  for (let i = 0; i < equipmentIdList.length; i += 200) {
+    const { data: equipments, error } = await supabase
+      .from("equipamentos_auvo")
+      .select("auvo_equipment_id, nome, identificador")
+      .in("auvo_equipment_id", equipmentIdList.slice(i, i + 200));
+    if (error) throw error;
+    for (const equipment of equipments || []) {
+      const id = String(equipment.auvo_equipment_id || "").trim();
+      if (!id) continue;
+      catalog.set(id, {
+        id,
+        name: String(equipment.nome || "").trim(),
+        identifier: String(equipment.identificador || "").trim(),
+      });
+    }
+  }
+
+  const missingCatalogIds = equipmentIdList.filter((equipmentId) => !catalog.has(equipmentId));
+  const catalogRows: any[] = [];
+  if (allowLiveRepair && missingCatalogIds.length > 0) {
+    if (!bearerToken) {
+      const apiKey = Deno.env.get("AUVO_APP_KEY");
+      const apiToken = Deno.env.get("AUVO_TOKEN");
+      if (apiKey && apiToken) bearerToken = await auvoLogin(apiKey, apiToken);
+    }
+    if (bearerToken) {
+      for (let i = 0; i < missingCatalogIds.length; i += 8) {
+        const details = await Promise.all(
+          missingCatalogIds.slice(i, i + 8).map((equipmentId) =>
+            fetchAuvoEquipmentDetail(bearerToken!, equipmentId)
+          ),
+        );
+        for (const info of details) {
+          if (!info?.name) continue;
+          catalog.set(info.id, info);
+          catalogRows.push({
+            auvo_equipment_id: info.id,
+            nome: info.name,
+            identificador: info.identifier || null,
+            status: "Ativo",
+            atualizado_em: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < catalogRows.length; i += 100) {
+    const { error } = await supabase
+      .from("equipamentos_auvo")
+      .upsert(catalogRows.slice(i, i + 100), { onConflict: "auvo_equipment_id", defaultToNull: false });
+    if (error) console.warn("[horas-trabalhadas-fetch] equipment catalog repair failed:", error.message);
+  }
+
+  let resolved = 0;
+  const centralUpdates: Array<{ taskId: string; name: string; identifier: string }> = [];
+  for (const task of missing) {
+    const taskId = String(task.auvo_task_id);
+    const infos = [
+      ...(inlineByTask.get(taskId) || []),
+      ...[...(equipmentIdsByTask.get(taskId) || [])]
+        .map((equipmentId) => catalog.get(equipmentId))
+        .filter((info): info is AuvoEquipmentInfo => !!info),
+    ];
+    const equipment = joinAuvoEquipmentInfo(infos);
+    if (!equipment.name) continue;
+    task.equipamento_nome = equipment.name;
+    if (equipment.identifier) task.equipamento_id_serie = equipment.identifier;
+    centralUpdates.push({ taskId, name: equipment.name, identifier: equipment.identifier });
+    resolved++;
+  }
+
+  for (let i = 0; i < centralUpdates.length; i += 8) {
+    await Promise.allSettled(centralUpdates.slice(i, i + 8).map((update) =>
+      supabase
+        .from("tarefas_central")
+        .update({
+          equipamento_nome: update.name,
+          equipamento_id_serie: update.identifier || null,
+        })
+        .eq("auvo_task_id", update.taskId)
+    ));
+  }
+
+  return { resolved, bearerToken };
 }
 
 Deno.serve(async (req) => {
@@ -379,6 +602,14 @@ Deno.serve(async (req) => {
           );
         }
 
+        await repairMissingTaskEquipment(supabase, [{
+          ...(prev || {}),
+          ...update,
+          auvo_task_id: taskId,
+          _auvo_equipment_ids: m.equipment_ids,
+          _auvo_equipment_inline: m.equipment_inline,
+        }], token, true);
+
         const { data: nowRow } = await supabase
           .from("tarefas_central")
           .select("*")
@@ -449,12 +680,14 @@ Deno.serve(async (req) => {
 
     // 2 + 3) Auvo: recently-updated since startDate AND in-progress within period.
     let auvoTasks: any[] = [];
+    let auvoBearerToken: string | null = null;
     try {
       if (!refreshAuvo) throw new Error("SKIP_AUVO_REFRESH");
       const apiKey = Deno.env.get("AUVO_APP_KEY");
       const apiToken = Deno.env.get("AUVO_TOKEN");
       if (!apiKey || !apiToken) throw new Error("AUVO_APP_KEY/AUVO_TOKEN ausentes");
       const token = await auvoLogin(apiKey, apiToken);
+      auvoBearerToken = token;
 
       // (a) Tasks updated since startDate (catches recently-modified historical OS)
       const recentFilter = {
@@ -541,6 +774,8 @@ Deno.serve(async (req) => {
         if (auvoStamp && auvoStamp > dbStamp) {
           existing.atualizado_em = auvoStamp;
         }
+        existing._auvo_equipment_ids = m.equipment_ids;
+        existing._auvo_equipment_inline = m.equipment_inline;
       } else {
         merged.set(m.auvo_task_id, {
           auvo_task_id: m.auvo_task_id,
@@ -558,6 +793,8 @@ Deno.serve(async (req) => {
           duracao_decimal: m.has_check_in ? m.worked_hours : 0,
           hora_inicio: m.check_in_iso ? String(m.check_in_iso).slice(11, 16) : null,
           hora_fim: m.check_out_iso ? String(m.check_out_iso).slice(11, 16) : null,
+          _auvo_equipment_ids: m.equipment_ids,
+          _auvo_equipment_inline: m.equipment_inline,
         });
       }
     }
@@ -798,13 +1035,26 @@ Deno.serve(async (req) => {
       console.warn("[horas-trabalhadas-fetch] regex linkage failed:", e?.message || e);
     }
 
+    try {
+      const repaired = await repairMissingTaskEquipment(supabase, tasks, auvoBearerToken, refreshAuvo);
+      auvoBearerToken = repaired.bearerToken;
+      if (repaired.resolved > 0) {
+        avisos.push(
+          `${repaired.resolved} tarefa(s) com equipamento resolvido e cache reparado pelo vínculo nativo Auvo.`,
+        );
+      }
+    } catch (e: any) {
+      console.warn("[horas-trabalhadas-fetch] direct equipment repair failed:", e?.message || e);
+      avisos.push(`Falha ao reparar equipamentos das tarefas: ${e?.message || e}`);
+    }
+
     // 6.b) Equipamento real por tarefa: a tabela equipamento_tarefas_auvo
     //      contém o vínculo nativo Auvo (task_id → equipment_id). Usamos isso
     //      para resolver equipamento_nome SEM chutar/inferir de tarefas-irmãs.
     try {
       const semEquip = tasks.filter((t: any) =>
         !String(t.equipamento_nome || "").trim() &&
-        String(t.auvo_task_id || "").trim()
+        /^\d+$/.test(String(t.auvo_task_id || "").trim())
       );
       if (semEquip.length > 0) {
         const ids = semEquip.map((t: any) => String(t.auvo_task_id));
