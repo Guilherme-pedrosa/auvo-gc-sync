@@ -6,10 +6,15 @@ import {
   agendaTagTextColor,
   normalizeAgendaTagColor,
 } from "@/lib/agendaTags";
+import { isAgendaTagsSchemaMissing } from "@/hooks/operacional/useAgendaTags";
 
 const root = resolve(__dirname, "../..");
 const migration = readFileSync(
   resolve(root, "supabase/migrations/20260811003000_agenda_custom_tags.sql"),
+  "utf8",
+);
+const repairMigration = readFileSync(
+  resolve(root, "supabase/migrations/20260811020000_repair_agenda_tags_schema.sql"),
   "utf8",
 );
 const page = readFileSync(resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"), "utf8");
@@ -28,6 +33,20 @@ describe("tags personalizadas da Escala de Técnicos", () => {
     expect(migration).toContain("CREATE TABLE public.agenda_agendamento_tags");
     expect(migration).toContain("REFERENCES public.agenda_agendamentos(id) ON DELETE CASCADE");
     expect(migration).not.toMatch(/CREATE TABLE public\.agenda_agendamentos\s*\(/);
+    expect(repairMigration).toContain("CREATE TABLE IF NOT EXISTS public.tags");
+    expect(repairMigration).toContain("CREATE TABLE IF NOT EXISTS public.agenda_agendamento_tags");
+    expect(repairMigration).toContain("NOTIFY pgrst, 'reload schema'");
+  });
+
+  it("reconhece tabela ausente no cache sem derrubar a escala", () => {
+    expect(isAgendaTagsSchemaMissing({
+      code: "PGRST205",
+      message: "Could not find the table 'public.tags' in the schema cache",
+    })).toBe(true);
+    expect(isAgendaTagsSchemaMissing({
+      message: 'relation "public.agenda_agendamento_tags" does not exist',
+    })).toBe(true);
+    expect(isAgendaTagsSchemaMissing({ code: "42501", message: "permission denied" })).toBe(false);
   });
 
   it("permite editar tags nos modais de tarefa e agendamento", () => {
