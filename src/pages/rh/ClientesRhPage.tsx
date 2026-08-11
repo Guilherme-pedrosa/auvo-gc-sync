@@ -30,6 +30,15 @@ const linkBadge = (status: RhCliente["vinculo_status"]) => {
   return <Badge variant="outline">Pendente</Badge>;
 };
 
+const metodoLabel: Record<string, string> = {
+  id_persistido: "ID salvo",
+  external_id_gc: "ID externo GC",
+  cpf_cnpj: "CPF/CNPJ",
+  nome_exato_normalizado: "Nome idêntico",
+  historico_os_orcamento: "Histórico de OS/orçamentos",
+  criado_por_gc: "Criado no Auvo pelo GC",
+};
+
 export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -162,7 +171,14 @@ export default function ClientesRhPage() {
                 </TableCell>
                 <TableCell className="font-mono text-xs uppercase">{c.cpf_cnpj ?? "—"}</TableCell>
                 <TableCell className="text-xs uppercase">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
-                <TableCell>{linkBadge(c.vinculo_status)}</TableCell>
+                <TableCell>
+                  {linkBadge(c.vinculo_status)}
+                  {c.vinculo_metodo && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {metodoLabel[c.vinculo_metodo] ?? c.vinculo_metodo}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="sm" variant="ghost" onClick={() => navigate(`/rh/clientes/${c.id}/requisitos`)}>
                     <ListChecks className="h-3.5 w-3.5" />
