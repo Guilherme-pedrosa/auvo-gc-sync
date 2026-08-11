@@ -193,9 +193,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {isMobile && mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-foreground/50 backdrop-blur-[1px]"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
       <aside className={cn(
-        "flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-full transition-[width] duration-200 ease-out",
-        collapsed ? "w-14" : "w-56"
+        "flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-full transition-transform duration-200 ease-out",
+        isMobile
+          ? cn(
+              "fixed inset-y-0 left-0 z-50 w-[17rem] max-w-[85vw] shadow-xl",
+              mobileOpen ? "translate-x-0" : "-translate-x-full"
+            )
+          : cn("transition-[width]", collapsed ? "w-14" : "w-56")
       )}>
         {/* Logo + collapse toggle */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-sidebar-border">
@@ -205,7 +217,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             {!isCollapsed && <span className="text-sidebar-foreground font-semibold text-sm whitespace-nowrap">WeDo</span>}
           </div>
-          {!isCollapsed && (
+          {isMobile ? (
+            <button
+              onClick={() => setMobileOpen(false)}
+              aria-label="Fechar menu"
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          ) : !isCollapsed && (
             <button
               onClick={() => setCollapsed(true)}
               className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
@@ -380,7 +400,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 h-full overflow-auto">{children}</main>
+      <div className="flex-1 min-w-0 h-full flex flex-col">
+        {isMobile && (
+          <header className="h-14 flex-shrink-0 flex items-center gap-2 border-b border-border bg-card px-3">
+            <button
+              onClick={() => setMobileOpen(true)}
+              aria-label="Abrir menu"
+              className="p-2 -ml-2 rounded-md text-foreground/70 hover:bg-accent transition-colors"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
+              <span className="text-primary-foreground font-bold text-xs">W</span>
+            </div>
+            <span className="font-semibold text-sm">WeDo</span>
+          </header>
+        )}
+        <main className="flex-1 min-w-0 overflow-auto">{children}</main>
+      </div>
       <TaskFlowChat />
     </div>
   );
