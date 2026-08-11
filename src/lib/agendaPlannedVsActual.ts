@@ -39,21 +39,25 @@ const actualCandidateScore = (item: AgendaOsPlanningSource) => {
 };
 
 /**
- * Compara somente OS do GestaoClick. Preventivas, contratos e tarefas sem OS
- * continuam no total geral trabalhado, mas nunca entram no planejamento da OS.
- * Quando uma OS ainda nao terminou, ela entra no planejado do dia e nao reduz
- * artificialmente o comparativo das OS ja executadas.
+ * Compara somente OS do GestaoClick e Previsões.
+ * Preventivas, contratos e tarefas sem OS sem previsão continuam no total geral trabalhado,
+ * mas nunca entram no planejamento da OS.
  */
 export function summarizeAgendaOsPlannedVsActual(
   items: AgendaOsPlanningSource[],
 ): AgendaOsDailyComparison {
   const byOs = new Map<string, AgendaOsPlanningSource[]>();
+  const independentPrevisoes: AgendaOsPlanningSource[] = [];
+
   for (const item of items) {
     const osCode = normalizeOsCode(item.gc_os_codigo);
-    if (!osCode) continue;
-    const rows = byOs.get(osCode) ?? [];
-    rows.push(item);
-    byOs.set(osCode, rows);
+    if (osCode) {
+      const rows = byOs.get(osCode) ?? [];
+      rows.push(item);
+      byOs.set(osCode, rows);
+    } else if ((item as any).previsao_continuidade) {
+      independentPrevisoes.push(item);
+    }
   }
 
   let plannedMinutesTotal = 0;
@@ -64,28 +68,50 @@ export function summarizeAgendaOsPlannedVsActual(
   let pendingOsCount = 0;
   let inProgressOsCount = 0;
 
+  // Processar OS agrupadas
   for (const rows of byOs.values()) {
     const osPlannedMinutes = Math.max(
       0,
       ...rows.map((item) => plannedMinutes(item.duracao_planejada_minutos)),
     );
-    if (osPlannedMinutes <= 0) continue;
 
-    plannedMinutesTotal += osPlannedMinutes;
-    plannedOsCount += 1;
+    if (osPlannedMinutes > 0) {
+      plannedMinutesTotal += osPlannedMinutes;
+      plannedOsCount += 1;
 
-    const representative = [...rows].sort(
-      (left, right) => actualCandidateScore(right) - actualCandidateScore(left),
-    )[0];
-    const worked = agendaTaskWorkedTime(representative);
-    if (worked.hasCheckOut && worked.minutes > 0) {
-      comparedPlannedMinutes += osPlannedMinutes;
-      actualCompletedMinutes += worked.minutes;
-      completedOsCount += 1;
-    } else {
-      pendingOsCount += 1;
-      if (rows.some((item) => agendaTaskWorkedTime(item).inProgress)) {
-        inProgressOsCount += 1;
+      const representative = [...rows].sort(
+        (left, right) => actualCandidateScore(right) - actualCandidateScore(left),
+      )[0];
+      const worked = agendaTaskWorkedTime(representative);
+      if (worked.hasCheckOut && worked.minutes > 0) {
+        comparedPlannedMinutes += osPlannedMinutes;
+        actualCompletedMinutes += worked.minutes;
+        completedOsCount += 1;
+      } else {
+        pendingOsCount += 1;
+        if (rows.some((item) => agendaTaskWorkedTime(item).inProgress)) {
+          inProgressOsCount += 1;
+        }
+      }
+    }
+  }
+
+  // Processar Previsões independentes (não vinculadas a uma OS agrupada)
+  for (const item of independentPrevisoes) {
+    const prevPlannedMinutes = plannedMinutes(item.duracao_planejada_minutos);
+    if (prevPlannedMinutes > 0) {
+      plannedMinutesTotal += prevPlannedMinutes;
+      // Previsões não contam como "OS" no count de OS, mas somam no tempo
+      
+      const worked = agendaTaskWorkedTime(item);
+      if (worked.hasCheckOut && worked.minutes > 0) {
+        comparedPlannedMinutes += prevPlannedMinutes;
+        actualCompletedMinutes += worked.minutes;
+      } else {
+        pendingOsCount += 1; // Contamos como pendente para visualização
+        if (worked.inProgress) {
+          inProgressOsCount += 1;
+        }
       }
     }
   }
