@@ -97,5 +97,8 @@ describe("sincronização incremental do Agendamento Equipe", () => {
     expect(taskUpdate).toContain('action === "sync-local"');
     expect(taskUpdate).toContain("recuperamos a linha que ainda guarda o vínculo GC");
     expect(dialog).toContain('refetchOnMount: "always"');
+    expect(dialog).toContain("relatorioTarefas/DetalheTarefa/${taskId}#");
+    expect(dialog).toContain('publicTaskUrl.includes("/informacoes/tarefa/")');
+    expect(dialog).toContain('"https://app.auvo.com.br"');
   });
 });
