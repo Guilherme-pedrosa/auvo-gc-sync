@@ -228,9 +228,13 @@ function Celula({
           const tipoTarefa = a.auvo_task_id
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
+          const situacaoGc = String(a.gc_os_situacao || "").trim();
+          const osGcLabel = a.gc_os_codigo
+            ? `OS ${a.gc_os_codigo}${situacaoGc ? ` [${situacaoGc}]` : ""}`
+            : null;
           const identificadores = [
             tipoTarefa,
-            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
+            osGcLabel,
             a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
             !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
               ? `Orç ${a.gc_orcamento_codigo}`
@@ -251,7 +255,7 @@ function Celula({
                   : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.auvo_task_id
-                    ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}`
+                    ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
                     : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
                 onAuxClick={(e) => {
