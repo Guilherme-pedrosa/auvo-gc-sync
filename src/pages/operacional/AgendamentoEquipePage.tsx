@@ -428,16 +428,21 @@ export default function AgendamentoEquipePage() {
   const DIAS_PASSADOS = 60;
   const DIAS_FUTUROS = 90;
 
-  const dias = useMemo(
-    () =>
-      Array.from({ length: DIAS_PASSADOS + DIAS_FUTUROS }, (_, i) =>
-        format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd"),
-      ),
+  const [mostrarHistorico, setMostrarHistorico] = useState(false);
+
+  // A escala visível começa SEMPRE no dia de hoje.
+  const diasFuturos = useMemo(
+    () => Array.from({ length: DIAS_FUTUROS }, (_, i) => format(addDays(inicioEscala, i), "yyyy-MM-dd")),
     [inicioEscala],
   );
 
-  // Sincronização do Auvo continua olhando apenas de hoje em diante.
-  const diasFuturos = useMemo(() => dias.slice(DIAS_PASSADOS), [dias]);
+  // Dias anteriores continuam carregados (histórico), mas ficam ocultos até o usuário pedir.
+  const diasAnteriores = useMemo(
+    () => Array.from({ length: DIAS_PASSADOS }, (_, i) => format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd")),
+    [inicioEscala],
+  );
+
+  const diasTodos = useMemo(() => [...diasAnteriores, ...diasFuturos], [diasAnteriores, diasFuturos]);
 
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
