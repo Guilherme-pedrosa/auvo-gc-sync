@@ -168,6 +168,45 @@ export function useAuvoClientesCache() {
     },
   });
 }
+
+/** IDs do Auvo (e do GC) vinculados a mais de um cliente central. */
+export function useRhVinculosDuplicados() {
+  return useQuery({
+    queryKey: ["rh_clientes", "duplicados"],
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_clientes")
+        .select("id, nome, auvo_cliente_id, gc_cliente_id")
+        .limit(5000);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ id: string; nome: string; auvo_cliente_id: number | null; gc_cliente_id: string | null }>;
+      const countBy = <T,>(key: (r: typeof rows[number]) => T | null) => {
+        const map = new Map<string, number>();
+        for (const r of rows) {
+          const v = key(r);
+          if (v === null || v === undefined || v === "") continue;
+          const k = String(v);
+          map.set(k, (map.get(k) ?? 0) + 1);
+        }
+        return new Set([...map.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+      };
+      const auvoDuplicados = countBy((r) => r.auvo_cliente_id);
+      const gcDuplicados = countBy((r) => r.gc_cliente_id);
+      const clientesDuplicados = new Set(
+        rows
+          .filter(
+            (r) =>
+              (r.auvo_cliente_id && auvoDuplicados.has(String(r.auvo_cliente_id))) ||
+              (r.gc_cliente_id && gcDuplicados.has(String(r.gc_cliente_id))),
+          )
+          .map((r) => r.id),
+      );
+      return { auvoDuplicados, gcDuplicados, clientesDuplicados };
+    },
+  });
+}
+
 export function useSaveRhCliente() {
   const qc = useQueryClient();
   return useMutation({
