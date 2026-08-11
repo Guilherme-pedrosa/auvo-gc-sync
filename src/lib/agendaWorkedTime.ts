@@ -97,9 +97,12 @@ export function formatWorkedMinutes(totalMinutes: number): string {
 
 export function formatWorkedClock(value: Date | null): string {
   if (!value) return "—";
+  // Os horários do Auvo já chegam no relógio do Brasil, porém gravados com
+  // marcação +00. Formatar em UTC preserva o relógio original (sem -3h).
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: "UTC",
   }).format(value);
 }
