@@ -51,7 +51,7 @@ export function computeAuvoWorkedHours(task: unknown): number {
         const pauseStart = pause.pauseStart ?? pause.startPause ?? pause.start;
         const pauseEnd = pause.pauseEnd ?? pause.endPause ?? pause.end ?? pause.resumeDate;
         if (!pauseStart || !pauseEnd) continue;
-        const diff = new Date(pauseEnd).getTime() - new Date(pauseStart).getTime();
+        const diff = new Date(String(pauseEnd)).getTime() - new Date(String(pauseStart)).getTime();
         if (Number.isFinite(diff) && diff > 0) pausedMs += diff;
       }
       const workedMs = Math.max(0, outMs - inMs - pausedMs);
