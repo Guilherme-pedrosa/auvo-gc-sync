@@ -205,6 +205,18 @@
   main header h1 { font-size: 1rem !important; line-height: 1.35rem !important; }
   main header > div { flex-wrap: wrap; }
 
+  /* Títulos de página fora da tag <header>. */
+  main h1 { font-size: 1.125rem !important; line-height: 1.5rem !important; }
+
+  /* Abas e barras de filtro roláveis em vez de cortadas. */
+  main [role="tablist"] {
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+  main [role="tablist"]::-webkit-scrollbar { display: none; }
+  main [role="tablist"] > * { flex-shrink: 0; }
+
   /* Barras de ação/filtros nunca cortam conteúdo: rolam na horizontal. */
   main header > div,
   main [data-mobile-scroll="1"] {
