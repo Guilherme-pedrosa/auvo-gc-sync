@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2 } from "lucide-react";
+import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2, FileSearch } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -41,6 +43,8 @@ const metodoLabel: Record<string, string> = {
   criado_por_gc: "Criado no Auvo pelo GC",
 };
 
+const onlyDigits = (value?: string | null) => (value ?? "").replace(/\D/g, "");
+
 export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -54,6 +58,8 @@ export default function ClientesRhPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<RhCliente>>({});
   const [auvoChoice, setAuvoChoice] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [consultando, setConsultando] = useState(false);
 
   const stats = useMemo(() => ({
     total: clientes.length,
@@ -66,6 +72,54 @@ export default function ClientesRhPage() {
     value: String(c.auvo_id),
     label: `${c.nome} · Auvo #${c.auvo_id}${c.cpf_cnpj ? ` · ${c.cpf_cnpj}` : ""}`,
   })), [auvoClientes]);
+
+  const auvoPorDocumento = useMemo(() => {
+    const map = new Map<string, typeof auvoClientes>();
+    auvoClientes.forEach((c) => {
+      const doc = onlyDigits(c.cpf_cnpj);
+      if (doc.length !== 11 && doc.length !== 14) return;
+      map.set(doc, [...(map.get(doc) ?? []), c]);
+    });
+    return map;
+  }, [auvoClientes]);
+
+  const selectedClientes = useMemo(
+    () => clientes.filter((c) => selected.includes(c.id)),
+    [clientes, selected],
+  );
+  const allSelected = clientes.length > 0 && selected.length === clientes.length;
+
+  const toggleAll = (checked: boolean) => setSelected(checked ? clientes.map((c) => c.id) : []);
+  const toggleOne = (id: string, checked: boolean) =>
+    setSelected((prev) => (checked ? [...new Set([...prev, id])] : prev.filter((v) => v !== id)));
+
+  const consultarPorCnpj = async () => {
+    if (!selectedClientes.length || consultando) return;
+    setConsultando(true);
+    let vinculados = 0, ambiguos = 0, semDoc = 0, semMatch = 0, jaOk = 0, erros = 0;
+    for (const cliente of selectedClientes) {
+      const doc = onlyDigits(cliente.cpf_cnpj);
+      if (cliente.auvo_cliente_id) { jaOk++; continue; }
+      if (doc.length !== 11 && doc.length !== 14) { semDoc++; continue; }
+      const candidatos = auvoPorDocumento.get(doc) ?? [];
+      if (candidatos.length === 0) { semMatch++; continue; }
+      if (candidatos.length > 1) { ambiguos++; continue; }
+      try {
+        await linkAuvo.mutateAsync({ rhClientId: cliente.id, auvoCustomerId: Number(candidatos[0].auvo_id) });
+        vinculados++;
+      } catch { erros++; }
+    }
+    setConsultando(false);
+    setSelected([]);
+    toast.success(
+      `Consulta por CNPJ concluída: ${vinculados} vinculado(s)` +
+        `${jaOk ? `, ${jaOk} já vinculado(s)` : ""}` +
+        `${ambiguos ? `, ${ambiguos} com mais de um cadastro no Auvo` : ""}` +
+        `${semMatch ? `, ${semMatch} sem correspondência` : ""}` +
+        `${semDoc ? `, ${semDoc} sem CPF/CNPJ válido` : ""}` +
+        `${erros ? `, ${erros} com erro` : ""}`,
+    );
+  };
 
   const openEditor = (cliente?: RhCliente) => {
     setForm(cliente ?? {});
@@ -143,10 +197,28 @@ export default function ClientesRhPage() {
         </div>
       </div>
 
+      {selected.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
+          <span className="text-sm font-medium">{selected.length} selecionado(s)</span>
+          <Button size="sm" onClick={consultarPorCnpj} disabled={consultando}>
+            <FileSearch className={`h-4 w-4 mr-2 ${consultando ? "animate-pulse" : ""}`} />
+            {consultando ? "Consultando..." : "Consultar por CNPJ no Auvo"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected([])}>Limpar seleção</Button>
+        </div>
+      )}
+
       <div className="border rounded-lg bg-card">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(v) => toggleAll(v === true)}
+                  aria-label="Selecionar todos"
+                />
+              </TableHead>
               <TableHead>Cliente central</TableHead>
               <TableHead>GestãoClick</TableHead>
               <TableHead>Auvo</TableHead>
@@ -158,9 +230,18 @@ export default function ClientesRhPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell></TableRow>
+            ) : clientes.length === 0 ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>
             ) : clientes.map((c) => (
               <TableRow key={c.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selected.includes(c.id)}
+                    onCheckedChange={(v) => toggleOne(c.id, v === true)}
+                    aria-label={`Selecionar ${c.nome}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium uppercase">
                   <div className="whitespace-normal break-words">{c.nome}</div>
                   {c.auvo_sync_erro && <div className="text-[11px] text-destructive">{c.auvo_sync_erro}</div>}
