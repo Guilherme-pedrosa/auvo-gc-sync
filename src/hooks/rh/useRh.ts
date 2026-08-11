@@ -195,10 +195,13 @@ export function useLinkRhClienteAuvo() {
   return useMutation({
     mutationFn: async ({ rhClientId, auvoCustomerId }: { rhClientId: string; auvoCustomerId: number | null }) => {
       const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
-        body: { action: "link", rhClientId, auvoCustomerId },
+        body: { action: "link", requestVersion: "gc-auvo-v2", rhClientId, auvoCustomerId },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Não foi possível salvar o vínculo com o Auvo");
+      if (data?.apiVersion !== "gc-auvo-v2") {
+        throw new Error("A Edge Function rh-clientes-sync-gc publicada está desatualizada e não salvou o vínculo.");
+      }
       return data as { ok: true; mergedClientId?: string | null };
     },
     onSuccess: () => {
@@ -561,11 +564,23 @@ export function useSyncClientesGc() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", { body: {} });
+      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
+        body: { requestVersion: "gc-auvo-v2", mode: "full" },
+      });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || `A sincronização terminou com ${data?.errors ?? 1} falha(s)`);
+      if (data?.apiVersion !== "gc-auvo-v2") {
+        throw new Error(
+          "A Edge Function rh-clientes-sync-gc publicada está desatualizada. O GC foi lido, mas a integração GC → Auvo não foi executada. Implante a versão atual da função e tente novamente.",
+        );
+      }
+      const requiredMetrics = ["linked", "createdInAuvo", "ambiguous"] as const;
+      const invalidMetric = requiredMetrics.find((field) => !Number.isFinite(Number(data?.[field])));
+      if (invalidMetric) {
+        throw new Error(`Resposta inválida da sincronização: campo ${invalidMetric} ausente.`);
+      }
       return data as {
-        ok: true; gcTotal: number; auvoTotal: number; linked: number;
+        ok: true; apiVersion: "gc-auvo-v2"; gcTotal: number; auvoTotal: number; linked: number;
         createdInAuvo: number; ambiguous: number; auvoOnly: number;
         inserted: number; updated: number; errors: number;
       };

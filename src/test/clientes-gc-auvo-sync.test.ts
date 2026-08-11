@@ -9,8 +9,23 @@ const migration = readFileSync(
   "utf8",
 );
 const page = readFileSync(resolve(root, "src/pages/rh/ClientesRhPage.tsx"), "utf8");
+const hook = readFileSync(resolve(root, "src/hooks/rh/useRh.ts"), "utf8");
 
 describe("cadastro central RH > Clientes", () => {
+  it("rejeita backend legado em vez de exibir contadores undefined", () => {
+    expect(sync).toContain('RESPONSE_CONTRACT = "gc-auvo-v2"');
+    expect(hook).toContain('data?.apiVersion !== "gc-auvo-v2"');
+    expect(hook).toContain("Edge Function rh-clientes-sync-gc publicada está desatualizada");
+    expect(hook).toContain('requiredMetrics = ["linked", "createdInAuvo", "ambiguous"]');
+  });
+
+  it("permite vincular pelo ID do Auvo sem depender do espelho", () => {
+    expect(page).toContain("ID direto do cliente no Auvo");
+    expect(sync).toContain("fetchAuvoCustomerById");
+    expect(sync).toContain("/customers/${customerId}");
+    expect(sync).toContain('upsert(cacheRow, { onConflict: "auvo_id" })');
+  });
+
   it("prioriza IDs persistidos e documentos antes de considerar nome exato", () => {
     const byId = sync.indexOf('method = "id_persistido"');
     const byExternal = sync.indexOf('method = "external_id_gc"');

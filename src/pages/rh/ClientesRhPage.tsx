@@ -207,6 +207,20 @@ export default function ClientesRhPage() {
                   searchPlaceholder="Buscar por nome, documento ou ID..."
                   emptyText="Nenhum cliente encontrado no espelho do Auvo."
                 />
+                <div className="rounded-md bg-muted/40 p-2.5">
+                  <Label htmlFor="auvo-id-direto" className="text-xs">ID direto do cliente no Auvo</Label>
+                  <Input
+                    id="auvo-id-direto"
+                    inputMode="numeric"
+                    className="mt-1 font-mono"
+                    value={auvoChoice}
+                    onChange={(event) => setAuvoChoice(event.target.value.replace(/\D/g, ""))}
+                    placeholder="Ex.: 44527193"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Se não estiver no espelho, o sistema consulta esse ID diretamente no Auvo antes de vincular.
+                  </p>
+                </div>
                 {form.nome_gc && form.nome_auvo && form.nome_gc !== form.nome_auvo && (
                   <p className="text-xs text-amber-700">Nomes diferentes são permitidos: GC “{form.nome_gc}” ↔ Auvo “{form.nome_auvo}”.</p>
                 )}
