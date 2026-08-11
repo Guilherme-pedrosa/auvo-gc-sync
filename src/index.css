@@ -202,7 +202,8 @@
     flex-wrap: wrap;
     row-gap: 0.5rem;
   }
-  main header h1 { font-size: 1rem; line-height: 1.35rem; }
+  main header h1 { font-size: 1rem !important; line-height: 1.35rem !important; }
+  main header > div { flex-wrap: wrap; }
 
   /* Barras de ação/filtros nunca cortam conteúdo: rolam na horizontal. */
   main header > div,
