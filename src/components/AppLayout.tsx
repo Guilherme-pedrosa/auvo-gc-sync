@@ -199,13 +199,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       )}>
         {/* Logo + collapse toggle */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-sidebar-border">
-          <div className={cn("flex items-center gap-2.5 overflow-hidden", collapsed && "justify-center w-full")}>
+          <div className={cn("flex items-center gap-2.5 overflow-hidden", isCollapsed && "justify-center w-full")}>
             <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0">
               <span className="text-sidebar-primary-foreground font-bold text-sm">W</span>
             </div>
-            {!collapsed && <span className="text-sidebar-foreground font-semibold text-sm whitespace-nowrap">WeDo</span>}
+            {!isCollapsed && <span className="text-sidebar-foreground font-semibold text-sm whitespace-nowrap">WeDo</span>}
           </div>
-          {!collapsed && (
+          {!isCollapsed && (
             <button
               onClick={() => setCollapsed(true)}
               className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
@@ -224,7 +224,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
             return (
               <div key={group.label}>
-                {!collapsed && (
+                {!isCollapsed && (
                   <button
                     onClick={() => toggleGroup(group.label)}
                     className={cn(
@@ -239,7 +239,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                 <div className={cn(
                   "space-y-0.5 mt-0.5 transition-all duration-200",
-                  !collapsed && !isExpanded ? "max-h-0 opacity-0 overflow-hidden" : "max-h-[1000px] opacity-100"
+                  !isCollapsed && !isExpanded ? "max-h-0 opacity-0 overflow-hidden" : "max-h-[1000px] opacity-100"
                 )}>
                   {group.items.map((item) => {
                     if (item.children) {
@@ -251,17 +251,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                           <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                               <button
-                                onClick={() => !collapsed && toggleSub(subKey)}
+                                onClick={() => !isCollapsed && toggleSub(subKey)}
                                 className={cn(
                                   "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                  collapsed && "justify-center px-0",
+                                  isCollapsed && "justify-center px-0",
                                   subHasActive
                                     ? "text-sidebar-primary font-medium"
                                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                                 )}
                               >
                                 <item.icon className={cn("h-4 w-4 flex-shrink-0", subHasActive && "text-sidebar-primary")} />
-                                {!collapsed && (
+                                {!isCollapsed && (
                                   <>
                                     <span className="truncate flex-1 text-left">{item.label}</span>
                                     <ChevronDown className={cn("h-3 w-3 transition-transform", !subOpen && "-rotate-90")} />
@@ -269,9 +269,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 )}
                               </button>
                             </TooltipTrigger>
-                            {collapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+                            {isCollapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
                           </Tooltip>
-                          {!collapsed && (
+                          {!isCollapsed && (
                             <div className={cn(
                               "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 transition-all duration-200",
                               subOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
@@ -307,17 +307,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             onClick={() => item.path && navigate(item.path)}
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                              collapsed && "justify-center px-0",
+                              isCollapsed && "justify-center px-0",
                               isActive
                                 ? "bg-sidebar-accent text-sidebar-primary-foreground font-medium"
                                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                             )}
                           >
                             <item.icon className={cn("h-4 w-4 flex-shrink-0", isActive && "text-sidebar-primary")} />
-                            {!collapsed && <span className="truncate">{item.label}</span>}
+                            {!isCollapsed && <span className="truncate">{item.label}</span>}
                           </button>
                         </TooltipTrigger>
-                        {collapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+                        {isCollapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
                       </Tooltip>
                     );
                   })}
@@ -327,8 +327,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Expand button when collapsed */}
-        {collapsed && (
+        {/* Expand button when isCollapsed */}
+        {isCollapsed && (
           <div className="px-2 py-2 border-t border-sidebar-border">
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
@@ -345,14 +345,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {/* User footer */}
-        <div className={cn("p-3 border-t border-sidebar-border space-y-2", collapsed && "px-2")}>
-          <div className={cn("flex items-center gap-2 px-2", collapsed && "justify-center px-0")}>
+        <div className={cn("p-3 border-t border-sidebar-border space-y-2", isCollapsed && "px-2")}>
+          <div className={cn("flex items-center gap-2 px-2", isCollapsed && "justify-center px-0")}>
             <div className="h-7 w-7 rounded-full bg-sidebar-accent flex items-center justify-center flex-shrink-0">
               <span className="text-[10px] text-sidebar-foreground/80 font-medium">
                 {profile?.nome?.charAt(0)?.toUpperCase() || "?"}
               </span>
             </div>
-            {!collapsed && (
+            {!isCollapsed && (
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-sidebar-foreground truncate">{profile?.nome || "Usuário"}</p>
                 <p className="text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
@@ -368,14 +368,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 onClick={handleSignOut}
                 className={cn(
                   "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors",
-                  collapsed && "justify-center px-0"
+                  isCollapsed && "justify-center px-0"
                 )}
               >
                 <LogOut className="h-4 w-4 flex-shrink-0" />
-                {!collapsed && <span className="text-xs">Sair</span>}
+                {!isCollapsed && <span className="text-xs">Sair</span>}
               </button>
             </TooltipTrigger>
-            {collapsed && <TooltipContent side="right">Sair</TooltipContent>}
+            {isCollapsed && <TooltipContent side="right">Sair</TooltipContent>}
           </Tooltip>
         </div>
       </aside>
