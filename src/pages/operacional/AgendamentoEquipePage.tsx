@@ -428,21 +428,26 @@ export default function AgendamentoEquipePage() {
   const DIAS_PASSADOS = 60;
   const DIAS_FUTUROS = 90;
 
-  const dias = useMemo(
-    () =>
-      Array.from({ length: DIAS_PASSADOS + DIAS_FUTUROS }, (_, i) =>
-        format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd"),
-      ),
+  const [mostrarHistorico, setMostrarHistorico] = useState(false);
+
+  // A escala visível começa SEMPRE no dia de hoje.
+  const diasFuturos = useMemo(
+    () => Array.from({ length: DIAS_FUTUROS }, (_, i) => format(addDays(inicioEscala, i), "yyyy-MM-dd")),
     [inicioEscala],
   );
 
-  // Sincronização do Auvo continua olhando apenas de hoje em diante.
-  const diasFuturos = useMemo(() => dias.slice(DIAS_PASSADOS), [dias]);
+  // Dias anteriores continuam carregados (histórico), mas ficam ocultos até o usuário pedir.
+  const diasAnteriores = useMemo(
+    () => Array.from({ length: DIAS_PASSADOS }, (_, i) => format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd")),
+    [inicioEscala],
+  );
+
+  const diasTodos = useMemo(() => [...diasAnteriores, ...diasFuturos], [diasAnteriores, diasFuturos]);
 
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data: rhClientes = [] } = useRhClientes();
-  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
+  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(diasTodos);
   const [isSyncing, setIsSyncing] = useState(false);
   const customerSyncPromise = useRef<Promise<void> | null>(null);
 
@@ -722,6 +727,20 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
+  // Histórico: apenas dias passados que realmente possuem agendamento registrado.
+  const diasHistorico = useMemo(() => {
+    const comDados = new Set<string>();
+    for (const a of data?.agendamentos ?? []) comDados.add(a.data);
+    for (const v of data?.veiculoDias ?? []) if (v.texto?.trim()) comDados.add(v.data);
+    return diasAnteriores.filter((d) => comDados.has(d));
+  }, [data, diasAnteriores]);
+
+  // Colunas renderizadas: sempre iniciam em hoje; o histórico entra antes só quando liberado.
+  const dias = useMemo(
+    () => (mostrarHistorico ? [...diasHistorico, ...diasFuturos] : diasFuturos),
+    [mostrarHistorico, diasHistorico, diasFuturos],
+  );
+
   const adicionarVeiculo = async () => {
     const nome = window.prompt("Nome do veículo (ex: ETIOS PRATA)");
     if (!nome?.trim()) return;
@@ -760,21 +779,19 @@ export default function AgendamentoEquipePage() {
 
   const carregando = isLoading || loadingCol || loadingVei;
 
-  // A grade contém dias passados (histórico), mas sempre inicia no dia atual.
-  const posicionadoNoHoje = useRef(false);
+  // A visão sempre começa no dia atual, inclusive ao liberar o histórico.
   useEffect(() => {
-    if (carregando || posicionadoNoHoje.current) return;
-    const alvos = document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']");
-    if (!alvos.length) return;
-    alvos.forEach((th) => {
-      const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-      if (!container) return;
-      const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-      const offsetFixo = primeiraColuna?.offsetWidth ?? 0;
-      container.scrollLeft = Math.max(0, th.offsetLeft - offsetFixo);
-    });
-    posicionadoNoHoje.current = true;
-  }, [carregando]);
+    if (carregando) return;
+    const id = window.setTimeout(() => {
+      document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
+        const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+        if (!container) return;
+        const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+        container.scrollLeft = Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0));
+      });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [carregando, mostrarHistorico]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
@@ -797,6 +814,21 @@ export default function AgendamentoEquipePage() {
             });
           }}>
             Ir para Hoje
+          </Button>
+          <Button
+            variant={mostrarHistorico ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setMostrarHistorico((v) => !v)}
+            disabled={carregando || (!mostrarHistorico && diasHistorico.length === 0)}
+            title={
+              diasHistorico.length === 0
+                ? "Nenhum dia anterior com agendamento nos últimos 60 dias"
+                : "Exibe os dias anteriores que possuem agendamento"
+            }
+          >
+            {mostrarHistorico
+              ? "Ocultar histórico"
+              : `Ver histórico${diasHistorico.length ? ` (${diasHistorico.length})` : ""}`}
           </Button>
         </div>
         <div className="flex items-center gap-2">
