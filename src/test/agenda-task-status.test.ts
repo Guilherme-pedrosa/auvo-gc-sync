@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
+import {
+  agendaVisualStatus,
+  shouldHighlightPendingGcExecution,
+} from "@/lib/agendaTaskStatus";
 
 const now = new Date(2026, 7, 10, 14, 30, 0);
 const root = resolve(__dirname, "../..");
@@ -63,6 +66,28 @@ describe("cores dos cards do Agendamento Equipe", () => {
     }, now)).toBeNull();
   });
 
+  it("destaca situação GC quando a tarefa terminou mas a OS ainda não foi executada", () => {
+    expect(shouldHighlightPendingGcExecution({
+      status_auvo: "Finalizada",
+      gc_os_situacao: "SERVIÇO AGUARDANDO EXECUÇÃO",
+    })).toBe(true);
+
+    expect(shouldHighlightPendingGcExecution({
+      status_auvo: "Finalizada",
+      gc_os_situacao: "NÃO EXECUTADO",
+    })).toBe(true);
+
+    expect(shouldHighlightPendingGcExecution({
+      status_auvo: "Finalizada",
+      gc_os_situacao: "EXECUTADO - AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+    })).toBe(false);
+
+    expect(shouldHighlightPendingGcExecution({
+      status_auvo: "Aberta",
+      gc_os_situacao: "SERVIÇO AGUARDANDO EXECUÇÃO",
+    })).toBe(false);
+  });
+
   it("usa o snapshot Auvo mais recente e exibe a legenda completa", () => {
     const hook = readFileSync(resolve(root, "src/hooks/operacional/useAgendamentoEquipe.ts"), "utf8");
     const page = readFileSync(resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"), "utf8");
@@ -72,6 +97,8 @@ describe("cores dos cards do Agendamento Equipe", () => {
     expect(page).toContain("Finalizada sem pendência");
     expect(page).toContain("Atrasada há mais de 2h");
     expect(page).toContain("Pausada");
+    expect(page).toContain("shouldHighlightPendingGcExecution(a)");
+    expect(page).toContain("text-yellow-600");
     expect(page).not.toContain('Boolean(a.check_out_iso)');
   });
 });

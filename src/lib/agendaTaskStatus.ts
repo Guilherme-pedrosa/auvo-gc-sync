@@ -60,3 +60,18 @@ export function agendaVisualStatus(
   if (!running && isMoreThanTwoHoursLate(item, now)) return "atrasada";
   return null;
 }
+
+/**
+ * A conclusão da tarefa no Auvo não significa que a OS foi encerrada no GC.
+ * O destaque é textual para manter a cor operacional do card independente.
+ */
+export function shouldHighlightPendingGcExecution(item: AgendaTaskStatusInput): boolean {
+  const auvoStatus = normalize(item.status_auvo);
+  const gcSituation = normalize(item.gc_os_situacao);
+  const finalized = auvoStatus.includes("FINALIZ") || auvoStatus.includes("CONCLUI");
+  if (!finalized || !gcSituation) return false;
+
+  const explicitlyNotExecuted = gcSituation.includes("NAO EXECUTAD");
+  const executed = gcSituation.includes("EXECUTAD") && !explicitlyNotExecuted;
+  return !executed;
+}

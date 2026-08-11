@@ -32,7 +32,10 @@ import {
   agendaTaskSnapshotChanged,
   mergeAgendaTaskSnapshot,
 } from "@/lib/agendaIncrementalSync";
-import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
+import {
+  agendaVisualStatus,
+  shouldHighlightPendingGcExecution,
+} from "@/lib/agendaTaskStatus";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
@@ -292,20 +295,19 @@ function Celula({
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
           const situacaoGc = String(a.gc_os_situacao || "").trim();
-          const osGcLabel = a.gc_os_codigo
-            ? `OS ${a.gc_os_codigo}${situacaoGc ? ` [${situacaoGc}]` : ""}`
-            : null;
-          const identificadores = [
+          const destacarSituacaoGc = shouldHighlightPendingGcExecution(a);
+          const identificadoresAntesSituacao = [
             tipoTarefa,
-            osGcLabel,
+            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
+          ].filter(Boolean);
+          const identificadoresDepoisSituacao = [
             a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
             !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
               ? `Orç ${a.gc_orcamento_codigo}`
               : null,
           ].filter(Boolean);
-          const label = identificadores.length > 0
-            ? `${identificadores.join(" · ")} - ${a.cliente}`
-            : a.cliente;
+          const possuiIdentificador = identificadoresAntesSituacao.length > 0
+            || identificadoresDepoisSituacao.length > 0;
 
           return (
             <div
@@ -341,7 +343,32 @@ function Celula({
                 )}
               >
                 <div className="flex flex-col">
-                  <span className="truncate">{label}</span>
+                  <span className="truncate">
+                    {identificadoresAntesSituacao.join(" · ")}
+                    {situacaoGc && a.gc_os_codigo && (
+                      <>
+                        {" "}
+                        <span
+                          className={cn(
+                            destacarSituacaoGc
+                              && "font-extrabold text-yellow-600 dark:text-yellow-300",
+                          )}
+                          title={destacarSituacaoGc
+                            ? "Tarefa finalizada no Auvo, mas a OS ainda não está executada no GestãoClick."
+                            : undefined}
+                        >
+                          [{situacaoGc}]
+                        </span>
+                      </>
+                    )}
+                    {identificadoresDepoisSituacao.length > 0 && (
+                      <>
+                        {identificadoresAntesSituacao.length > 0 ? " · " : ""}
+                        {identificadoresDepoisSituacao.join(" · ")}
+                      </>
+                    )}
+                    {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
+                  </span>
                   {itemTags.length > 0 && (
                     <span className="mt-1 flex flex-wrap gap-1 normal-case">
                       {itemTags.map((tag) => {
