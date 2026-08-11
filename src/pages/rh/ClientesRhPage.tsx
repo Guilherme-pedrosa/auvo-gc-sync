@@ -187,7 +187,7 @@ export default function ClientesRhPage() {
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <span className="text-sm">
-            <strong>{totalDuplicados}</strong> cliente(s) compartilham o mesmo cadastro do Auvo ou do GestãoClick (vínculo duplicado).
+            <strong>{totalDuplicados}</strong> cliente(s) com vínculo duplicado: o mesmo cadastro do GC está ligado a mais de um Auvo (ou o mesmo Auvo a mais de um GC).
           </span>
           <Button size="sm" variant="outline" onClick={() => setFilterVinculo("duplicado")}>
             Filtrar duplicados
