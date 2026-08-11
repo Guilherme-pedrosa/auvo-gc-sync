@@ -234,6 +234,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     : [];
   const textos = respostas.filter((r) => r?.reply && !String(r.reply).startsWith("http"));
   const fotos = respostas.filter((r) => r?.reply && String(r.reply).startsWith("http"));
+  const auvoAdminUrl = taskId
+    ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}#`
+    : null;
+  const publicTaskUrl = String((tarefa as any)?.auvo_task_url || "").trim();
+  const auvoPdfUrl = publicTaskUrl.includes("/informacoes/tarefa/")
+    ? publicTaskUrl.replace(/^https:\/\/app2\.auvo\.com\.br/i, "https://app.auvo.com.br")
+    : null;
 
   return (
     <Dialog open={!!taskId} onOpenChange={onOpenChange}>
@@ -628,16 +635,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         )}
 
             <div className="flex flex-wrap gap-2">
-              {taskId && (
+              {auvoAdminUrl && (
                 <Button size="sm" variant="outline" asChild>
                   <a
-                    // O link público /informacoes/tarefa/{uuid}?chave=... só existe
-                    // em auvo_task_url. Sem ele, o fallback é o relatório da tarefa.
-                    href={
-                      (tarefa as any)?.auvo_task_url
-                      || (tarefa as any)?.auvo_link
-                      || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`
-                    }
+                    href={auvoAdminUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gap-1"
@@ -646,10 +647,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                   </a>
                 </Button>
               )}
-              {taskId && (
+              {auvoPdfUrl ? (
                 <Button size="sm" variant="outline" asChild>
                   <a
-                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`}
+                    href={auvoPdfUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gap-1"
@@ -657,7 +658,11 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                     <FileText className="h-3.5 w-3.5" /> Relatório PDF
                   </a>
                 </Button>
-              )}
+              ) : taskId ? (
+                <Button size="sm" variant="outline" disabled title="Link público do relatório ainda não sincronizado">
+                  <FileText className="h-3.5 w-3.5" /> Relatório PDF
+                </Button>
+              ) : null}
               {os.link && (
                 <Button size="sm" variant="outline" asChild>
                   <a href={os.link} target="_blank" rel="noopener noreferrer" className="gap-1">
