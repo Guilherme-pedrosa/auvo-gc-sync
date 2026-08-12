@@ -1,5 +1,12 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 import { resolveAuvoTaskAssignee } from "../_shared/auvo-task-assignee.ts";
+import {
+  GcRateLimitedError,
+  fetchGcWithoutRetry,
+  isRealtimeGcCacheStale,
+  shouldClaimRealtimeGcRefresh,
+  type RealtimeGcRefreshMode,
+} from "../_shared/realtime-gc-refresh.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -11,6 +18,35 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
+const REALTIME_GC_GLOBAL_CACHE_KEY = "__global__";
+
+type GcDocMapEntry = {
+  codigo: string;
+  valor: string;
+  vendedor?: string;
+};
+
+type GcDocMap = Record<string, GcDocMapEntry>;
+
+type RealtimeGcCacheRow = {
+  cache_key: string;
+  os_map: GcDocMap | null;
+  orc_map: GcDocMap | null;
+  refreshed_at: string | null;
+  refresh_started_at: string | null;
+  blocked_until: string | null;
+  last_error: string | null;
+};
+
+type GcRefreshResult = {
+  osMap?: GcDocMap;
+  orcMap?: GcDocMap;
+  refreshedAt?: string;
+  blockedUntil?: string;
+  error?: string;
+};
+
+let inMemoryGcBlockedUntil = 0;
 
 // Retry silencioso 502/503 Auvo (3s/6s/9s) — só loga se a tentativa final falhar
 async function auvoFetchSilent(url: string, init: RequestInit): Promise<Response> {
@@ -23,17 +59,7 @@ async function auvoFetchSilent(url: string, init: RequestInit): Promise<Response
   return resp;
 }
 
-// Retry silencioso 429 GC (5s/10s) — só loga se a tentativa final falhar
-async function gcFetchSilent(url: string, init: RequestInit): Promise<Response> {
-  const BACKOFF = [5000, 10000];
-  let resp = await fetch(url, init);
-  for (let i = 0; i < BACKOFF.length && resp.status === 429; i++) {
-    await new Promise(r => setTimeout(r, BACKOFF[i]));
-    resp = await fetch(url, init);
-  }
-  return resp;
-}
-
+// O GC não tem retry local: o primeiro 429 abre o circuito compartilhado.
 // Fetch GC docs and build a map of auvo_task_id → { codigo, valor_total }
 // Window: filter by GC document date to capture recent records (avoid pagination cap missing today's docs)
 async function fetchGcDocMap(
@@ -43,8 +69,8 @@ async function fetchGcDocMap(
   labelHints: string[],
   dataInicio?: string,
   dataFim?: string
-): Promise<Record<string, { codigo: string; valor: string; vendedor: string }>> {
-  const map: Record<string, { codigo: string; valor: string; vendedor: string }> = {};
+): Promise<GcDocMap> {
+  const map: GcDocMap = {};
   let page = 1;
   let totalPages = 1;
 
@@ -53,7 +79,7 @@ async function fetchGcDocMap(
     let url = `${GC_BASE_URL}/api/${endpoint}?limite=100&pagina=${page}`;
     if (dataInicio) url += `&data_inicio=${dataInicio}`;
     if (dataFim) url += `&data_fim=${dataFim}`;
-    const response = await gcFetchSilent(url, { headers: gcHeaders });
+    const response = await fetchGcWithoutRetry(url, { headers: gcHeaders });
     if (!response.ok) {
       console.warn(`[realtime-tracking] GC ${endpoint} page ${page} final status ${response.status}`);
       break;
@@ -94,9 +120,9 @@ async function fetchGcOsMap(
   gcHeaders: Record<string, string>,
   dataInicio?: string,
   dataFim?: string
-): Promise<Record<string, { codigo: string; valor: string; vendedor: string }>> {
+): Promise<GcDocMap> {
   // Fetch GC OS pages filtered by date window, then scan for BOTH attributes (73343=Tarefa OS, 73344=Tarefa Execução)
-  const map: Record<string, { codigo: string; valor: string; vendedor: string }> = {};
+  const map: GcDocMap = {};
   let page = 1;
   let totalPages = 1;
 
@@ -105,7 +131,7 @@ async function fetchGcOsMap(
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (dataInicio) url += `&data_inicio=${dataInicio}`;
     if (dataFim) url += `&data_fim=${dataFim}`;
-    const response = await gcFetchSilent(url, { headers: gcHeaders });
+    const response = await fetchGcWithoutRetry(url, { headers: gcHeaders });
     if (!response.ok) {
       console.warn(`[realtime-tracking] GC ordens_servicos page ${page} final status ${response.status}`);
       break;
@@ -148,12 +174,165 @@ async function fetchGcOrcMap(
   gcHeaders: Record<string, string>,
   dataInicio?: string,
   dataFim?: string
-): Promise<Record<string, { codigo: string; valor: string }>> {
+): Promise<GcDocMap> {
   const atributoId = Deno.env.get("GC_ATRIBUTO_ORCAMENTO_ID") || "73341";
   const label = (Deno.env.get("AUVO_ATRIBUTO_ORCAMENTO_LABEL") || "Tarefa Orçamento").toLowerCase();
   const map = await fetchGcDocMap(gcHeaders, "orcamentos", atributoId, [label, "tarefa orç", "tarefa orc", "orcamento"], dataInicio, dataFim);
   console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} Orçamentos mapeados (janela ${dataInicio || "all"} → ${dataFim || "all"})`);
   return map;
+}
+
+function realtimeGcCacheKey(dataInicio: string, dataFim: string): string {
+  return `v1:${dataInicio}:${dataFim}`;
+}
+
+function normalizeGcMap(value: unknown): GcDocMap {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as GcDocMap;
+}
+
+async function loadRealtimeGcCache(
+  sb: ReturnType<typeof createClient>,
+  cacheKey: string,
+): Promise<RealtimeGcCacheRow | null> {
+  const { data, error } = await sb
+    .from("realtime_tracking_gc_cache")
+    .select("cache_key, os_map, orc_map, refreshed_at, refresh_started_at, blocked_until, last_error")
+    .eq("cache_key", cacheKey)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(`[realtime-tracking] cache GC indisponivel: ${error.message}`);
+    return null;
+  }
+  return data as RealtimeGcCacheRow | null;
+}
+
+async function claimRealtimeGcRefresh(
+  sb: ReturnType<typeof createClient>,
+  cacheKey: string,
+  dataInicio: string,
+  dataFim: string,
+  mode: RealtimeGcRefreshMode,
+  cache: RealtimeGcCacheRow | null,
+  globalCache: RealtimeGcCacheRow | null,
+): Promise<boolean> {
+  const now = Date.now();
+  if (inMemoryGcBlockedUntil > now) return false;
+
+  const state = cache
+    ? {
+        refreshedAt: cache.refreshed_at,
+        refreshStartedAt: cache.refresh_started_at,
+        blockedUntil: cache.blocked_until,
+      }
+    : null;
+  if (!shouldClaimRealtimeGcRefresh(state, mode, now)) return false;
+  const globalState = globalCache
+    ? {
+        refreshedAt: globalCache.refreshed_at,
+        refreshStartedAt: globalCache.refresh_started_at,
+        blockedUntil: globalCache.blocked_until,
+      }
+    : null;
+  if (!shouldClaimRealtimeGcRefresh(globalState, mode, now)) return false;
+
+  const { data, error } = await sb.rpc("claim_realtime_tracking_gc_refresh", {
+    p_cache_key: cacheKey,
+    p_data_inicio: dataInicio,
+    p_data_fim: dataFim,
+    p_force: mode === "manual",
+  });
+
+  if (error) {
+    console.warn(`[realtime-tracking] trava do cache GC indisponivel: ${error.message}`);
+    // Sem a migration, somente uma ação manual pode tocar o GC. O polling nunca
+    // volta ao comportamento antigo de paginar o GC a cada minuto.
+    return mode === "manual";
+  }
+  return data === true;
+}
+
+async function refreshRealtimeGcCache(
+  sb: ReturnType<typeof createClient>,
+  cacheKey: string,
+  dataInicio: string,
+  dataFim: string,
+  gcHeaders: Record<string, string>,
+): Promise<GcRefreshResult> {
+  try {
+    // Sequencial de propósito: se OS receber 429, orçamentos nem começam.
+    const osMap = await fetchGcOsMap(gcHeaders, dataInicio, dataFim);
+    const orcMap = await fetchGcOrcMap(gcHeaders, dataInicio, dataFim);
+    const refreshedAt = new Date().toISOString();
+
+    const { error } = await sb.from("realtime_tracking_gc_cache").upsert({
+      cache_key: cacheKey,
+      data_inicio: dataInicio,
+      data_fim: dataFim,
+      os_map: osMap,
+      orc_map: orcMap,
+      refreshed_at: refreshedAt,
+      refresh_started_at: null,
+      blocked_until: null,
+      last_error: null,
+      updated_at: refreshedAt,
+    }, { onConflict: "cache_key" });
+    if (error) console.warn(`[realtime-tracking] nao foi possivel salvar cache GC: ${error.message}`);
+    const { error: globalError } = await sb.from("realtime_tracking_gc_cache").upsert({
+      cache_key: REALTIME_GC_GLOBAL_CACHE_KEY,
+      data_inicio: "1970-01-01",
+      data_fim: "1970-01-01",
+      refreshed_at: refreshedAt,
+      refresh_started_at: null,
+      blocked_until: null,
+      last_error: null,
+      updated_at: refreshedAt,
+    }, { onConflict: "cache_key" });
+    if (globalError) console.warn(`[realtime-tracking] nao foi possivel liberar trava GC: ${globalError.message}`);
+
+    return { osMap, orcMap, refreshedAt };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const blockedUntil = error instanceof GcRateLimitedError ? error.blockedUntil : undefined;
+    if (blockedUntil) inMemoryGcBlockedUntil = Date.parse(blockedUntil);
+
+    const update = {
+      refresh_started_at: null,
+      blocked_until: blockedUntil || null,
+      last_error: message.substring(0, 500),
+      updated_at: new Date().toISOString(),
+    };
+    const { error: cacheError } = await sb
+      .from("realtime_tracking_gc_cache")
+      .update(update)
+      .eq("cache_key", cacheKey);
+    if (cacheError) console.warn(`[realtime-tracking] nao foi possivel registrar falha GC: ${cacheError.message}`);
+    const { error: globalError } = await sb.from("realtime_tracking_gc_cache").upsert({
+      cache_key: REALTIME_GC_GLOBAL_CACHE_KEY,
+      data_inicio: "1970-01-01",
+      data_fim: "1970-01-01",
+      refresh_started_at: null,
+      blocked_until: blockedUntil || null,
+      last_error: message.substring(0, 500),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "cache_key" });
+    if (globalError) console.warn(`[realtime-tracking] nao foi possivel abrir circuito GC: ${globalError.message}`);
+
+    console.warn(`[realtime-tracking] refresh GC interrompido: ${message}`);
+    return { blockedUntil, error: message };
+  }
+}
+
+function runInBackground(promise: Promise<unknown>): void {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil?: (work: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(promise);
+    return;
+  }
+  void promise.catch((error) => console.warn("[realtime-tracking] refresh GC em segundo plano falhou", error));
 }
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
@@ -232,8 +411,14 @@ Deno.serve(async (req) => {
 
     const today = new Date().toISOString().split("T")[0];
     const targetDate = body.date || today;
+    const requestedGcMode = String(body.gc_mode || body.mode || body.action || "cache").toLowerCase();
+    const gcMode: RealtimeGcRefreshMode = requestedGcMode === "manual" || requestedGcMode === "refresh_gc"
+      ? "manual"
+      : requestedGcMode === "read_only" || requestedGcMode === "auvo_only"
+        ? "read_only"
+        : "cache";
 
-    console.log(`[realtime-tracking] Buscando tarefas para ${targetDate}`);
+    console.log(`[realtime-tracking] Buscando tarefas para ${targetDate}; GC=${gcMode}`);
 
     // GC credentials (optional — if available, we fetch OS values)
     const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
@@ -256,18 +441,76 @@ Deno.serve(async (req) => {
     const gcWindowEnd = new Date(targetDateObj.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
     // Fetch Auvo tasks + GC OS + GC Orçamentos + DB values in parallel
-    const [tasks, gcOsMap, gcOrcMap, dbTasks] = await Promise.all([
-      fetchAllTasks(bearerToken, targetDate, targetDate),
-      gcHeaders ? fetchGcOsMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
-      gcHeaders ? fetchGcOrcMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
-      (async () => {
-        const { data } = await sb
-          .from("tarefas_central")
-          .select("auvo_task_id, gc_os_codigo, gc_os_valor_total, gc_orc_valor_total, gc_orcamento_codigo, gc_os_id, gc_orcamento_id, gc_os_vendedor, gc_orc_vendedor")
-          .eq("data_tarefa", targetDate);
-        return data || [];
-      })(),
+    const cacheKey = realtimeGcCacheKey(gcWindowStart, gcWindowEnd);
+
+    // O polling de 60s sempre consulta o Auvo e o cache local. O GC só é
+    // atualizado manualmente ou, quando o cache vence, por uma única execução
+    // em segundo plano protegida por trava transacional no banco.
+    const tasksPromise = fetchAllTasks(bearerToken, targetDate, targetDate);
+    const dbTasksPromise = (async () => {
+      const { data } = await sb
+        .from("tarefas_central")
+        .select("auvo_task_id, gc_os_codigo, gc_os_valor_total, gc_orc_valor_total, gc_orcamento_codigo, gc_os_id, gc_orcamento_id, gc_os_vendedor, gc_orc_vendedor")
+        .eq("data_tarefa", targetDate);
+      return data || [];
+    })();
+    const [gcCache, globalGcCache] = await Promise.all([
+      loadRealtimeGcCache(sb, cacheKey),
+      loadRealtimeGcCache(sb, REALTIME_GC_GLOBAL_CACHE_KEY),
     ]);
+    let gcOsMap = normalizeGcMap(gcCache?.os_map);
+    let gcOrcMap = normalizeGcMap(gcCache?.orc_map);
+    let gcRefreshedAt = gcCache?.refreshed_at || null;
+    let gcBlockedUntil = globalGcCache?.blocked_until || gcCache?.blocked_until || null;
+    let gcRefreshing = Boolean(
+      (globalGcCache?.refresh_started_at || gcCache?.refresh_started_at) &&
+      Date.parse((globalGcCache?.refresh_started_at || gcCache?.refresh_started_at)!) > Date.now() - 15 * 60 * 1000,
+    );
+    let gcRefreshError = globalGcCache?.last_error || gcCache?.last_error || null;
+    let gcSource: "cache" | "manual" | "database" = gcRefreshedAt ? "cache" : "database";
+
+    if (gcHeaders) {
+      const claimed = await claimRealtimeGcRefresh(
+        sb,
+        cacheKey,
+        gcWindowStart,
+        gcWindowEnd,
+        gcMode,
+        gcCache,
+        globalGcCache,
+      );
+
+      if (claimed && gcMode === "manual") {
+        const refreshed = await refreshRealtimeGcCache(
+          sb,
+          cacheKey,
+          gcWindowStart,
+          gcWindowEnd,
+          gcHeaders,
+        );
+        if (refreshed.osMap && refreshed.orcMap) {
+          gcOsMap = refreshed.osMap;
+          gcOrcMap = refreshed.orcMap;
+          gcRefreshedAt = refreshed.refreshedAt || gcRefreshedAt;
+          gcRefreshError = null;
+          gcSource = "manual";
+        } else {
+          gcBlockedUntil = refreshed.blockedUntil || gcBlockedUntil;
+          gcRefreshError = refreshed.error || gcRefreshError;
+        }
+      } else if (claimed) {
+        gcRefreshing = true;
+        runInBackground(refreshRealtimeGcCache(
+          sb,
+          cacheKey,
+          gcWindowStart,
+          gcWindowEnd,
+          gcHeaders,
+        ));
+      }
+    }
+
+    const [tasks, dbTasks] = await Promise.all([tasksPromise, dbTasksPromise]);
 
     // Build DB fallback map: auvo_task_id → { codigo, valor, tipo }
     const dbValorMap: Record<string, { codigo: string; valor: string; tipo: string; vendedor: string }> = {};
@@ -480,6 +723,16 @@ Deno.serve(async (req) => {
       total_tarefas: tasks.length,
       total_tecnicos: tecnicos.length,
       total_atrasadas: totalAtrasadas,
+      gc_cache: {
+        mode: gcMode,
+        source: gcSource,
+        refreshed_at: gcRefreshedAt,
+        stale: isRealtimeGcCacheStale(gcRefreshedAt),
+        refreshing: gcRefreshing,
+        blocked_until: gcBlockedUntil,
+        rate_limited: Boolean(gcBlockedUntil && Date.parse(gcBlockedUntil) > Date.now()),
+        error: gcRefreshError,
+      },
       tecnicos,
     }), {
       status: 200,
