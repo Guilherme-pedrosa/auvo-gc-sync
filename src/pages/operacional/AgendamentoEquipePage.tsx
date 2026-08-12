@@ -1161,8 +1161,8 @@ export default function AgendamentoEquipePage() {
                               itens={itens}
                               clientesInfo={rhClientes}
                               tagsPorAgendamento={tagsPorAgendamento}
-                                tagsSelecionadas={tagsSelecionadas}
-                                apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
+                              tagsSelecionadas={tagsSelecionadas}
+                              apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
