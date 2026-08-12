@@ -1627,9 +1627,10 @@ async function runBudgetKanbanSync(opts: {
   // para sempre, mesmo com documento existente no GestãoClick. ===
   try {
     const syncedIds = new Set(items.map((i: any) => String(i.auvo_task_id || "")));
+    const rejectedSet = new Set(rejectedTaskIds);
     const gcLinkedIds = Array.from(
       new Set([...Object.keys(gcOrcMap), ...Object.keys(gcOsMap)]),
-    ).filter((id) => id && !syncedIds.has(id));
+    ).filter((id) => id && !syncedIds.has(id) && !rejectedSet.has(id));
 
     const backfillRows: any[] = [];
     for (let i = 0; i < gcLinkedIds.length; i += 200) {
