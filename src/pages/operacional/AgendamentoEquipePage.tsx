@@ -1163,7 +1163,6 @@ export default function AgendamentoEquipePage() {
                               tagsPorAgendamento={tagsPorAgendamento}
                                 tagsSelecionadas={tagsSelecionadas}
                                 apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
-                              apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
@@ -1190,6 +1189,7 @@ export default function AgendamentoEquipePage() {
                                 });
                                 setDialogCreateTaskOpen(true);
                               }}
+                              apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
                               onPreverProximoDia={async (a) => {
                                  const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
                                  const toastId = toast.loading("Gerando previsão...");
