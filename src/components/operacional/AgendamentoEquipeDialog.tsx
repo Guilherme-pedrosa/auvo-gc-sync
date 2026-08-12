@@ -183,12 +183,9 @@ export default function AgendamentoEquipeDialog({
       if (docId) {
         setGcDocEndpoint(agendamento.gc_os_id ? `/api/ordens_servicos/${docId}` : `/api/orcamentos/${docId}`);
       } else {
-
-        // Fallback se tiver código mas não ID (raro em agendamentos novos, mas possível em legados)
-        setGcDocEndpoint(null);
-      } else {
         setGcDocEndpoint(null);
       }
+
 
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
