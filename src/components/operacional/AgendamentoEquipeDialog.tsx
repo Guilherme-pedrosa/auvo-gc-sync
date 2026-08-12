@@ -178,11 +178,12 @@ export default function AgendamentoEquipeDialog({
       setQuestionnaireId(""); // Reset or fetch current if needed, but Auvo API for tasks doesn't always return current QID easily in list
       setPrevisaoDetalhes(agendamento.previsao_detalhes ?? "");
 
-      // Resolve endpoint para resumo financeiro se for Orçamento
-      const docId = agendamento.gc_os_id || (agendamento.gc_orcamento_id as string);
+      // Resolve endpoint para resumo financeiro
+      const docId = agendamento.gc_os_id || agendamento.gc_orcamento_id;
       if (docId) {
         setGcDocEndpoint(agendamento.gc_os_id ? `/api/ordens_servicos/${docId}` : `/api/orcamentos/${docId}`);
-      } else if (agendamento.gc_orcamento_codigo) {
+      } else {
+
         // Fallback se tiver código mas não ID (raro em agendamentos novos, mas possível em legados)
         setGcDocEndpoint(null);
       } else {
