@@ -175,16 +175,22 @@ export default function AgendamentoEquipeDialog({
       setVeiculoId(agendamento.veiculo_id ?? "");
       setCliente(agendamento.cliente);
       setDescricao(agendamento.descricao ?? "");
-      setQuestionnaireId(""); // Reset or fetch current if needed, but Auvo API for tasks doesn't always return current QID easily in list
+      setQuestionnaireId(""); 
       setPrevisaoDetalhes(agendamento.previsao_detalhes ?? "");
 
-      // Resolve endpoint para resumo financeiro
-      const docId = agendamento.gc_os_id || agendamento.gc_orcamento_id;
-      if (docId) {
-        setGcDocEndpoint(agendamento.gc_os_id ? `/api/ordens_servicos/${docId}` : `/api/orcamentos/${docId}`);
+      // O agendamento da escala pode vir de previsões manuais ou de tarefas reais sincronizadas
+      // Precisamos garantir que os IDs do GestãoClick estejam disponíveis para o fetch financeiro
+      const osId = agendamento.gc_os_id;
+      const orcamentoId = agendamento.gc_orcamento_id;
+      
+      if (osId) {
+        setGcDocEndpoint(`/api/ordens_servicos/${osId}`);
+      } else if (orcamentoId) {
+        setGcDocEndpoint(`/api/orcamentos/${orcamentoId}`);
       } else {
         setGcDocEndpoint(null);
       }
+
 
 
     } else {
@@ -471,7 +477,15 @@ export default function AgendamentoEquipeDialog({
                 </div>
               ) : gcDoc ? (
                 <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                  {agendamento?.previsao_detalhes && (
+                    <div className="bg-blue-50/50 border border-blue-200 rounded p-2 mb-2">
+                      <p className="text-[10px] text-blue-700 font-medium">
+                        {agendamento.previsao_detalhes}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center border-b pb-2 mb-2">
+
                     <span className="text-xs font-bold uppercase">Total do Documento</span>
                     <span className="text-sm font-bold text-foreground">{formatCurrency(gcValorTotal)}</span>
                   </div>
