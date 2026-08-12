@@ -617,6 +617,10 @@ function sanitizeCentralRow(row: any) {
     result.questionario_respostas = row.questionario_respostas;
   }
 
+  if (hasOwn(row, "pausas")) {
+    result.pausas = row.pausas;
+  }
+
   return result;
 }
 
@@ -808,6 +812,18 @@ Deno.serve(async (req) => {
       setKnown("check_out_iso", checkOutDate);
       if (hasOwn(task, "checkIn") || checkInDate) patch.check_in = task?.checkIn === true || !!checkInDate;
       if (hasOwn(task, "checkOut") || checkOutDate) patch.check_out = task?.checkOut === true || !!checkOutDate;
+
+      const controls: any[] = Array.isArray(task?.timeControl)
+        ? task.timeControl
+        : Array.isArray(task?.TimeControl)
+          ? task.TimeControl
+          : [];
+      if (controls.length > 0) {
+        patch.pausas = controls.map((c: any) => ({
+          inicio: c.pauseStart ?? c.startPause ?? c.start,
+          fim: c.pauseEnd ?? c.endPause ?? c.end ?? c.resumeDate,
+        }));
+      }
 
       if (plannedDurationMinutes > 0) {
         const { error: agendaDurationError } = await admin
