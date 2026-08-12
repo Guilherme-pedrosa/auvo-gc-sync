@@ -112,7 +112,10 @@ export default function RealtimeTrackingPage() {
       setLastFetchTime(new Date().toISOString());
       return regroupTrackingByAuvoAssignee(data as TrackingData);
     },
-    refetchInterval: 60_000,
+    refetchInterval: 15 * 60 * 1000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     staleTime: 15_000,
   });
 
