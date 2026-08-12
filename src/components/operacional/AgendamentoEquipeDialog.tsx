@@ -188,9 +188,9 @@ export default function AgendamentoEquipeDialog({
       } else if (orcamentoId) {
         setGcDocEndpoint(`/api/orcamentos/${orcamentoId}`);
       } else {
-
         setGcDocEndpoint(null);
       }
+
 
 
     } else {
