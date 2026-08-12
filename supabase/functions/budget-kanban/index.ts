@@ -1401,8 +1401,34 @@ async function runBudgetKanbanSync(opts: {
     }
   }
 
+  // Regra dura: só entram no Kanban tarefas do questionário de OS Complementar
+  // (216040). Linhas trazidas por vínculo GC com outro questionário são descartadas.
+  const rejectedTaskIds: string[] = [];
+  const eligibleCentral = combinedCentral.filter((row: any) => {
+    const ok = String(row.questionario_id || "").trim() === QUESTIONNAIRE_ID;
+    if (!ok) {
+      const tid = String(row.auvo_task_id || "").trim();
+      if (tid) rejectedTaskIds.push(tid);
+    }
+    return ok;
+  });
+  combinedCentral.length = 0;
+  combinedCentral.push(...eligibleCentral);
+  if (rejectedTaskIds.length > 0) {
+    console.log(`[budget-kanban] Descartadas ${rejectedTaskIds.length} tarefas sem questionário ${QUESTIONNAIRE_ID}`);
+    for (let i = 0; i < rejectedTaskIds.length; i += 200) {
+      const chunk = rejectedTaskIds.slice(i, i + 200);
+      const { error: purgeError } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .delete()
+        .in("auvo_task_id", chunk);
+      if (purgeError) console.warn("[budget-kanban] Falha ao limpar cache inválido:", purgeError.message);
+    }
+  }
+
   // Build kanban items: central rows (com overlay) + Auvo-only (não na central)
   const centralIds = new Set(combinedCentral.map((r: any) => String(r.auvo_task_id || "").trim()).filter(Boolean));
+  for (const tid of rejectedTaskIds) centralIds.add(tid);
   const auvoOnlyTasks = auvoTasks.filter((t: any) => !centralIds.has(String(t?.taskID || "").trim()));
 
   console.log(`[budget-kanban] sync_path=auvo+central`);
@@ -1601,9 +1627,10 @@ async function runBudgetKanbanSync(opts: {
   // para sempre, mesmo com documento existente no GestãoClick. ===
   try {
     const syncedIds = new Set(items.map((i: any) => String(i.auvo_task_id || "")));
+    const rejectedSet = new Set(rejectedTaskIds);
     const gcLinkedIds = Array.from(
       new Set([...Object.keys(gcOrcMap), ...Object.keys(gcOsMap)]),
-    ).filter((id) => id && !syncedIds.has(id));
+    ).filter((id) => id && !syncedIds.has(id) && !rejectedSet.has(id));
 
     const backfillRows: any[] = [];
     for (let i = 0; i < gcLinkedIds.length; i += 200) {
