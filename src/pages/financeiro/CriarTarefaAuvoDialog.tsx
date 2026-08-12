@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useAuth } from "@/hooks/useAuth";
 
 type Props = {
   open: boolean;
@@ -47,6 +48,7 @@ function formatDuration(minutes: number): string {
 }
 
 export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento, onCreated }: Props) {
+  const { profile } = useAuth();
   const [taskTypeId, setTaskTypeId] = useState<string>("");
   const [idUserTo, setIdUserTo] = useState<string>("");
   const [questionnaireId, setQuestionnaireId] = useState<string>("");
@@ -185,6 +187,11 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       toast.error("Preencha tipo, técnico, data e hora");
       return;
     }
+    const openerAuvoId = String(profile?.auvo_user_id || "").trim();
+    if (!openerAuvoId) {
+      toast.error("Seu usuário não está vinculado ao Auvo. Cadastre o Auvo User ID em Admin > Usuários.");
+      return;
+    }
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
@@ -192,6 +199,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
           action: "create-preventive-task",
           auvoEquipmentId: equipamento.auvo_equipment_id,
           idUserTo,
+          idUserFrom: openerAuvoId,
           taskTypeId,
           dateISO,
           startTime,
@@ -222,7 +230,12 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
         onOpenChange(false);
       } else {
         const msg = data?.error || data?.data?.errorMessage || data?.data?.error || `Status ${data?.status}`;
-        toast.error(`Auvo recusou: ${msg}`);
+        const statusPrefix = data?.status ? `HTTP ${data.status} · ` : "";
+        const reqSuffix = data?.reqId ? ` · código ${data.reqId}` : "";
+        toast.error("Auvo recusou a preventiva", {
+          description: `${statusPrefix}${msg}${reqSuffix}`,
+          duration: 12000,
+        });
         console.error("[create-preventive-task] resposta:", data);
       }
     } catch (e: any) {
@@ -312,7 +325,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               value={orientation}
               onChange={(e) => setOrientation(e.target.value)}
               rows={3}
-              maxLength={500}
+              maxLength={5000}
             />
           </div>
         </div>
