@@ -172,6 +172,7 @@ interface CelulaProps {
   clientesInfo?: any[];
   tagsPorAgendamento: Map<string, AgendaTag[]>;
   tagsSelecionadas: string[];
+  apenasPrevisaoOrcamento?: boolean;
 }
 
 function Celula({
@@ -187,6 +188,7 @@ function Celula({
   clientesInfo = [],
   tagsPorAgendamento,
   tagsSelecionadas,
+  apenasPrevisaoOrcamento = false,
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
@@ -1159,7 +1161,9 @@ export default function AgendamentoEquipePage() {
                               itens={itens}
                               clientesInfo={rhClientes}
                               tagsPorAgendamento={tagsPorAgendamento}
-                              tagsSelecionadas={tagsSelecionadas}
+                                tagsSelecionadas={tagsSelecionadas}
+                                apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
+                              apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
