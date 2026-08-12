@@ -161,7 +161,7 @@ function taskTypeClonePayload(base: any, description: string, durationMinutes: n
   return payload;
 }
 
-async function ensureTaskTypeDuration(
+async function ensureTaskTypeDurationStrict(
   requestedTaskTypeId: number,
   requestedDuration: unknown,
   headers: Record<string, string>,
@@ -280,6 +280,35 @@ async function ensureTaskTypeDuration(
 }
 
 async function fetchTaskById(taskId: number, headers: Record<string, string>): Promise<any> {
+  return await fetchTaskByIdImpl(taskId, headers);
+}
+
+async function ensureTaskTypeDuration(
+  requestedTaskTypeId: number,
+  requestedDuration: unknown,
+  headers: Record<string, string>,
+  reqId: string,
+): Promise<AuvoTaskTypeResolution> {
+  try {
+    return await ensureTaskTypeDurationStrict(requestedTaskTypeId, requestedDuration, headers, reqId);
+  } catch (err) {
+    // Instabilidade do Auvo (500 ao listar/consultar tipos) não pode bloquear
+    // a criação da tarefa: segue com o tipo escolhido pelo usuário.
+    console.warn(
+      `[auvo-task-update][reqId=${reqId}] resolução de tipo/duração falhou (${(err as Error)?.message || err}) — usando tipo ${requestedTaskTypeId} como está`,
+    );
+    return {
+      id: requestedTaskTypeId,
+      baseId: requestedTaskTypeId,
+      description: `Tipo ${requestedTaskTypeId}`,
+      durationMinutes: normalizeRequestedDurationMinutes(requestedDuration),
+      managed: false,
+      raw: null,
+    };
+  }
+}
+
+async function fetchTaskByIdImpl(taskId: number, headers: Record<string, string>): Promise<any> {
   const response = await fetch(`${AUVO_BASE_URL}/tasks/${taskId}`, { headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

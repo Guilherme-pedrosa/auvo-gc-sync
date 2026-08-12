@@ -112,10 +112,15 @@ export default function CriarTarefaGeralDialog({
     label: `${e.name ?? e.description ?? "Equipamento"}${e.identifier ? ` (${e.identifier})` : ""}`,
   }))), [equipments]);
 
-  const taskTypeOptions = useMemo(() => sortOpts(taskTypes.map((t: any) => ({
-    value: String(t.id ?? t.taskTypeId ?? ""),
-    label: String(t.description ?? t.name ?? `Tipo ${t.id ?? ""}`),
-  }))), [taskTypes]);
+  const taskTypeOptions = useMemo(() => sortOpts(
+    taskTypes
+      // Variantes técnicas [WEDO:base:min] são internas e não devem ser selecionáveis.
+      .filter((t: any) => !/^\[WEDO:\d+:\d+\]/i.test(String(t.description ?? t.name ?? "")))
+      .map((t: any) => ({
+        value: String(t.id ?? t.taskTypeId ?? ""),
+        label: String(t.description ?? t.name ?? `Tipo ${t.id ?? ""}`),
+      })),
+  ), [taskTypes]);
 
   const userOptions = useMemo(() => sortOpts(users.map((u: any) => ({
     value: String(u.userID ?? u.userId ?? u.id ?? ""),
