@@ -323,8 +323,8 @@ function Celula({
               key={a.id}
               className={cn(
                 "group/item relative flex items-center rounded-sm transition-all",
-                tagsSelecionadas.length > 0 && !correspondeAoFiltro && "opacity-20 grayscale",
-                tagsSelecionadas.length > 0 && correspondeAoFiltro && "ring-2 ring-primary/70 ring-offset-1",
+                ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO")) && "opacity-20 grayscale",
+                ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo === "ORCAMENTO_EXECUCAO")) && "ring-2 ring-primary/70 ring-offset-1",
               )}
             >
               <button
@@ -345,8 +345,9 @@ function Celula({
                   }
                 }}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
+                  a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
                 )}
