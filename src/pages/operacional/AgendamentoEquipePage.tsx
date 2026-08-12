@@ -535,6 +535,7 @@ export default function AgendamentoEquipePage() {
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
@@ -1060,6 +1061,15 @@ export default function AgendamentoEquipePage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button 
+            variant={apenasPrevisaoOrcamento ? "default" : "outline"} 
+            size="sm" 
+            className={cn("gap-2 shrink-0", apenasPrevisaoOrcamento && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2")}
+            onClick={() => setApenasPrevisaoOrcamento(!apenasPrevisaoOrcamento)}
+          >
+            <CalendarClock className="h-4 w-4" />
+            <span>Previsão Orç.</span>
+          </Button>
           <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setDialogRelatorioOpen(true)}>
             <Printer className="h-4 w-4" /> <span className="hidden sm:inline">Exportar </span>PDF
           </Button>
