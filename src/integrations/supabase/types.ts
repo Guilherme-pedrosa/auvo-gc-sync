@@ -2155,6 +2155,45 @@ export type Database = {
           },
         ]
       }
+      realtime_tracking_gc_cache: {
+        Row: {
+          blocked_until: string | null
+          cache_key: string
+          data_fim: string
+          data_inicio: string
+          last_error: string | null
+          orc_map: Json
+          os_map: Json
+          refresh_started_at: string | null
+          refreshed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocked_until?: string | null
+          cache_key: string
+          data_fim: string
+          data_inicio: string
+          last_error?: string | null
+          orc_map?: Json
+          os_map?: Json
+          refresh_started_at?: string | null
+          refreshed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocked_until?: string | null
+          cache_key?: string
+          data_fim?: string
+          data_inicio?: string
+          last_error?: string | null
+          orc_map?: Json
+          os_map?: Json
+          refresh_started_at?: string | null
+          refreshed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       rh_client_requirements: {
         Row: {
           atualizado_em: string
@@ -3287,6 +3326,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_realtime_tracking_gc_refresh: {
+        Args: {
+          p_cache_key: string
+          p_data_fim: string
+          p_data_inicio: string
+          p_force?: boolean
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
