@@ -32,7 +32,10 @@ export interface AgendaAgendamento {
   auvo_task_id?: string | null;
   origem?: string | null;
   gc_os_codigo?: string | null;
+  gc_os_id?: string | null;
   gc_orcamento_codigo?: string | null;
+  gc_orcamento_id?: string | null;
+
   contrato_id?: string | null;
   contrato_visita_config_id?: string | null;
   contrato_visita_competencia?: string | null;
@@ -67,7 +70,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
 
   const documentosPorTarefa = new Map<string, {
     os: string | null;
+    os_id: string | null;
     orcamento: string | null;
+    orcamento_id: string | null;
+
     situacao: string | null;
     status_auvo: string | null;
     check_in: string | null;
@@ -113,7 +119,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -163,7 +169,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       const atual = documentosPorTarefa.get(taskId);
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
+        os_id: atual?.os_id || row.gc_os_id || null,
         orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
+        orcamento_id: atual?.orcamento_id || row.gc_orcamento_id || null,
+
         situacao: atual?.situacao || row.gc_os_situacao || null,
         status_auvo: atual?.status_auvo || row.status_auvo || null,
         check_in: atual?.check_in || row.check_in_iso || null,
@@ -183,7 +192,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec,gc_os_tarefa_os")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec,gc_os_tarefa_os")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -200,7 +209,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         if (atual?.os) continue;
         documentosPorTarefa.set(taskId, {
           os: row.gc_os_codigo || null,
+          os_id: row.gc_os_id || null,
           orcamento: row.gc_orcamento_codigo || null,
+          orcamento_id: row.gc_orcamento_id || null,
+
           situacao: row.gc_os_situacao || null,
           status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
           check_in: estadoPorTarefa.get(taskId)?.check_in || null,
@@ -232,7 +244,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     return {
       ...item,
       gc_os_codigo: documento.os || item.gc_os_codigo || null,
+      gc_os_id: documento.os_id || item.gc_os_id || null,
       gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
+      gc_orcamento_id: documento.orcamento_id || item.gc_orcamento_id || null,
+
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: tempo?.check_in_iso || estado?.check_in || documento.check_in || item.check_in_iso || null,
