@@ -80,6 +80,8 @@ export default function AgendamentoEquipeDialog({
   const [descricao, setDescricao] = useState("");
   const [questionnaireId, setQuestionnaireId] = useState("");
   const [previsaoDetalhes, setPrevisaoDetalhes] = useState("");
+  const [gcDocEndpoint, setGcDocEndpoint] = useState<string | null>(null);
+
 
   const { data: questionnaires = [] } = useQuery({
     queryKey: ["auvo-questionnaires"],
@@ -127,6 +129,27 @@ export default function AgendamentoEquipeDialog({
     if (currentQuestionnaireId) setQuestionnaireId(currentQuestionnaireId);
   }, [currentQuestionnaireId]);
 
+  const { data: gcDoc, isLoading: gcDocLoading } = useQuery({
+    queryKey: ["previsao_gc_doc_detalhe", gcDocEndpoint],
+    enabled: !!gcDocEndpoint,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: gcDocEndpoint, method: "GET" },
+      });
+      if (error) return null;
+      return (data?.data?.data ?? data?.data ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const formatCurrency = (v: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+
+  const gcProdutos: any[] = (gcDoc?.produtos || []).map((p: any) => p?.produto || p);
+  const gcServicos: any[] = (gcDoc?.servicos || []).map((s: any) => s?.servico || s);
+  const gcValorTotal = Number(gcDoc?.valor_total || 0);
+
+
   const currentQuestionnaireLabel = useMemo(() => {
     if (!currentQuestionnaireId) return null;
     return (
@@ -154,6 +177,18 @@ export default function AgendamentoEquipeDialog({
       setDescricao(agendamento.descricao ?? "");
       setQuestionnaireId(""); // Reset or fetch current if needed, but Auvo API for tasks doesn't always return current QID easily in list
       setPrevisaoDetalhes(agendamento.previsao_detalhes ?? "");
+
+      // Resolve endpoint para resumo financeiro se for Orçamento
+      const docId = agendamento.gc_os_id || (agendamento.gc_orcamento_id as string);
+      if (docId) {
+        setGcDocEndpoint(agendamento.gc_os_id ? `/api/ordens_servicos/${docId}` : `/api/orcamentos/${docId}`);
+      } else if (agendamento.gc_orcamento_codigo) {
+        // Fallback se tiver código mas não ID (raro em agendamentos novos, mas possível em legados)
+        setGcDocEndpoint(null);
+      } else {
+        setGcDocEndpoint(null);
+      }
+
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
@@ -163,6 +198,8 @@ export default function AgendamentoEquipeDialog({
       setCliente("");
       setDescricao("");
       setPrevisaoDetalhes("");
+      setGcDocEndpoint(null);
+
     }
   }, [open, agendamento, initialDate]);
 
@@ -422,7 +459,80 @@ export default function AgendamentoEquipeDialog({
               </p>
             </div>
           )}
+
+          {gcDocEndpoint && (
+            <div className="space-y-3">
+              <Label className="text-xs text-primary font-bold flex items-center gap-2">
+                💰 Detalhes Financeiros {agendamento?.gc_os_codigo ? `(OS ${agendamento.gc_os_codigo})` : `(Orç. ${agendamento?.gc_orcamento_codigo})`}
+              </Label>
+              
+              {gcDocLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : gcDoc ? (
+                <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                  <div className="flex justify-between items-center border-b pb-2 mb-2">
+                    <span className="text-xs font-bold uppercase">Total do Documento</span>
+                    <span className="text-sm font-bold text-foreground">{formatCurrency(gcValorTotal)}</span>
+                  </div>
+                  
+                  {gcProdutos.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                        📦 Produtos ({gcProdutos.length})
+                      </span>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {gcProdutos.map((p, i) => (
+                          <div key={i} className="flex justify-between text-[10px] bg-background/50 p-1.5 rounded border border-border/50">
+                            <span className="truncate flex-1 pr-2">
+                              {p.codigo_interno || p.codigo || "?"} · {p.nome_produto || p.descricao || p.nome || "?"}
+                            </span>
+                            <span className="font-medium whitespace-nowrap">
+                              {p.quantidade || p.qtd || 1} x {formatCurrency(Number(p.valor_venda || p.valor_unitario || 0))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {gcServicos.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                        🛠️ Serviços ({gcServicos.length})
+                      </span>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {gcServicos.map((s, i) => (
+                          <div key={i} className="flex justify-between text-[10px] bg-background/50 p-1.5 rounded border border-border/50">
+                            <span className="truncate flex-1 pr-2">
+                              {s.nome_servico || s.descricao || s.nome || "?"}
+                            </span>
+                            <span className="font-medium whitespace-nowrap">
+                              {formatCurrency(Number(s.valor_total || s.subtotal || 0))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!gcDocLoading && gcProdutos.length === 0 && gcServicos.length === 0 && (
+                    <p className="text-[10px] text-center text-muted-foreground py-2 italic">
+                      Nenhum item detalhado encontrado no GestãoClick.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                  Não foi possível carregar os detalhes financeiros deste documento.
+                </p>
+              )}
+            </div>
+          )}
         </div>
+
 
         <DialogFooter className="gap-2 sm:justify-between">
           {agendamento ? (
