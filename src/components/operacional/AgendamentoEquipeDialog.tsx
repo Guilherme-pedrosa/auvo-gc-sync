@@ -477,7 +477,15 @@ export default function AgendamentoEquipeDialog({
                 </div>
               ) : gcDoc ? (
                 <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                  {agendamento?.previsao_detalhes && (
+                    <div className="bg-blue-50/50 border border-blue-200 rounded p-2 mb-2">
+                      <p className="text-[10px] text-blue-700 font-medium">
+                        {agendamento.previsao_detalhes}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center border-b pb-2 mb-2">
+
                     <span className="text-xs font-bold uppercase">Total do Documento</span>
                     <span className="text-sm font-bold text-foreground">{formatCurrency(gcValorTotal)}</span>
                   </div>
