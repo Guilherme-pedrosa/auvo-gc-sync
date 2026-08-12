@@ -1541,12 +1541,32 @@ Deno.serve(async (req) => {
       if (externalId) taskPayload.externalId = String(externalId);
 
       let response: Response;
+      const postTask = (payload: unknown) => fetch(`${AUVO_BASE_URL}/tasks/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const sanitizedPayload = { ...taskPayload };
+      console.log(
+        `[auvo-task-update][reqId=${reqId}] create-task payload=`,
+        JSON.stringify(sanitizedPayload),
+      );
       try {
-        response = await fetch(`${AUVO_BASE_URL}/tasks/`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(taskPayload),
-        });
+        response = await postTask(taskPayload);
+        // Auvo devolve 400 quando questionário/equipamento não são aceitos
+        // para o cliente ou tipo escolhido. Retentamos sem os opcionais.
+        if (response.status === 400 && (taskPayload.questionnaireId || taskPayload.equipmentsId?.length)) {
+          const firstError = await response.text();
+          console.warn(
+            `[auvo-task-update][reqId=${reqId}] create-task 400, retentando sem opcionais:`,
+            firstError,
+          );
+          const retryPayload = { ...taskPayload };
+          delete retryPayload.questionnaireId;
+          delete retryPayload.equipmentsId;
+          response = await postTask(retryPayload);
+          if (response.ok) taskPayload.__retriedWithoutOptionalFields = true;
+        }
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] create-task erro de rede:`, err);
         return new Response(
@@ -1565,7 +1585,7 @@ Deno.serve(async (req) => {
         data?.taskID ?? data?.taskId ?? null;
 
       if (!response.ok) {
-        console.error(`[auvo-task-update][reqId=${reqId}] create-task Auvo ${response.status}:`, respText.substring(0, 800));
+        console.error(`[auvo-task-update][reqId=${reqId}] create-task Auvo ${response.status} RAW:`, respText);
       }
       console.log(`[auvo-task-update][reqId=${reqId}] create-task status=${response.status} taskId=${newId}`);
 
