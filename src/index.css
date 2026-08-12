@@ -54,6 +54,15 @@
     --info-foreground: 0 0% 100%;
   }
 
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(0.98); }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
   .dark {
     --background: 222 47% 6%;
     --foreground: 220 15% 90%;

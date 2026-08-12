@@ -172,6 +172,7 @@ interface CelulaProps {
   clientesInfo?: any[];
   tagsPorAgendamento: Map<string, AgendaTag[]>;
   tagsSelecionadas: string[];
+  apenasPrevisaoOrcamento?: boolean;
 }
 
 function Celula({
@@ -187,6 +188,7 @@ function Celula({
   clientesInfo = [],
   tagsPorAgendamento,
   tagsSelecionadas,
+  apenasPrevisaoOrcamento = false,
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
@@ -323,8 +325,8 @@ function Celula({
               key={a.id}
               className={cn(
                 "group/item relative flex items-center rounded-sm transition-all",
-                tagsSelecionadas.length > 0 && !correspondeAoFiltro && "opacity-20 grayscale",
-                tagsSelecionadas.length > 0 && correspondeAoFiltro && "ring-2 ring-primary/70 ring-offset-1",
+                ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO")) && "opacity-20 grayscale",
+                ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo === "ORCAMENTO_EXECUCAO")) && "ring-2 ring-primary/70 ring-offset-1",
               )}
             >
               <button
@@ -345,8 +347,9 @@ function Celula({
                   }
                 }}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
+                  a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
                 )}
@@ -535,6 +538,7 @@ export default function AgendamentoEquipePage() {
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
@@ -1060,6 +1064,15 @@ export default function AgendamentoEquipePage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button 
+            variant={apenasPrevisaoOrcamento ? "default" : "outline"} 
+            size="sm" 
+            className={cn("gap-2 shrink-0", apenasPrevisaoOrcamento && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2")}
+            onClick={() => setApenasPrevisaoOrcamento(!apenasPrevisaoOrcamento)}
+          >
+            <CalendarClock className="h-4 w-4" />
+            <span>Previsão Orç.</span>
+          </Button>
           <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setDialogRelatorioOpen(true)}>
             <Printer className="h-4 w-4" /> <span className="hidden sm:inline">Exportar </span>PDF
           </Button>
@@ -1149,6 +1162,7 @@ export default function AgendamentoEquipePage() {
                               clientesInfo={rhClientes}
                               tagsPorAgendamento={tagsPorAgendamento}
                               tagsSelecionadas={tagsSelecionadas}
+                              apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
