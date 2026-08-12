@@ -818,7 +818,12 @@ async function upsertBudgetKanbanSyncRowsLegacy(sbClient: any, syncRows: any[]):
 
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
   const taskId = String(row.auvo_task_id || "").trim();
-  const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
+  // Só o questionário de OS Complementar (216040) alimenta o Kanban Orçamentos.
+  // Linhas trazidas por vínculo GC podem ter outro questionário salvo na central.
+  const isTargetQuestionnaire = String(row.questionario_id || "").trim() === QUESTIONNAIRE_ID;
+  const questionarioRespostas = isTargetQuestionnaire && Array.isArray(row.questionario_respostas)
+    ? row.questionario_respostas
+    : [];
   const freshOrc = gcOrcMap[taskId] || null;
   const freshOs = gcOsMap[taskId] || null;
   const effectiveOs = freshOs;
