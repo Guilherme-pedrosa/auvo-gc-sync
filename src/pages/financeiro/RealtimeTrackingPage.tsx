@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,6 +70,16 @@ type TrackingData = {
   total_tecnicos: number;
   total_atrasadas: number;
   tecnicos: TecnicoGroup[];
+  gc_cache?: {
+    mode: "read_only" | "cache" | "manual";
+    source: "cache" | "manual" | "database";
+    refreshed_at: string | null;
+    stale: boolean;
+    refreshing: boolean;
+    blocked_until: string | null;
+    rate_limited: boolean;
+    error: string | null;
+  };
 };
 
 const statusIcon: Record<string, { icon: typeof CheckCircle2; class: string }> = {
@@ -87,6 +97,7 @@ const statusBarColor: Record<string, string> = {
 };
 
 export default function RealtimeTrackingPage() {
+  const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [sheetOpen, setSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
@@ -100,12 +111,13 @@ export default function RealtimeTrackingPage() {
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
   const [isSyncingDivergencias, setIsSyncingDivergencias] = useState(false);
+  const [isRefreshingGc, setIsRefreshingGc] = useState(false);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["realtime-tracking", dateStr],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("realtime-tracking", {
-        body: { date: dateStr },
+        body: { date: dateStr, gc_mode: "cache" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -118,6 +130,73 @@ export default function RealtimeTrackingPage() {
     refetchOnReconnect: false,
     staleTime: 15_000,
   });
+
+  // Mantém somente o Auvo em 60s. O hotfix de 15 minutos da consulta principal
+  // permanece, e este caminho read_only jamais inicia paginação no GestãoClick.
+  useEffect(() => {
+    let stopped = false;
+    let running = false;
+    const refreshAuvoOnly = async () => {
+      if (running || stopped || document.visibilityState !== "visible") return;
+      running = true;
+      try {
+        const { data: refreshed, error } = await supabase.functions.invoke("realtime-tracking", {
+          body: { date: dateStr, gc_mode: "read_only" },
+        });
+        if (error) throw error;
+        if (refreshed?.error) throw new Error(refreshed.error);
+        if (!stopped) {
+          queryClient.setQueryData(
+            ["realtime-tracking", dateStr],
+            regroupTrackingByAuvoAssignee(refreshed as TrackingData),
+          );
+          setLastFetchTime(new Date().toISOString());
+        }
+      } catch (error) {
+        console.warn("[RealtimeTracking] Atualização rápida do Auvo falhou:", error);
+      } finally {
+        running = false;
+      }
+    };
+
+    const timer = window.setInterval(() => void refreshAuvoOnly(), 60_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [dateStr, queryClient]);
+
+  const refreshAuvoAndGc = useCallback(async () => {
+    if (isRefreshingGc) return;
+    setIsRefreshingGc(true);
+    toast.info("Atualizando Auvo e cache do GestãoClick...");
+    try {
+      const { data: refreshed, error } = await supabase.functions.invoke("realtime-tracking", {
+        body: { date: dateStr, gc_mode: "manual" },
+      });
+      if (error) throw error;
+      if (refreshed?.error) throw new Error(refreshed.error);
+
+      const normalized = regroupTrackingByAuvoAssignee(refreshed as TrackingData);
+      queryClient.setQueryData(["realtime-tracking", dateStr], normalized);
+      setLastFetchTime(new Date().toISOString());
+
+      if (normalized.gc_cache?.rate_limited) {
+        toast.warning("GestãoClick atingiu o limite. Dados locais mantidos sem novas tentativas automáticas.");
+      } else if (normalized.gc_cache?.source === "manual") {
+        toast.success("Auvo e GestãoClick atualizados.");
+      } else {
+        toast.success("Auvo atualizado; dados do GestãoClick mantidos pelo cache.");
+      }
+    } catch (error) {
+      console.error("[RealtimeTracking] Erro na atualização manual:", error);
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar os dados.");
+    } finally {
+      setIsRefreshingGc(false);
+    }
+  }, [dateStr, isRefreshingGc, queryClient]);
+
+  const isRefreshing = isFetching || isRefreshingGc;
 
   // Monthly late tasks query
   const getDivDates = () => {
@@ -317,8 +396,8 @@ export default function RealtimeTrackingPage() {
                 </button>
               </div>
 
-              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching}>
-                <RefreshCw className={`h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => void refreshAuvoAndGc()} disabled={isRefreshing}>
+                <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
               </Button>
 
               <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => setTvMode(true)} disabled={!data} title="Modo TV">
@@ -370,13 +449,10 @@ export default function RealtimeTrackingPage() {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs"
-                    onClick={() => {
-                      refetch();
-                      toast.info("Atualizando dados...");
-                    }}
-                    disabled={isFetching}
+                    onClick={() => void refreshAuvoAndGc()}
+                    disabled={isRefreshing}
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRefreshing ? "animate-spin" : ""}`} />
                     Sincronizar
                   </Button>
 
@@ -449,8 +525,8 @@ export default function RealtimeTrackingPage() {
                     </SheetContent>
                   </Sheet>
 
-                  <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
-                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+                  <Button variant="outline" size="sm" onClick={() => void refreshAuvoAndGc()} disabled={isRefreshing} className="h-8 text-xs">
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRefreshing ? "animate-spin" : ""}`} />
                     Atualizar
                   </Button>
 
