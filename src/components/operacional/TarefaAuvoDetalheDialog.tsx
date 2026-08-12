@@ -360,6 +360,31 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                     Duração: {Number(tarefa.duracao_decimal).toFixed(1)}h
                   </p>
                 )}
+                {Array.isArray((tarefa as any).pausas) && (tarefa as any).pausas.length > 0 && (
+                  <div className="mt-1 space-y-0.5 border-t border-muted-foreground/10 pt-1">
+                    <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1">
+                      ⏸️ Pausas detectadas:
+                    </p>
+                    {(tarefa as any).pausas.map((p: any, idx: number) => {
+                      const start = p.inicio ? new Date(p.inicio) : null;
+                      const end = p.fim ? new Date(p.fim) : null;
+                      const formatTime = (d: Date | null) => d ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) : "—";
+                      
+                      let diffText = "";
+                      if (start && end && end > start) {
+                        const diffMin = Math.round((end.getTime() - start.getTime()) / 60000);
+                        diffText = `(${diffMin}min)`;
+                      }
+
+                      return (
+                        <p key={idx} className="text-[10px] text-muted-foreground flex items-center justify-between">
+                          <span>{formatTime(start)} → {formatTime(end)}</span>
+                          <span className="font-medium">{diffText}</span>
+                        </p>
+                      );
+                    })}
+                  </div>
+                )}
                 {onEdit && (
                   <Button 
                     variant="link" 
