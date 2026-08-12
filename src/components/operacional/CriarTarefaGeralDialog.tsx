@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Props {
   open: boolean;
@@ -35,6 +36,7 @@ const invokeAuvo = async (body: Record<string, unknown>) => {
 export default function CriarTarefaGeralDialog({
   open, onOpenChange, onSuccess, initialDate, initialUserAuvoId, initialUserNome,
 }: Props) {
+  const { profile } = useAuth();
   const [taskTypeId, setTaskTypeId] = useState("");
   const [idUserTo, setIdUserTo] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -142,17 +144,34 @@ export default function CriarTarefaGeralDialog({
       toast.error("Preencha cliente, tipo de tarefa, técnico, data e hora.");
       return;
     }
+    const openerAuvoId = String(profile?.auvo_user_id || "").trim();
+    if (!openerAuvoId) {
+      toast.error("Seu usuário não está vinculado ao Auvo. Cadastre o Auvo User ID em Admin > Usuários.");
+      return;
+    }
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "create-task",
-          customerId, idUserTo, taskTypeId, dateISO, startTime,
+          customerId, idUserTo, idUserFrom: openerAuvoId, taskTypeId, dateISO, startTime,
           durationMinutes, orientation, questionnaireId: questionnaireId || null,
           equipmentIds, priority: Number(priority), checkinType: Number(checkinType),
         },
       });
-      if (error) throw error;
+      if (error) {
+        let detail = error.message;
+        try {
+          const context = (error as { context?: Response }).context;
+          const contextData = context
+            ? await context.clone().json() as { error?: string; message?: string }
+            : null;
+          detail = contextData?.error || contextData?.message || detail;
+        } catch {
+          // Mantém a mensagem original quando a resposta não for JSON.
+        }
+        throw new Error(detail);
+      }
       if (data?.success) {
         const tid = data.taskId ? String(data.taskId) : null;
         toast.success(tid ? `Tarefa criada no Auvo (#${tid})` : "Tarefa criada no Auvo", {
@@ -171,7 +190,12 @@ export default function CriarTarefaGeralDialog({
         }
         onOpenChange(false);
       } else {
-        toast.error("Auvo recusou: " + (data?.error || "erro desconhecido"));
+        const statusPrefix = data?.status ? `HTTP ${data.status} · ` : "";
+        const reqSuffix = data?.reqId ? ` · código ${data.reqId}` : "";
+        toast.error("Auvo recusou a tarefa", {
+          description: `${statusPrefix}${data?.error || "Erro desconhecido"}${reqSuffix}`,
+          duration: 12000,
+        });
       }
     } catch (e: any) {
       toast.error("Falha na requisição: " + (e?.message || String(e)));
@@ -325,10 +349,10 @@ export default function CriarTarefaGeralDialog({
               value={orientation}
               onChange={e => setOrientation(e.target.value)}
               rows={4}
-              maxLength={500}
+              maxLength={5000}
               placeholder="Descreva o serviço a ser executado..."
             />
-            <span className="text-[10px] text-muted-foreground">{orientation.length}/500</span>
+            <span className="text-[10px] text-muted-foreground">{orientation.length}/5000</span>
           </div>
         </div>
 
