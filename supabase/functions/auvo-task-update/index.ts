@@ -1247,7 +1247,8 @@ Deno.serve(async (req) => {
         taskType: durationResolution.id,
         taskDate: startISO,
         priority: Number(priority),
-        orientation: String(orientation || "Preventiva programada").substring(0, 5000),
+        checkinType: 1,
+        orientation: String(orientation || "Preventiva programada").substring(0, 500),
         equipmentsId: [Number(auvoEquipmentId)],
         address: cust?.address || eq?.address || "Endereço não informado",
         latitude: Number(cust?.latitude ?? eq?.latitude ?? 0),
@@ -1267,12 +1268,25 @@ Deno.serve(async (req) => {
 
       const url = `${AUVO_BASE_URL}/tasks/`;
       let response: Response;
+      const postTask = (payload: unknown) => fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
       try {
-        response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(taskPayload),
-        });
+        response = await postTask(taskPayload);
+        // Auvo devolve 400 quando o questionário ou o equipamento não são
+        // aceitos para o cliente/tipo escolhido. Tentamos de novo sem esses
+        // campos opcionais antes de desistir.
+        if (response.status === 400 && (taskPayload.questionnaireId || taskPayload.equipmentsId?.length)) {
+          const firstError = await response.text();
+          console.warn(`[auvo-task-update][reqId=${reqId}] create-preventive-task 400, retentando sem opcionais:`, firstError.substring(0, 500));
+          const retryPayload = { ...taskPayload };
+          delete retryPayload.questionnaireId;
+          delete retryPayload.equipmentsId;
+          response = await postTask(retryPayload);
+          if (response.ok) taskPayload.__retriedWithoutOptionalFields = true;
+        }
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] create-preventive-task erro de rede:`, err);
         return new Response(
@@ -1318,6 +1332,12 @@ Deno.serve(async (req) => {
           success: response.ok,
           status: response.status,
           taskId: newTaskId,
+          error: response.ok
+            ? null
+            : (data?.message || data?.Message || data?.error
+              || (Array.isArray(data?.errors) ? data.errors.join(" | ") : null)
+              || (data?.errors && typeof data.errors === "object" ? Object.values(data.errors).flat().join(" | ") : null)
+              || data?.raw || `HTTP ${response.status}`),
           data,
           payload: taskPayload,
           duration: {
