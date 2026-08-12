@@ -613,31 +613,29 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
             )}
 
-            {tarefa.orientacao && (
-              <div className="border rounded-md">
-                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Orientação / Peças</span>
-                </div>
-                <pre className="p-3 text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                  {tarefa.orientacao}
-                </pre>
-              </div>
-            )}
 
-            {(textos.length > 0 || fotos.length > 0) && (
+            {(textos.length > 0 || fotos.length > 0 || tarefa.orientacao) && (
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Questionário</span>
+                  <span className="text-sm font-semibold">Relato / Questionário</span>
                 </div>
                 <div className="p-3 space-y-2">
+                  {tarefa.orientacao && (
+                    <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2">
+                      <span className="text-muted-foreground text-xs block mb-1">Relato / Orientação</span>
+                      <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm">
+                        {tarefa.orientacao}
+                      </pre>
+                    </div>
+                  )}
                   {textos.map((r, i) => (
                     <div key={i} className="text-sm">
                       <span className="text-muted-foreground text-xs">{r.question}</span>
                       <p className="font-medium">{r.reply}</p>
                     </div>
                   ))}
+
                   {fotos.length > 0 && (
                     <div className="grid grid-cols-3 gap-2 pt-2">
                       {fotos.map((r, i) => (
