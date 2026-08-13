@@ -308,6 +308,10 @@ function Celula({
             : null;
           const situacaoGc = String(a.gc_os_situacao || "").trim();
           const destacarSituacaoGc = shouldHighlightPendingGcExecution(a);
+          const clienteGc = String(a.gc_os_cliente || "").trim();
+          const clienteDivergente = Boolean(
+            a.auvo_task_id && clienteGc && a.cliente && areNamesDivergent(a.cliente, clienteGc),
+          );
           const identificadoresAntesSituacao = [
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
@@ -353,6 +357,7 @@ function Celula({
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
+                  clienteDivergente && "border-2 border-destructive ring-1 ring-destructive/50",
                 )}
               >
                 <div className="flex flex-col">
@@ -382,6 +387,15 @@ function Celula({
                     )}
                     {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
                   </span>
+                  {clienteDivergente && (
+                    <span
+                      className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
+                      title={`Cliente divergente · Auvo: ${a.cliente} · GC: ${clienteGc}`}
+                    >
+                      <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
+                      <span className="truncate">Cliente GC divergente: {clienteGc}</span>
+                    </span>
+                  )}
                   {itemTags.length > 0 && (
                     <span className="mt-1 flex flex-wrap gap-1 normal-case">
                       {itemTags.map((tag) => {
