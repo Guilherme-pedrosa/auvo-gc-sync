@@ -36,8 +36,8 @@ export function areNamesDivergent(nameA: string | null | undefined, nameB: strin
   const intersection = tokensA.filter(t => tokensB.includes(t));
   const overlap = intersection.length / Math.max(tokensA.length, tokensB.length);
   
-  // Se a sobreposição for menor que 70%, consideramos divergente
-  return overlap < 0.7;
+  // Se a sobreposição for menor que 60%, consideramos divergente (reduzido de 70% para evitar falso-positivos)
+  return overlap < 0.6;
 }
 
 /**
