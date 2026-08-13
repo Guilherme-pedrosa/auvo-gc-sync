@@ -139,7 +139,9 @@ export default function ClientesRhPage() {
     const loadingToast = toast.loading(`Atualizando ${selected.length} nome(s) no Auvo...`);
     
     try {
-      const result = await updateAuvoClientNames(selected);
+      const result = await updateAuvoClientNames(selected, (done, total) => {
+        toast.loading(`Atualizando nomes no Auvo... ${done}/${total}`, { id: loadingToast });
+      });
       if (result.updated > 0) {
         toast.success(`${result.updated} nome(s) atualizado(s) no Auvo com sucesso!`, { id: loadingToast });
       } else {
