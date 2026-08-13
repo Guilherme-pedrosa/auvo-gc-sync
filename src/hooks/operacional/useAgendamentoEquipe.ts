@@ -176,7 +176,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       let vinculoStatus = (row as any).vinculo_status || null;
       
       if (!vinculoStatus && gcId) {
-        const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+        const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", String(gcId)).maybeSingle();
         if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
       }
 
@@ -228,7 +228,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         let vinculoStatus = (row as any).vinculo_status || null;
         
         if (!vinculoStatus && gcId) {
-          const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+          const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", String(gcId)).maybeSingle();
           if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
         }
 
