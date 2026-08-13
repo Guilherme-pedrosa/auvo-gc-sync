@@ -393,8 +393,7 @@ function Celula({
                       title={`Cliente divergente · Auvo: ${a.cliente} · GC: ${clienteGc} · Status Vínculo: ${a.vinculo_status || "pendente"}`}
                     >
                       <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
-                      <span className="truncate">vc provavelmente está olhando o nome antes do vinculo na tela clientes (RH), por isso essa divergencia, mesmo com os ids já vinculados</span>
-                      <span className="truncate text-[8px] opacity-70 block">Imagem 1: https://sorax.lovable.app/api/public/i/8f9u8o2j5q.png</span>
+                      <span className="truncate">Cliente GC divergente: {clienteGc}</span>
                     </span>
                   )}
                   {itemTags.length > 0 && (

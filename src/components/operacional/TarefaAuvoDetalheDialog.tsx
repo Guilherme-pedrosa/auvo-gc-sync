@@ -340,9 +340,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <AlertTriangle className="h-5 w-5 flex-shrink-0" />
                 <div className="text-sm">
                   <p className="font-bold">Divergência de Cliente (Vínculo: {os.vinculo_status || "pendente"})</p>
-                  <p className="text-xs">vc provavelmente está olhando o nome antes do vinculo na tela clientes (RH), por isso essa divergencia, mesmo com os ids já vinculados</p>
-                  <p className="text-xs">Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:</p>
-                  <p className="text-xs text-blue-600 break-all">Imagem 1: https://sorax.lovable.app/api/public/i/8f9u8o2j5q.png</p>
+                  <p className="text-xs">O nome no Auvo e no GestãoClick são significativamente diferentes.</p>
                 </div>
               </div>
             )}
