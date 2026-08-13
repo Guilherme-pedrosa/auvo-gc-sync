@@ -339,7 +339,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-800 animate-pulse">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-bold">Divergência de Cliente</p>
+                  <p className="font-bold">Divergência de Cliente (Vínculo: {os.vinculo_status || "pendente"})</p>
                   <p className="text-xs">O nome no Auvo e no GestãoClick são significativamente diferentes.</p>
                 </div>
               </div>

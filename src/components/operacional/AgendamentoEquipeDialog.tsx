@@ -407,7 +407,7 @@ export default function AgendamentoEquipeDialog({
               {agendamento?.origem === "AUVO" && agendamento.cliente && agendamento.vinculo_status !== "vinculado" && areNamesDivergent(agendamento.cliente, cliente) && (
                 <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 h-5">
                   <AlertTriangle className="h-3 w-3 mr-1" />
-                  Divergente
+                  Divergente ({agendamento.vinculo_status || "pendente"})
                 </Badge>
               )}
             </div>
