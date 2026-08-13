@@ -387,7 +387,7 @@ function Celula({
                     )}
                     {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
                   </span>
-                  {clienteDivergente && (
+                  {clienteDivergente && a.vinculo_status !== "vinculado" && (
                     <span
                       className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
                       title={`Cliente divergente · Auvo: ${a.cliente} · GC: ${clienteGc} · Status Vínculo: ${a.vinculo_status || "pendente"}`}
