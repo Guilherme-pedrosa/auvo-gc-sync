@@ -767,6 +767,13 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (body?.action === "update_auvo_name") {
+      const result = await handleUpdateAuvoName(supabase, body);
+      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!GC_ACCESS_TOKEN || !GC_SECRET_TOKEN) throw new Error("Credenciais do GestãoClick não configuradas");
     const autoCreateAuvo = body?.autoCreateAuvo !== false;
     const syncMode = body?.mode === "incremental" ? "incremental" : "full";
