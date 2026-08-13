@@ -44,8 +44,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("*")
+        .select(`
+          *,
+          rh_clientes!tarefas_central_gc_os_id_fkey(vinculo_status)
+        `)
         .eq("auvo_task_id", taskId as string)
         .order("atualizado_em", { ascending: false })
         .limit(20);
@@ -65,6 +67,11 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         if (preservesDocument && (merged[key] == null || merged[key] === "")) {
           merged[key] = value;
         }
+      }
+      if (merged.rh_clientes && Array.isArray(merged.rh_clientes)) {
+        merged.vinculo_status = merged.rh_clientes[0]?.vinculo_status;
+      } else if (merged.rh_clientes) {
+        merged.vinculo_status = (merged.rh_clientes as any).vinculo_status;
       }
       return merged;
     },
