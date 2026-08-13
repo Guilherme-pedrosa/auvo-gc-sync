@@ -172,8 +172,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       }
       const atual = documentosPorTarefa.get(taskId);
       // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
-      const gcId = row.gc_os_id || row.gc_orcamento_id;
-      let vinculoStatus = row.vinculo_status || null;
+      const gcId = (row as any).gc_os_id || (row as any).gc_orcamento_id;
+      let vinculoStatus = (row as any).vinculo_status || null;
       
       if (!vinculoStatus && gcId) {
         const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
@@ -181,20 +181,20 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       }
 
       documentosPorTarefa.set(taskId, {
-        os: atual?.os || row.gc_os_codigo || null,
-        os_id: atual?.os_id || row.gc_os_id || null,
-        orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
-        orcamento_id: atual?.orcamento_id || row.gc_orcamento_id || null,
+        os: atual?.os || (row as any).gc_os_codigo || null,
+        os_id: atual?.os_id || (row as any).gc_os_id || null,
+        orcamento: atual?.orcamento || (row as any).gc_orcamento_codigo || null,
+        orcamento_id: atual?.orcamento_id || (row as any).gc_orcamento_id || null,
 
-        situacao: atual?.situacao || row.gc_os_situacao || null,
-        cliente_gc: atual?.cliente_gc || row.gc_os_cliente || null,
-        status_auvo: atual?.status_auvo || row.status_auvo || null,
-        check_in: atual?.check_in || row.check_in_iso || null,
-        check_out: atual?.check_out || row.check_out_iso || null,
-        tipo_id: atual?.tipo_id || row.task_type_id || null,
-        tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, row.descricao),
-        tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
-        tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
+        situacao: atual?.situacao || (row as any).gc_os_situacao || null,
+        cliente_gc: atual?.cliente_gc || (row as any).gc_os_cliente || null,
+        status_auvo: atual?.status_auvo || (row as any).status_auvo || null,
+        check_in: atual?.check_in || (row as any).check_in_iso || null,
+        check_out: atual?.check_out || (row as any).check_out_iso || null,
+        tipo_id: atual?.tipo_id || (row as any).task_type_id || null,
+        tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, (row as any).descricao),
+        tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || null,
+        tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
         vinculo_status: atual?.vinculo_status || vinculoStatus,
       });
     }
@@ -224,8 +224,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         if (atual?.os) continue;
         
         // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
-        const gcId = row.gc_os_id || row.gc_orcamento_id;
-        let vinculoStatus = row.vinculo_status || null;
+        const gcId = (row as any).gc_os_id || (row as any).gc_orcamento_id;
+        let vinculoStatus = (row as any).vinculo_status || null;
         
         if (!vinculoStatus && gcId) {
           const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
@@ -233,20 +233,20 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         }
 
         documentosPorTarefa.set(taskId, {
-          os: row.gc_os_codigo || null,
-          os_id: row.gc_os_id || null,
-          orcamento: row.gc_orcamento_codigo || null,
-          orcamento_id: row.gc_orcamento_id || null,
+          os: (row as any).gc_os_codigo || null,
+          os_id: (row as any).gc_os_id || null,
+          orcamento: (row as any).gc_orcamento_codigo || null,
+          orcamento_id: (row as any).gc_orcamento_id || null,
 
-          situacao: row.gc_os_situacao || null,
-          cliente_gc: row.gc_os_cliente || null,
+          situacao: (row as any).gc_os_situacao || null,
+          cliente_gc: (row as any).gc_os_cliente || null,
           status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
           check_in: estadoPorTarefa.get(taskId)?.check_in || null,
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
           tipo_id: atual?.tipo_id || null,
           tipo_descricao: atual?.tipo_descricao || null,
-          tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || row.auvo_task_id || null,
-          tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
+          tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || (row as any).auvo_task_id || null,
+          tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
           vinculo_status: atual?.vinculo_status || vinculoStatus,
         });
       }
