@@ -80,7 +80,8 @@ async function gcPage(
   url.searchParams.set("pagina", String(page));
   url.searchParams.set("limite", "100");
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  const response = await fetch(url.toString(), { headers: gcHeaders });
+  const headers = { ...gcHeaders, "usuario-id": "1320473" };
+  const response = await fetch(url.toString(), { headers });
   const raw = await response.text();
   if (response.status === 404) return { rows: [], hasNext: false };
   if (!response.ok) throw new Error(`GestãoClick /clientes página ${page} respondeu ${response.status}: ${raw.slice(0, 300)}`);
@@ -96,7 +97,7 @@ async function fetchNewGcCustomers(knownIds: Set<string>): Promise<any[]> {
   // IDs do GC são crescentes. Ordenando do mais novo para o mais antigo, a
   // varredura automática normalmente consome uma única requisição e para ao
   // encontrar o primeiro cliente que já existe no cadastro central.
-  for (let page = 1; page <= 300; page++) {
+  for (let page = 1; page <= 50; page++) {
     const result = await gcPage(page, { ordenacao: "id", direcao: "desc" });
     let reachedKnownCustomer = false;
     for (const customer of result.rows) {
@@ -108,7 +109,8 @@ async function fetchNewGcCustomers(knownIds: Set<string>): Promise<any[]> {
       if (id) newCustomers.push(customer);
     }
     if (reachedKnownCustomer || !result.hasNext) break;
-    await new Promise((resolve) => setTimeout(resolve, 360));
+    // Pequeno intervalo para respeitar limite de 3req/s do GC
+    await new Promise((resolve) => setTimeout(resolve, 350));
   }
   return newCustomers;
 }
@@ -121,7 +123,8 @@ async function fetchAllGcCustomers(): Promise<any[]> {
     const results = await Promise.all(pages.map(gcPage));
     for (const result of results) all.push(...result.rows);
     if (!results.some((result) => result.hasNext)) break;
-    await new Promise((resolve) => setTimeout(resolve, 1050));
+    // Intervalo ligeiramente maior para garantir conformidade com o limite de taxa do GC
+    await new Promise((resolve) => setTimeout(resolve, 1100));
   }
   return all;
 }
@@ -721,6 +724,7 @@ Deno.serve(async (req) => {
         inserted: 0,
         updated: 0,
         errors: 0,
+        syncTime: new Date().toISOString()
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
