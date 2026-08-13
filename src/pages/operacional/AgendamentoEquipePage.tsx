@@ -310,7 +310,7 @@ function Celula({
           const destacarSituacaoGc = shouldHighlightPendingGcExecution(a);
           const clienteGc = String(a.gc_os_cliente || "").trim();
           const clienteDivergente = Boolean(
-            a.auvo_task_id && clienteGc && a.cliente && areNamesDivergent(a.cliente, clienteGc),
+            a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
           const identificadoresAntesSituacao = [
             tipoTarefa,

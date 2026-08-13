@@ -307,7 +307,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
 
         {tarefa && (
           <div className="space-y-4">
-            {os.cliente && areNamesDivergent(tarefa.cliente, os.cliente) && (
+            {os.cliente && tarefa.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) && (
               <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-800 animate-pulse">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0" />
                 <div className="text-sm">
@@ -324,7 +324,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 {os.cliente && (
                   <p className={cn(
                     "text-xs font-semibold mt-0.5",
-                    areNamesDivergent(tarefa.cliente, os.cliente) ? "text-amber-600" : "text-muted-foreground"
+                    tarefa.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) ? "text-amber-600" : "text-muted-foreground"
                   )}>
                     GC: {os.cliente}
                   </p>
