@@ -84,19 +84,29 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select(
-          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec",
-        )
+        .select(`
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec,
+          rh_clientes (vinculo_status)
+        `)
         .not("gc_os_codigo", "is", null)
         .not("gc_os_tarefa_exec", "is", null)
         .limit(5000);
       if (error) throw error;
-      return ((data ?? []).find((row) =>
+      const found = (data ?? []).find((row) =>
         String(row.gc_os_tarefa_exec || "")
           .split("/")
           .map((id) => id.trim())
           .includes(String(taskId)),
-      ) ?? null) as Record<string, any> | null;
+      ) as Record<string, any> | null;
+
+      if (found) {
+        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
+          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
+        } else if (found.rh_clientes) {
+          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
+        }
+      }
+      return found;
     },
   });
 
@@ -181,9 +191,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     queryFn: async () => {
       let q = supabase
         .from("tarefas_central")
-        .select(
-          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente",
-        )
+        .select(`
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,
+          rh_clientes (vinculo_status)
+        `)
         .not("gc_os_codigo", "is", null)
         .limit(1);
       q = refOrcamento
@@ -191,7 +202,15 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         : q.eq("gc_os_codigo", refOs as string);
       const { data, error } = await q;
       if (error) throw error;
-      return (data?.[0] ?? null) as Record<string, any> | null;
+      const found = (data?.[0] ?? null) as Record<string, any> | null;
+      if (found) {
+        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
+          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
+        } else if (found.rh_clientes) {
+          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
+        }
+      }
+      return found;
     },
   });
 
