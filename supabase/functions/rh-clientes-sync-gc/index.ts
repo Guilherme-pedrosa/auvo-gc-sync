@@ -697,36 +697,28 @@ async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<st
   const currentAuvo = rawData?.result ?? rawData;
 
   // Merge & PUT
-  const updatePayload = {
-    ...currentAuvo,
+  // O Auvo v2 espera um payload com campos específicos no PUT
+  const payload = {
+    id: currentAuvo.id,
+    externalId: currentAuvo.externalId,
     name: newName,
-    legalName: target.nome_auvo === currentAuvo.legalName ? newName : currentAuvo.legalName,
+    legalName: currentAuvo.legalName,
+    cpfCnpj: currentAuvo.cpfCnpj,
+    phoneNumber: currentAuvo.phoneNumber || [],
+    email: currentAuvo.email || [],
+    address: currentAuvo.address,
+    city: currentAuvo.city,
+    state: currentAuvo.state,
+    zipCode: currentAuvo.zipCode,
+    active: currentAuvo.active,
+    replaceData: false,
+    identifierBycpfCnpj: false
   };
-  
-  // Limpa campos que não devem ir no PUT de atualização se necessário ou usa o payload mapeado
-  // O Auvo v2 aceita o objeto completo no PUT.
   
   const putResponse = await fetch(`${AUVO_BASE}/customers/`, {
     method: "PUT",
     headers: auvoHeaders(accessToken),
-    body: JSON.stringify({
-      ...auvoPayload({ 
-        id: currentAuvo.externalId?.replace("GC:", ""), 
-        nome: newName,
-        razao_social: currentAuvo.legalName,
-        email: currentAuvo.email,
-        telefone: currentAuvo.phoneNumber?.[0],
-        enderecos: [{ 
-          logradouro: currentAuvo.address,
-          nome_cidade: currentAuvo.city,
-          estado: currentAuvo.state,
-          cep: currentAuvo.zipCode
-        }]
-      }),
-      id: currentAuvo.id,
-      externalId: currentAuvo.externalId,
-      identifierBycpfCnpj: false // Não queremos re-identificar por documento aqui, já temos o ID
-    }),
+    body: JSON.stringify(payload),
   });
 
   const putRaw = await putResponse.text();
