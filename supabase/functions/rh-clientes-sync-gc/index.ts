@@ -671,7 +671,7 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
   };
 }
 
-async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<string, unknown>> {
+async function handleUpdateAuvoName(supabase: any, body: any, sharedToken?: string): Promise<Record<string, unknown>> {
   const rhClientId = String(body?.rhClientId || "").trim();
   const newName = String(body?.newName || "").trim();
   if (!rhClientId) throw new Error("Cliente central não informado");
@@ -686,7 +686,7 @@ async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<st
   if (!target) throw new Error("Cliente central não encontrado");
   if (!target.auvo_cliente_id) throw new Error("Cliente não possui vínculo com o Auvo");
 
-  const accessToken = await auvoLogin();
+  const accessToken = sharedToken ?? await auvoLogin();
   
   // GET completo para preservar outros campos (Estratégia da memória)
   const response = await fetch(`${AUVO_BASE}/customers/${target.auvo_cliente_id}`, {
@@ -745,6 +745,11 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
   if (ids.length === 0) throw new Error("Nenhum cliente selecionado");
   if (ids.length > 200) throw new Error("Selecione no máximo 200 clientes por atualização");
 
+  // O runtime derruba a requisição em 150s ociosos. Trabalhamos com folga e
+  // devolvemos os pendentes para o cliente reenviar em outro lote.
+  const deadline = Date.now() + 100_000;
+  const accessToken = await auvoLogin();
+
   const { data: rows, error } = await supabase
     .from("rh_clientes")
     .select("id, nome, nome_gc, auvo_cliente_id")
@@ -758,7 +763,12 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
   let updated = 0;
   let errors = details.length;
 
+  const pending: string[] = [];
   for (const row of rows ?? []) {
+    if (Date.now() > deadline) {
+      pending.push(String(row.id));
+      continue;
+    }
     const newName = String(row.nome_gc || row.nome || "").trim();
     if (!row.auvo_cliente_id || !newName) {
       errors++;
@@ -766,7 +776,7 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
       continue;
     }
     try {
-      await handleUpdateAuvoName(supabase, { rhClientId: row.id, newName });
+      await handleUpdateAuvoName(supabase, { rhClientId: row.id, newName }, accessToken);
       updated++;
       details.push({ id: row.id, ok: true });
     } catch (updateError) {
@@ -775,7 +785,7 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
     }
   }
 
-  return { ok: errors === 0, requested: ids.length, updated, errors, details };
+  return { ok: errors === 0, requested: ids.length, updated, errors, pending, details };
 }
 
 Deno.serve(async (req) => {
