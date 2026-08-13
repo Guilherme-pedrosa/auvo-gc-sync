@@ -84,6 +84,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     tipo_descricao: string | null;
     tarefa_os: string | null;
     tarefa_execucao: string | null;
+    vinculo_status: string | null;
   }>();
   const estadoPorTarefa = new Map<string, {
     status_auvo: string | null;
@@ -121,7 +122,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em,vinculo_status")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -184,6 +185,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, row.descricao),
         tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
         tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
+        vinculo_status: atual?.vinculo_status || row.vinculo_status || null,
       });
     }
   }
@@ -195,7 +197,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os,vinculo_status")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -225,6 +227,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           tipo_descricao: atual?.tipo_descricao || null,
           tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || row.auvo_task_id || null,
           tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
+          vinculo_status: atual?.vinculo_status || row.vinculo_status || null,
         });
       }
     }
@@ -261,6 +264,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       tipo_tarefa_auvo: tipoTarefa,
       tipo_tarefa_auvo_id: documento.tipo_id,
       tipo_tarefa_auvo_descricao: documento.tipo_descricao,
+      vinculo_status: documento.vinculo_status || item.vinculo_status || null,
     };
   });
 }

@@ -404,7 +404,7 @@ export default function AgendamentoEquipeDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="client">Cliente</Label>
-              {agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && (
+              {agendamento?.origem === "AUVO" && agendamento.cliente && agendamento.vinculo_status !== "vinculado" && areNamesDivergent(agendamento.cliente, cliente) && (
                 <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 h-5">
                   <AlertTriangle className="h-3 w-3 mr-1" />
                   Divergente
@@ -417,10 +417,10 @@ export default function AgendamentoEquipeDialog({
               onChange={(e) => setCliente(e.target.value)}
               placeholder="Nome do cliente"
               className={cn(
-                agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && "border-amber-400 focus-visible:ring-amber-400"
+                agendamento?.origem === "AUVO" && agendamento.cliente && agendamento.vinculo_status !== "vinculado" && areNamesDivergent(agendamento.cliente, cliente) && "border-amber-400 focus-visible:ring-amber-400"
               )}
             />
-            {agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && (
+            {agendamento?.origem === "AUVO" && agendamento.cliente && agendamento.vinculo_status !== "vinculado" && areNamesDivergent(agendamento.cliente, cliente) && (
               <p className="text-[10px] text-amber-600 font-medium">Original no Auvo: {agendamento.cliente}</p>
             )}
           </div>
