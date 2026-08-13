@@ -48,6 +48,7 @@ export interface AgendaAgendamento {
   conversao_tentada_em?: string | null;
   convertida_em?: string | null;
   gc_os_situacao?: string | null;
+  gc_os_cliente?: string | null;
   status_auvo?: string | null;
   pausada?: boolean | null;
   check_in_iso?: string | null;
@@ -75,6 +76,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     orcamento_id: string | null;
 
     situacao: string | null;
+    cliente_gc: string | null;
     status_auvo: string | null;
     check_in: string | null;
     check_out: string | null;
@@ -119,7 +121,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -174,6 +176,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         orcamento_id: atual?.orcamento_id || row.gc_orcamento_id || null,
 
         situacao: atual?.situacao || row.gc_os_situacao || null,
+        cliente_gc: atual?.cliente_gc || row.gc_os_cliente || null,
         status_auvo: atual?.status_auvo || row.status_auvo || null,
         check_in: atual?.check_in || row.check_in_iso || null,
         check_out: atual?.check_out || row.check_out_iso || null,
@@ -192,7 +195,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec,gc_os_tarefa_os")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -214,6 +217,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           orcamento_id: row.gc_orcamento_id || null,
 
           situacao: row.gc_os_situacao || null,
+          cliente_gc: row.gc_os_cliente || null,
           status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
           check_in: estadoPorTarefa.get(taskId)?.check_in || null,
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
@@ -249,6 +253,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       gc_orcamento_id: documento.orcamento_id || item.gc_orcamento_id || null,
 
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
+      gc_os_cliente: documento.cliente_gc || item.gc_os_cliente || null,
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: tempo?.check_in_iso || estado?.check_in || documento.check_in || item.check_in_iso || null,
       check_out_iso: tempo?.check_out_iso || estado?.check_out || documento.check_out || item.check_out_iso || null,
