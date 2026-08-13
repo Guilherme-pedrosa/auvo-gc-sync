@@ -73,6 +73,7 @@ export default function Index() {
         <p className="text-xs text-gray-400">
           a tarefa OS é a tarefa do orçamento!
           a tarefa execução é a tarefa da atividade de execução, vc vai ter que inter relacionar a OS com o orçamento através do campo extra numero orçamento (81831) no GC, a OS sempre vai ter relacionado esse número do orçamento nela! vc tendo o número, pega a tarefa de execução e replica o planejamento do orçamento que está com o número lá (quando tiver planejado)
+          pensando nisso caso o orçamento 6377 estivesse em previsão, qual os / tarefa seria lançada no mesmo dia e horário e técnico?
         </p>
       </footer>
     </div>
