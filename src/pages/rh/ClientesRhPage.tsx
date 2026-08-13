@@ -64,7 +64,7 @@ export default function ClientesRhPage() {
       : clientesRaw;
     
     if (filterVinculo === "divergente") {
-      list = list.filter(c => c.gc_cliente_id && c.auvo_cliente_id && c.vinculo_status !== "vinculado" && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome));
+      list = list.filter(c => c.gc_cliente_id && c.auvo_cliente_id && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome));
     }
     
     return list;
