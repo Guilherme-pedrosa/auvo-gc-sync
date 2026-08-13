@@ -288,18 +288,16 @@ export default function ClientesRhPage() {
             {consultarCnpj.isPending ? "Consultando no Auvo..." : "Consultar por CNPJ no Auvo"}
           </Button>
           
-          {filterVinculo === "divergente" && (
-            <Button 
-              size="sm" 
-              variant="default" 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={handleUpdateAuvoNames} 
-              disabled={isUpdatingNames}
-            >
-              <UserCheck className={`h-4 w-4 mr-2 ${isUpdatingNames ? "animate-pulse" : ""}`} />
-              {isUpdatingNames ? "Atualizando Nomes..." : "Atualizar Nomes no Auvo (Usar Nome GC)"}
-            </Button>
-          )}
+          <Button 
+            size="sm" 
+            variant="default" 
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={handleUpdateAuvoNames} 
+            disabled={isUpdatingNames}
+          >
+            <UserCheck className={`h-4 w-4 mr-2 ${isUpdatingNames ? "animate-pulse" : ""}`} />
+            {isUpdatingNames ? "Atualizando Nomes..." : "Atualizar Nomes no Auvo (Usar Nome GC)"}
+          </Button>
 
           <Button size="sm" variant="ghost" onClick={() => setSelected([])}>Limpar seleção</Button>
         </div>
