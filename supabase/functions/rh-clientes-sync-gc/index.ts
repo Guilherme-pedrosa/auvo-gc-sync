@@ -669,7 +669,6 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
     errors,
     details,
   };
-  };
 }
 
 async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<string, unknown>> {
