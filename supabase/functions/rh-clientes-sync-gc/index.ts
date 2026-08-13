@@ -669,6 +669,82 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
     errors,
     details,
   };
+  };
+}
+
+async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<string, unknown>> {
+  const rhClientId = String(body?.rhClientId || "").trim();
+  const newName = String(body?.newName || "").trim();
+  if (!rhClientId) throw new Error("Cliente central não informado");
+  if (!newName) throw new Error("Novo nome não informado");
+
+  const { data: target, error: targetError } = await supabase
+    .from("rh_clientes")
+    .select("id, auvo_cliente_id, nome_auvo")
+    .eq("id", rhClientId)
+    .maybeSingle();
+  if (targetError) throw targetError;
+  if (!target) throw new Error("Cliente central não encontrado");
+  if (!target.auvo_cliente_id) throw new Error("Cliente não possui vínculo com o Auvo");
+
+  const accessToken = await auvoLogin();
+  
+  // GET completo para preservar outros campos (Estratégia da memória)
+  const response = await fetch(`${AUVO_BASE}/customers/${target.auvo_cliente_id}`, {
+    headers: auvoHeaders(accessToken),
+  });
+  if (!response.ok) throw new Error(`Falha ao buscar cliente no Auvo (#${target.auvo_cliente_id})`);
+  const rawData = await response.json();
+  const currentAuvo = rawData?.result ?? rawData;
+
+  // Merge & PUT
+  const updatePayload = {
+    ...currentAuvo,
+    name: newName,
+    legalName: currentName === currentAuvo.legalName ? newName : currentAuvo.legalName, // Opcional: tenta manter coerência
+  };
+  
+  // Limpa campos que não devem ir no PUT de atualização se necessário ou usa o payload mapeado
+  // O Auvo v2 aceita o objeto completo no PUT.
+  
+  const putResponse = await fetch(`${AUVO_BASE}/customers/`, {
+    method: "PUT",
+    headers: auvoHeaders(accessToken),
+    body: JSON.stringify({
+      ...auvoPayload({ 
+        id: currentAuvo.externalId?.replace("GC:", ""), 
+        nome: newName,
+        razao_social: currentAuvo.legalName,
+        email: currentAuvo.email,
+        telefone: currentAuvo.phoneNumber?.[0],
+        enderecos: [{ 
+          logradouro: currentAuvo.address,
+          nome_cidade: currentAuvo.city,
+          estado: currentAuvo.state,
+          cep: currentAuvo.zipCode
+        }]
+      }),
+      id: currentAuvo.id,
+      externalId: currentAuvo.externalId,
+      identifierBycpfCnpj: false // Não queremos re-identificar por documento aqui, já temos o ID
+    }),
+  });
+
+  const putRaw = await putResponse.text();
+  if (!putResponse.ok) throw new Error(`Erro ao atualizar no Auvo: ${putRaw}`);
+
+  // Atualiza localmente
+  const { error: updateError } = await supabase.from("rh_clientes").update({
+    nome_auvo: newName,
+    auvo_sync_em: new Date().toISOString(),
+    atualizado_em: new Date().toISOString(),
+  }).eq("id", rhClientId);
+  if (updateError) throw updateError;
+
+  // Propaga para equipamentos e grupos
+  await refreshAuvoNameReferences(supabase, target.auvo_cliente_id, newName, target.nome_auvo);
+
+  return { ok: true };
 }
 
 Deno.serve(async (req) => {
