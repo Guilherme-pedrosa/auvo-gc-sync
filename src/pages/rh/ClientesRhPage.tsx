@@ -350,7 +350,7 @@ export default function ClientesRhPage() {
                         {duplicados?.motivos.get(c.id) ?? "Vínculo duplicado"}
                       </Badge>
                     )}
-                    {c.gc_cliente_id && c.auvo_cliente_id && c.vinculo_status !== "vinculado" && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome) && (
+                    {c.gc_cliente_id && c.auvo_cliente_id && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome, [c.nome_fantasia]) && (
                       <Badge variant="outline" className="border-amber-500 text-amber-600 w-fit">
                         <AlertTriangle className="h-3 w-3 mr-1" />
                         Nome divergente
