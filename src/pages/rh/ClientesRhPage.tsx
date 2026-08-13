@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
-import { updateAuvoClientName } from "@/lib/updateAuvoName";
+import { updateAuvoClientNames } from "@/lib/updateAuvoName";
 import {
   useAuvoClientesCache,
   useDeleteRhCliente,
@@ -139,25 +139,15 @@ export default function ClientesRhPage() {
     const loadingToast = toast.loading(`Atualizando ${selected.length} nome(s) no Auvo...`);
     
     try {
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (const id of selected) {
-        const cliente = clientes.find(c => c.id === id);
-        if (cliente && cliente.nome_gc && cliente.auvo_cliente_id) {
-          try {
-            await updateAuvoClientName(id, cliente.nome_gc);
-            successCount++;
-          } catch (err) {
-            console.error(`Erro ao atualizar cliente ${id}:`, err);
-            errorCount++;
-          }
-        }
+      const result = await updateAuvoClientNames(selected);
+      if (result.updated > 0) {
+        toast.success(`${result.updated} nome(s) atualizado(s) no Auvo com sucesso!`, { id: loadingToast });
+      } else {
+        toast.error("Nenhum nome foi atualizado no Auvo.", { id: loadingToast });
       }
-      
-      toast.success(`${successCount} nome(s) atualizado(s) no Auvo com sucesso!`, { id: loadingToast });
-      if (errorCount > 0) {
-        toast.error(`${errorCount} erro(s) ao atualizar.`);
+      if (result.errors > 0) {
+        const firstError = result.details.find((detail) => !detail.ok)?.error;
+        toast.error(`${result.errors} erro(s) ao atualizar.${firstError ? ` ${firstError}` : ""}`);
       }
       
       setSelected([]);

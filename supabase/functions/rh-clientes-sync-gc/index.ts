@@ -699,7 +699,7 @@ async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<st
   // Merge & PUT
   // O Auvo v2 espera um payload com campos específicos no PUT
   const payload = {
-    id: currentAuvo.id,
+    customerId: Number(currentAuvo.customerId ?? currentAuvo.id ?? target.auvo_cliente_id),
     externalId: currentAuvo.externalId,
     name: newName,
     legalName: currentAuvo.legalName,
@@ -738,6 +738,46 @@ async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<st
   return { ok: true };
 }
 
+async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<string, unknown>> {
+  const ids = Array.isArray(body?.rhClientIds)
+    ? [...new Set(body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean))]
+    : [];
+  if (ids.length === 0) throw new Error("Nenhum cliente selecionado");
+  if (ids.length > 200) throw new Error("Selecione no máximo 200 clientes por atualização");
+
+  const { data: rows, error } = await supabase
+    .from("rh_clientes")
+    .select("id, nome, nome_gc, auvo_cliente_id")
+    .in("id", ids);
+  if (error) throw error;
+
+  const foundIds = new Set((rows ?? []).map((row: any) => String(row.id)));
+  const details: Array<Record<string, unknown>> = ids
+    .filter((id) => !foundIds.has(id))
+    .map((id) => ({ id, ok: false, error: "Cliente central não encontrado" }));
+  let updated = 0;
+  let errors = details.length;
+
+  for (const row of rows ?? []) {
+    const newName = String(row.nome_gc || row.nome || "").trim();
+    if (!row.auvo_cliente_id || !newName) {
+      errors++;
+      details.push({ id: row.id, ok: false, error: !row.auvo_cliente_id ? "Cliente sem vínculo com o Auvo" : "Nome do GC não disponível" });
+      continue;
+    }
+    try {
+      await handleUpdateAuvoName(supabase, { rhClientId: row.id, newName });
+      updated++;
+      details.push({ id: row.id, ok: true });
+    } catch (updateError) {
+      errors++;
+      details.push({ id: row.id, ok: false, error: String((updateError as Error)?.message || updateError) });
+    }
+  }
+
+  return { ok: errors === 0, requested: ids.length, updated, errors, details };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -760,6 +800,13 @@ Deno.serve(async (req) => {
 
     if (body?.action === "update_auvo_name") {
       const result = await handleUpdateAuvoName(supabase, body);
+      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (body?.action === "update_auvo_names") {
+      const result = await handleUpdateAuvoNames(supabase, body);
       return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
