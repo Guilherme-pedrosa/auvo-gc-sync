@@ -17,7 +17,7 @@ export function normalizeClientName(name: string | null | undefined): string {
 
 /**
  * Calcula a similaridade entre dois nomes baseada em tokens.
- * Retorna true se houver uma sobreposição significativa (ex: 70%).
+ * Retorna true se houver uma sobreposição significativa.
  */
 export function areNamesDivergent(nameA: string | null | undefined, nameB: string | null | undefined): boolean {
   if (!nameA || !nameB) return false;
@@ -36,8 +36,11 @@ export function areNamesDivergent(nameA: string | null | undefined, nameB: strin
   const intersection = tokensA.filter(t => tokensB.includes(t));
   const overlap = intersection.length / Math.max(tokensA.length, tokensB.length);
   
-  // Se a sobreposição for menor que 70%, consideramos divergente
-  return overlap < 0.7;
+  // LOG PARA DEBUG NO NAVEGADOR
+  // console.log(`[DivergenceCheck] "${nameA}" vs "${nameB}" | Overlap: ${overlap.toFixed(2)}`);
+
+  // Reduzido para 50% para ser mais permissivo com nomes compostos
+  return overlap < 0.5;
 }
 
 /**
