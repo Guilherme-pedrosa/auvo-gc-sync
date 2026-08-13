@@ -390,7 +390,7 @@ function Celula({
                   {clienteDivergente && (
                     <span
                       className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
-                      title={`Cliente divergente · Auvo: ${a.cliente} · GC: ${clienteGc}`}
+                      title={`Cliente divergente · Auvo: ${a.cliente} · GC: ${clienteGc} · Status Vínculo: ${a.vinculo_status || "pendente"}`}
                     >
                       <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
                       <span className="truncate">Cliente GC divergente: {clienteGc}</span>
