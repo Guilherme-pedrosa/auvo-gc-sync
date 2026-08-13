@@ -1085,8 +1085,8 @@ export default function AgendamentoEquipePage() {
             disabled={isFetching || isSyncing}
           >
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
-            <span className="hidden sm:inline">{isSyncing ? "Sincronizando Auvo..." : "Sincronizar Auvo"}</span>
-            <span className="sm:hidden">Auvo</span>
+            <span className="hidden sm:inline">{isSyncing ? "Sincronizando Auvo/GC..." : "Sincronizar Auvo/GC"}</span>
+            <span className="sm:hidden">Auvo/GC</span>
           </Button>
           <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
             <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa Auvo</span>
