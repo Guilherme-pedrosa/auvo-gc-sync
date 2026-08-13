@@ -45,10 +45,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select(`
-          *,
-          rh_clientes (vinculo_status)
-        `)
+        .select("*")
         .eq("auvo_task_id", taskId as string)
         .order("atualizado_em", { ascending: false })
         .limit(20);
