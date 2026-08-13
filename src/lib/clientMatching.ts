@@ -37,10 +37,10 @@ export function areNamesDivergent(nameA: string | null | undefined, nameB: strin
   const overlap = intersection.length / Math.max(tokensA.length, tokensB.length);
   
   // LOG PARA DEBUG NO NAVEGADOR
-  // console.log(`[DivergenceCheck] "${nameA}" vs "${nameB}" | Overlap: ${overlap.toFixed(2)}`);
+  console.log(`[DivergenceCheck] "${nameA}" vs "${nameB}" | Overlap: ${overlap.toFixed(2)}`);
 
-  // Reduzido para 50% para ser mais permissivo com nomes compostos
-  return overlap < 0.5;
+  // Voltando para 70% conforme solicitado pelo usuário, para ser mais rigoroso no filtro de RH
+  return overlap < 0.7;
 }
 
 /**
