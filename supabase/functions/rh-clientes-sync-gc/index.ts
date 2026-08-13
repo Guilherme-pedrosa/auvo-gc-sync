@@ -123,7 +123,8 @@ async function fetchAllGcCustomers(): Promise<any[]> {
     const results = await Promise.all(pages.map(gcPage));
     for (const result of results) all.push(...result.rows);
     if (!results.some((result) => result.hasNext)) break;
-    await new Promise((resolve) => setTimeout(resolve, 1050));
+    // Intervalo ligeiramente maior para garantir conformidade com o limite de taxa do GC
+    await new Promise((resolve) => setTimeout(resolve, 1100));
   }
   return all;
 }
@@ -723,6 +724,7 @@ Deno.serve(async (req) => {
         inserted: 0,
         updated: 0,
         errors: 0,
+        syncTime: new Date().toISOString()
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
