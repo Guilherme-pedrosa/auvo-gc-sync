@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2, FileSearch, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2, Link2, FileSearch, AlertTriangle, UserCheck } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { toast } from "sonner";
+import { updateAuvoClientName } from "@/lib/updateAuvoName";
 import {
   useAuvoClientesCache,
   useDeleteRhCliente,
@@ -76,8 +79,10 @@ export default function ClientesRhPage() {
   const [form, setForm] = useState<Partial<RhCliente>>({});
   const [auvoChoice, setAuvoChoice] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [isUpdatingNames, setIsUpdatingNames] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 200;
+  const qc = useQueryClient();
 
   useEffect(() => { setPage(1); }, [search, filterVinculo]);
 
@@ -124,6 +129,43 @@ export default function ClientesRhPage() {
       setSelected([]);
     } catch {
       /* toast tratado no hook */
+    }
+  };
+  
+  const handleUpdateAuvoNames = async () => {
+    if (!selected.length || isUpdatingNames) return;
+    
+    setIsUpdatingNames(true);
+    const loadingToast = toast.loading(`Atualizando ${selected.length} nome(s) no Auvo...`);
+    
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const id of selected) {
+        const cliente = clientes.find(c => c.id === id);
+        if (cliente && cliente.nome_gc && cliente.auvo_cliente_id) {
+          try {
+            await updateAuvoClientName(id, cliente.nome_gc);
+            successCount++;
+          } catch (err) {
+            console.error(`Erro ao atualizar cliente ${id}:`, err);
+            errorCount++;
+          }
+        }
+      }
+      
+      toast.success(`${successCount} nome(s) atualizado(s) no Auvo com sucesso!`, { id: loadingToast });
+      if (errorCount > 0) {
+        toast.error(`${errorCount} erro(s) ao atualizar.`);
+      }
+      
+      setSelected([]);
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+    } catch (error: any) {
+      toast.error(`Falha na operação: ${error.message}`, { id: loadingToast });
+    } finally {
+      setIsUpdatingNames(false);
     }
   };
 
@@ -245,6 +287,20 @@ export default function ClientesRhPage() {
             <FileSearch className={`h-4 w-4 mr-2 ${consultarCnpj.isPending ? "animate-pulse" : ""}`} />
             {consultarCnpj.isPending ? "Consultando no Auvo..." : "Consultar por CNPJ no Auvo"}
           </Button>
+          
+          {filterVinculo === "divergente" && (
+            <Button 
+              size="sm" 
+              variant="default" 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleUpdateAuvoNames} 
+              disabled={isUpdatingNames}
+            >
+              <UserCheck className={`h-4 w-4 mr-2 ${isUpdatingNames ? "animate-pulse" : ""}`} />
+              {isUpdatingNames ? "Atualizando Nomes..." : "Atualizar Nomes no Auvo (Usar Nome GC)"}
+            </Button>
+          )}
+
           <Button size="sm" variant="ghost" onClick={() => setSelected([])}>Limpar seleção</Button>
         </div>
       )}
