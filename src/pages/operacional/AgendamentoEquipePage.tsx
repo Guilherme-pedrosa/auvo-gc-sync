@@ -43,6 +43,7 @@ import {
   summarizeAgendaWorkedTime,
 } from "@/lib/agendaWorkedTime";
 import { toast } from "sonner";
+import { areNamesDivergent } from "@/lib/clientMatching";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
