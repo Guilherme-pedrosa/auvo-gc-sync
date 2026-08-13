@@ -25,6 +25,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { areNamesDivergent } from "@/lib/clientMatching";
 
 const linkBadge = (status: RhCliente["vinculo_status"]) => {
   if (status === "vinculado") return <Badge className="bg-emerald-600 hover:bg-emerald-600">GC ↔ Auvo</Badge>;
@@ -50,16 +51,21 @@ export default function ClientesRhPage() {
   const [filterVinculo, setFilterVinculo] = useState<string>("all");
   const { data: clientesRaw = [], isLoading } = useRhClientes(
     search,
-    filterVinculo === "duplicado" ? "all" : filterVinculo,
+    filterVinculo === "duplicado" || filterVinculo === "divergente" ? "all" : filterVinculo,
   );
   const { data: duplicados, isLoading: isLoadingDuplicados, isError: isErrorDuplicados, refetch: refetchDuplicados } = useRhVinculosDuplicados();
-  const clientes = useMemo(
-    () =>
-      filterVinculo === "duplicado"
-        ? (duplicados?.clientesDuplicadosRows ?? [])
-        : clientesRaw,
-    [clientesRaw, duplicados, filterVinculo],
-  );
+  
+  const clientes = useMemo(() => {
+    let list = filterVinculo === "duplicado"
+      ? (duplicados?.clientesDuplicadosRows ?? [])
+      : clientesRaw;
+    
+    if (filterVinculo === "divergente") {
+      list = list.filter(c => c.gc_cliente_id && c.auvo_cliente_id && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome));
+    }
+    
+    return list;
+  }, [clientesRaw, duplicados, filterVinculo]);
   const { data: auvoClientes = [] } = useAuvoClientesCache();
   const save = useSaveRhCliente();
   const linkAuvo = useLinkRhClienteAuvo();
@@ -191,8 +197,9 @@ export default function ClientesRhPage() {
               <SelectItem value="vinculado">Vinculados</SelectItem>
               <SelectItem value="nao_vinculado">Não vinculados (Pendente)</SelectItem>
               <SelectItem value="erro">Com erro</SelectItem>
-              <SelectItem value="ambiguo">Ambiguidade</SelectItem>
+               <SelectItem value="ambiguo">Ambiguidade</SelectItem>
             <SelectItem value="duplicado">Vínculo duplicado</SelectItem>
+            <SelectItem value="divergente">Divergência de nome</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -290,21 +297,27 @@ export default function ClientesRhPage() {
                 </TableCell>
                 <TableCell className="font-mono text-xs uppercase">{c.cpf_cnpj ?? "—"}</TableCell>
                 <TableCell className="text-xs uppercase">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
-                <TableCell>
-                  {linkBadge(c.vinculo_status)}
-                  {isDuplicado(c) && (
-                    <div className="mt-1">
-                      <Badge className="bg-amber-600 hover:bg-amber-600">
+                 <TableCell>
+                  <div className="flex flex-col gap-1">
+                    {linkBadge(c.vinculo_status)}
+                    {isDuplicado(c) && (
+                      <Badge className="bg-amber-600 hover:bg-amber-600 w-fit">
                         <AlertTriangle className="h-3 w-3 mr-1" />
                         {duplicados?.motivos.get(c.id) ?? "Vínculo duplicado"}
                       </Badge>
-                    </div>
-                  )}
-                  {c.vinculo_metodo && (
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      {metodoLabel[c.vinculo_metodo] ?? c.vinculo_metodo}
-                    </div>
-                  )}
+                    )}
+                    {c.gc_cliente_id && c.auvo_cliente_id && areNamesDivergent(c.nome_gc || c.nome, c.nome_auvo || c.nome) && (
+                      <Badge variant="outline" className="border-amber-500 text-amber-600 w-fit">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Nome divergente
+                      </Badge>
+                    )}
+                    {c.vinculo_metodo && (
+                      <div className="text-[11px] text-muted-foreground">
+                        {metodoLabel[c.vinculo_metodo] ?? c.vinculo_metodo}
+                      </div>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="sm" variant="ghost" onClick={() => navigate(`/rh/clientes/${c.id}/requisitos`)}>
