@@ -123,7 +123,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_cliente_id,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -174,17 +174,20 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
       const gcOsId = (row as any).gc_os_id;
       const gcOrcId = (row as any).gc_orcamento_id;
-      const gcId = gcOsId || gcOrcId;
+      
       let vinculoStatus = (row as any).vinculo_status || null;
       
-      if (!vinculoStatus && gcId) {
-        // Consultamos a tabela rh_clientes usando o ID do GestãoClick para verificar o status de vínculo oficial
-        const { data: rh } = await sb
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", String(gcId))
-          .maybeSingle();
-        if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+      if (!vinculoStatus) {
+        // Consultamos a tabela rh_clientes usando o ID do GestãoClick do CLIENTE para verificar o status de vínculo oficial
+        const gcClienteId = (row as any).gc_os_cliente_id || (row as any).gc_cliente_id;
+        if (gcClienteId) {
+          const { data: rh } = await sb
+            .from("rh_clientes")
+            .select("vinculo_status")
+            .eq("gc_cliente_id", String(gcClienteId))
+            .maybeSingle();
+          if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+        }
       }
 
       documentosPorTarefa.set(taskId, {
@@ -214,7 +217,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_cliente_id,gc_os_tarefa_exec,gc_os_tarefa_os")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -233,16 +236,19 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
         const gcOsId = (row as any).gc_os_id;
         const gcOrcId = (row as any).gc_orcamento_id;
-        const gcId = gcOsId || gcOrcId;
+        
         let vinculoStatus = (row as any).vinculo_status || null;
         
-        if (!vinculoStatus && gcId) {
-          const { data: rh } = await sb
-            .from("rh_clientes")
-            .select("vinculo_status")
-            .eq("gc_cliente_id", String(gcId))
-            .maybeSingle();
-          if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+        if (!vinculoStatus) {
+          const gcClienteId = (row as any).gc_os_cliente_id || (row as any).gc_cliente_id;
+          if (gcClienteId) {
+            const { data: rh } = await sb
+              .from("rh_clientes")
+              .select("vinculo_status")
+              .eq("gc_cliente_id", String(gcClienteId))
+              .maybeSingle();
+            if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+          }
         }
 
         documentosPorTarefa.set(taskId, {
