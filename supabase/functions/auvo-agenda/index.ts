@@ -796,16 +796,21 @@ Deno.serve(async (req) => {
         if (budgetCode) forecastsByBudget.set(budgetCode, forecast);
       }
       const candidates = enriched.filter((task: any) => {
-        const execIds = String(task.gc_os_tarefa_exec || "").split(/\D+/).filter(Boolean);
-        const osTaskIds = String(task.gc_os_tarefa_os || "").split(/\D+/).filter(Boolean);
         const budgetCode = normalizeGcDocumentCode(task.gc_orcamento_codigo);
         const forecast = forecastsByBudget.get(budgetCode);
-        return task.auvo_task_id
-          && task.gc_os_codigo
-          && forecast
-          && isOsEligibleForBudgetForecast(task, forecast.criado_em)
-          && execIds.includes(String(task.auvo_task_id))
-          && !osTaskIds.includes(String(task.auvo_task_id));
+        if (!task.auvo_task_id || !task.gc_os_codigo || !forecast) return false;
+
+        // Verifica se a OS é elegível (não é de lote anterior e não é terminal)
+        if (!isOsEligibleForBudgetForecast(task, forecast.criado_em)) return false;
+
+        const execIds = String(task.gc_os_tarefa_exec || "").split(/\D+/).filter(Boolean);
+        const osTaskIds = String(task.gc_os_tarefa_os || "").split(/\D+/).filter(Boolean);
+
+        // O motor falha se exigir que a tarefa seja EXCLUSIVAMENTE de execução (execIds e não osTaskIds).
+        // Na prática, muitos fluxos usam a mesma tarefa para OS e Execução.
+        // O critério correto é: se a tarefa está vinculada a essa OS (seja no campo 73343 ou 73344),
+        // ela pode promover a previsão daquele orçamento.
+        return execIds.includes(String(task.auvo_task_id)) || osTaskIds.includes(String(task.auvo_task_id));
       });
       const concurrency = 3;
       for (let index = 0; index < candidates.length; index += concurrency) {
