@@ -57,6 +57,7 @@ export default function Index() {
         <ul className="list-disc pl-5 text-sm space-y-2 text-slate-700">
           <li><strong>Prioridade 1:</strong> Procura pelo ID da tarefa no campo customizado <code>73343 (Tarefa OS)</code> da Ordem de Serviço.</li>
           <li><strong>Prioridade 2:</strong> Se não encontrar, varre o campo <code>73344 (Tarefa Execução)</code>, que pode conter múltiplos IDs separados por barra.</li>
+          <li><strong>Relacionamento OS-Orçamento:</strong> A OS deve possuir o número do orçamento vinculado no campo customizado <code>81831 (Número Orçamento)</code>. Com este vínculo, o sistema replica o planejamento da Tarefa OS (do orçamento) para a Tarefa Execução (da OS).</li>
           <li><strong>Fallback:</strong> Tenta extrair referências de orçamento (ex: <code>#5835</code>) ou números de OS diretamente da <strong>Orientação</strong> da tarefa no Auvo.</li>
         </ul>
       </section>
@@ -70,15 +71,14 @@ export default function Index() {
         </div>
         
         <p className="text-xs text-gray-400">
-          erro ao criar tarefa preventiva + OS usuário maria eduarda
-
-          Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
-          Imagem 1: https://sorax.lovable.app/api/public/i/2fhfiot7z6.png
+          a tarefa OS é a tarefa do orçamento!
+          a tarefa execução é a tarefa da atividade de execução, vc vai ter que inter relacionar a OS com o orçamento através do campo extra numero orçamento (81831) no GC, a OS sempre vai ter relacionado esse número do orçamento nela! vc tendo o número, pega a tarefa de execução e replica o planejamento do orçamento que está com o número lá (quando tiver planejado)
         </p>
       </footer>
     </div>
   );
 }
+
 
 
 
