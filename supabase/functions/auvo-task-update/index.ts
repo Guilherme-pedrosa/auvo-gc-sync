@@ -1466,15 +1466,29 @@ Deno.serve(async (req) => {
       console.log(`[auvo-task-update][reqId=${reqId}] list-customers fetching from API (forceRefresh=${forceRefresh})`);
       let page = 1;
       const all: any[] = [];
-      while (page <= 50) {
-        const url = `${AUVO_BASE_URL}/customers/?paramFilter=${encodeURIComponent(JSON.stringify({ active: true }))}&page=${page}&pageSize=100`;
-        const resp = await fetch(url, { headers });
+      const PAGE_SIZE = 500;
+      const DEADLINE = Date.now() + 60_000; // orçamento de tempo p/ evitar IDLE_TIMEOUT (150s)
+      let truncated = false;
+      while (page <= 30) {
+        if (Date.now() > DEADLINE) { truncated = true; break; }
+        const url = `${AUVO_BASE_URL}/customers/?paramFilter=${encodeURIComponent(JSON.stringify({ active: true }))}&page=${page}&pageSize=${PAGE_SIZE}`;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 20_000);
+        let resp: Response;
+        try {
+          resp = await fetch(url, { headers, signal: ctrl.signal });
+        } catch (_e) {
+          truncated = true;
+          break;
+        } finally {
+          clearTimeout(t);
+        }
         if (!resp.ok) break;
-        const json = await resp.json();
+        const json = await resp.json().catch(() => ({}));
         const items = json?.result?.entityList || json?.result || [];
         if (!Array.isArray(items) || items.length === 0) break;
         all.push(...items);
-        if (items.length < 100) break;
+        if (items.length < PAGE_SIZE) break;
         page++;
       }
 
@@ -1501,7 +1515,25 @@ Deno.serve(async (req) => {
         if (upsertErr) console.error(`[auvo-task-update][reqId=${reqId}] cache upsert error:`, upsertErr);
       }
 
-      return new Response(JSON.stringify({ data: all, status: 200, cached: false }), { status: 200, headers: respHeaders });
+      if (all.length === 0) {
+        // Fallback: devolve cache existente em vez de falhar
+        const { data: cache } = await admin
+          .from("auvo_clientes_cache")
+          .select("auvo_id, nome, endereco")
+          .eq("ativo", true)
+          .order("nome");
+        return new Response(
+          JSON.stringify({
+            data: (cache ?? []).map(c => ({ id: c.auvo_id, name: c.nome, address: c.endereco })),
+            status: 200,
+            cached: true,
+            truncated
+          }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
+      return new Response(JSON.stringify({ data: all, status: 200, cached: false, truncated }), { status: 200, headers: respHeaders });
     }
 
     if (action === "list-customer-equipments") {
