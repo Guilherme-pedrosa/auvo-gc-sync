@@ -202,12 +202,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await q;
       if (error) throw error;
       const found = (data?.[0] ?? null) as Record<string, any> | null;
-      if (found) {
-        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
-          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
-        } else if (found.rh_clientes) {
-          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
-        }
+      if (found && found.gc_cliente_id) {
+        const { data: rh } = await supabase
+          .from("rh_clientes")
+          .select("vinculo_status")
+          .eq("gc_cliente_id", found.gc_cliente_id)
+          .maybeSingle();
+        found.vinculo_status = rh?.vinculo_status;
       }
       return found;
     },
