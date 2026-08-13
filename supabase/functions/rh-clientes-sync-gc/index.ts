@@ -701,7 +701,7 @@ async function handleUpdateAuvoName(supabase: any, body: any): Promise<Record<st
   const updatePayload = {
     ...currentAuvo,
     name: newName,
-    legalName: currentName === currentAuvo.legalName ? newName : currentAuvo.legalName, // Opcional: tenta manter coerência
+    legalName: target.nome_auvo === currentAuvo.legalName ? newName : currentAuvo.legalName,
   };
   
   // Limpa campos que não devem ir no PUT de atualização se necessário ou usa o payload mapeado
