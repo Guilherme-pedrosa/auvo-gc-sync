@@ -200,6 +200,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     cliente: tarefa?.gc_os_cliente || vinculoOs?.gc_os_cliente || null,
     herdado: !tarefa?.gc_os_codigo && !!vinculoOs?.gc_os_codigo,
     tarefaOrigem: vinculoOs?.auvo_task_id || null,
+    vinculo_status: tarefa?.vinculo_status || vinculoOs?.vinculo_status || null,
   };
 
   const orcamentoId = tarefa?.gc_orcamento_id || vinculoOs?.gc_orcamento_id || null;
@@ -307,7 +308,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
 
         {tarefa && (
           <div className="space-y-4">
-            {os.cliente && tarefa.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) && (
+            {os.cliente && os.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) && (
               <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-800 animate-pulse">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0" />
                 <div className="text-sm">
@@ -324,7 +325,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 {os.cliente && (
                   <p className={cn(
                     "text-xs font-semibold mt-0.5",
-                    tarefa.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) ? "text-amber-600" : "text-muted-foreground"
+                    os.vinculo_status !== "vinculado" && areNamesDivergent(tarefa.cliente, os.cliente) ? "text-amber-600" : "text-muted-foreground"
                   )}>
                     GC: {os.cliente}
                   </p>

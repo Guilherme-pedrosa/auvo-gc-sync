@@ -123,7 +123,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em,vinculo_status")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -176,7 +176,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       let vinculoStatus = (row as any).vinculo_status || null;
       
       if (!vinculoStatus && gcId) {
-        const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+        const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", String(gcId)).maybeSingle();
         if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
       }
 
@@ -207,7 +207,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os,vinculo_status")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -228,7 +228,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         let vinculoStatus = (row as any).vinculo_status || null;
         
         if (!vinculoStatus && gcId) {
-          const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+          const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", String(gcId)).maybeSingle();
           if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
         }
 
