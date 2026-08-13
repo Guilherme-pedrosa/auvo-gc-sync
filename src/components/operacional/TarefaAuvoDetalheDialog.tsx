@@ -47,8 +47,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         .from("tarefas_central")
         .select(`
           *,
-          gc_os_cliente_id,
-          rh_clientes!tarefas_central_gc_os_cliente_id_fkey (vinculo_status)
+          rh_clientes (vinculo_status)
         `)
         .eq("auvo_task_id", taskId as string)
         .order("atualizado_em", { ascending: false })
@@ -70,11 +69,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
           merged[key] = value;
         }
       }
-      const rhData = merged.rh_clientes;
-      if (rhData && Array.isArray(rhData)) {
-        merged.vinculo_status = rhData[0]?.vinculo_status;
-      } else if (rhData) {
-        merged.vinculo_status = (rhData as any).vinculo_status;
+      if (merged.rh_clientes && Array.isArray(merged.rh_clientes)) {
+        merged.vinculo_status = merged.rh_clientes[0]?.vinculo_status;
+      } else if (merged.rh_clientes) {
+        merged.vinculo_status = (merged.rh_clientes as any).vinculo_status;
       }
       return merged;
     },
@@ -87,8 +85,8 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await supabase
         .from("tarefas_central")
         .select(`
-          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_cliente_id,gc_os_tarefa_exec,
-          rh_clientes!tarefas_central_gc_os_cliente_id_fkey (vinculo_status)
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec,
+          rh_clientes (vinculo_status)
         `)
         .not("gc_os_codigo", "is", null)
         .not("gc_os_tarefa_exec", "is", null)
@@ -102,11 +100,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       ) as Record<string, any> | null;
 
       if (found) {
-        const rhData = found.rh_clientes;
-        if (rhData && Array.isArray(rhData)) {
-          found.vinculo_status = rhData[0]?.vinculo_status;
-        } else if (rhData) {
-          found.vinculo_status = (rhData as any).vinculo_status;
+        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
+          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
+        } else if (found.rh_clientes) {
+          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
         }
       }
       return found;
@@ -195,8 +192,8 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       let q = supabase
         .from("tarefas_central")
         .select(`
-          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_cliente_id,
-          rh_clientes!tarefas_central_gc_os_cliente_id_fkey (vinculo_status)
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,
+          rh_clientes (vinculo_status)
         `)
         .not("gc_os_codigo", "is", null)
         .limit(1);
@@ -207,11 +204,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       if (error) throw error;
       const found = (data?.[0] ?? null) as Record<string, any> | null;
       if (found) {
-        const rhData = found.rh_clientes;
-        if (rhData && Array.isArray(rhData)) {
-          found.vinculo_status = rhData[0]?.vinculo_status;
-        } else if (rhData) {
-          found.vinculo_status = (rhData as any).vinculo_status;
+        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
+          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
+        } else if (found.rh_clientes) {
+          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
         }
       }
       return found;
