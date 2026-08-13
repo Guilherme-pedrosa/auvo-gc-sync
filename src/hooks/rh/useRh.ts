@@ -155,7 +155,7 @@ export function useRhClientes(search = "", vinculoStatus = "all") {
 
       const { data, error } = await q.limit(2000);
       if (error) throw error;
-      return (data ?? []) as (RhCliente & { vinculo_status: string | null })[];
+      return (data ?? []) as RhCliente[];
     },
   });
 }

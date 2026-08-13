@@ -59,6 +59,7 @@ export interface AgendaAgendamento {
   duracao_decimal?: number | null;
   duracao_planejada_minutos?: number | null;
   atualizado_em?: string | null;
+  vinculo_status?: string | null;
 }
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
@@ -122,7 +123,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em,vinculo_status")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -170,6 +171,15 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         });
       }
       const atual = documentosPorTarefa.get(taskId);
+      // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
+      const gcId = row.gc_os_id || row.gc_orcamento_id;
+      let vinculoStatus = row.vinculo_status || null;
+      
+      if (!vinculoStatus && gcId) {
+        const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+        if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+      }
+
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
         os_id: atual?.os_id || row.gc_os_id || null,
@@ -185,7 +195,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, row.descricao),
         tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
         tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
-        vinculo_status: atual?.vinculo_status || row.vinculo_status || null,
+        vinculo_status: atual?.vinculo_status || vinculoStatus,
       });
     }
   }
@@ -197,7 +207,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os,vinculo_status")
+      .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -212,6 +222,16 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         // O vínculo direto com 73343 tem precedência; 73344 só preenche o que falta.
         const atual = documentosPorTarefa.get(taskId);
         if (atual?.os) continue;
+        
+        // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
+        const gcId = row.gc_os_id || row.gc_orcamento_id;
+        let vinculoStatus = row.vinculo_status || null;
+        
+        if (!vinculoStatus && gcId) {
+          const { data: rh } = await sb.from("rh_clientes").select("vinculo_status").eq("gc_cliente_id", gcId).maybeSingle();
+          if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
+        }
+
         documentosPorTarefa.set(taskId, {
           os: row.gc_os_codigo || null,
           os_id: row.gc_os_id || null,
@@ -227,7 +247,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           tipo_descricao: atual?.tipo_descricao || null,
           tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || row.auvo_task_id || null,
           tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
-          vinculo_status: atual?.vinculo_status || row.vinculo_status || null,
+          vinculo_status: atual?.vinculo_status || vinculoStatus,
         });
       }
     }
