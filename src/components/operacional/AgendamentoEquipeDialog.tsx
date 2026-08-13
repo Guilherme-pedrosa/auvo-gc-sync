@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -36,12 +37,13 @@ import {
   useDeleteAgendamento,
   type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
-import { Trash2 } from "lucide-react";
+import { Trash2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useQuery } from "@tanstack/react-query";
 import AgendaTagsEditor from "@/components/operacional/AgendaTagsEditor";
+import { areNamesDivergent } from "@/lib/clientMatching";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -400,13 +402,27 @@ export default function AgendamentoEquipeDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="client">Cliente</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="client">Cliente</Label>
+              {agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && (
+                <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 h-5">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Divergente
+                </Badge>
+              )}
+            </div>
             <Input
               id="client"
               value={cliente}
               onChange={(e) => setCliente(e.target.value)}
               placeholder="Nome do cliente"
+              className={cn(
+                agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && "border-amber-400 focus-visible:ring-amber-400"
+              )}
             />
+            {agendamento?.origem === "AUVO" && agendamento.cliente && areNamesDivergent(agendamento.cliente, cliente) && (
+              <p className="text-[10px] text-amber-600 font-medium">Original no Auvo: {agendamento.cliente}</p>
+            )}
           </div>
 
           <div className="space-y-2">

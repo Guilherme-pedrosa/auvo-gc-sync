@@ -145,6 +145,9 @@ export function useRhClientes(search = "", vinculoStatus = "all") {
       if (vinculoStatus !== "all") {
         if (vinculoStatus === "nao_vinculado") {
           q = q.or("vinculo_status.eq.pendente,vinculo_status.is.null");
+        } else if (vinculoStatus === "divergente") {
+          // A filtragem de divergência será feita no frontend via useMemo por enquanto
+          // para suportar a lógica complexa de similaridade de strings
         } else {
           q = q.eq("vinculo_status", vinculoStatus);
         }

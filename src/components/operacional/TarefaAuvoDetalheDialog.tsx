@@ -16,11 +16,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw, ArrowRightLeft, AlertTriangle } from "lucide-react";
 import { RECONCILIATION_OS_SITUATIONS } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 import AgendaTagsEditor from "@/components/operacional/AgendaTagsEditor";
 import { useAgendaIdByTask } from "@/hooks/operacional/useAgendaTags";
+import { areNamesDivergent } from "@/lib/clientMatching";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -306,12 +307,27 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
 
         {tarefa && (
           <div className="space-y-4">
+            {os.cliente && areNamesDivergent(tarefa.cliente, os.cliente) && (
+              <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-800 animate-pulse">
+                <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-bold">Divergência de Cliente</p>
+                  <p className="text-xs">O nome no Auvo e no GestãoClick são significativamente diferentes.</p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
                 <span className="text-muted-foreground text-xs">Cliente (Auvo)</span>
                 <p className="font-medium">{tarefa.cliente || "—"}</p>
                 {os.cliente && (
-                  <p className="text-xs text-muted-foreground">GC: {os.cliente}</p>
+                  <p className={cn(
+                    "text-xs font-semibold mt-0.5",
+                    areNamesDivergent(tarefa.cliente, os.cliente) ? "text-amber-600" : "text-muted-foreground"
+                  )}>
+                    GC: {os.cliente}
+                  </p>
                 )}
               </div>
               <div>
