@@ -45,10 +45,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select(`
-          *,
-          rh_clientes (vinculo_status)
-        `)
+        .select("*")
         .eq("auvo_task_id", taskId as string)
         .order("atualizado_em", { ascending: false })
         .limit(20);
@@ -69,10 +66,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
           merged[key] = value;
         }
       }
-      if (merged.rh_clientes && Array.isArray(merged.rh_clientes)) {
-        merged.vinculo_status = merged.rh_clientes[0]?.vinculo_status;
-      } else if (merged.rh_clientes) {
-        merged.vinculo_status = (merged.rh_clientes as any).vinculo_status;
+      if (merged.gc_cliente_id) {
+        const { data: rh } = await supabase
+          .from("rh_clientes")
+          .select("vinculo_status")
+          .eq("gc_cliente_id", merged.gc_cliente_id)
+          .maybeSingle();
+        merged.vinculo_status = rh?.vinculo_status;
       }
       return merged;
     },
@@ -85,8 +85,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await supabase
         .from("tarefas_central")
         .select(`
-          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec,
-          rh_clientes (vinculo_status)
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec
         `)
         .not("gc_os_codigo", "is", null)
         .not("gc_os_tarefa_exec", "is", null)
@@ -99,12 +98,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
           .includes(String(taskId)),
       ) as Record<string, any> | null;
 
-      if (found) {
-        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
-          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
-        } else if (found.rh_clientes) {
-          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
-        }
+      if (found && found.gc_cliente_id) {
+        const { data: rh } = await supabase
+          .from("rh_clientes")
+          .select("vinculo_status")
+          .eq("gc_cliente_id", found.gc_cliente_id)
+          .maybeSingle();
+        found.vinculo_status = rh?.vinculo_status;
       }
       return found;
     },
@@ -192,8 +192,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       let q = supabase
         .from("tarefas_central")
         .select(`
-          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,
-          rh_clientes (vinculo_status)
+          auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente
         `)
         .not("gc_os_codigo", "is", null)
         .limit(1);
@@ -203,12 +202,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await q;
       if (error) throw error;
       const found = (data?.[0] ?? null) as Record<string, any> | null;
-      if (found) {
-        if (found.rh_clientes && Array.isArray(found.rh_clientes)) {
-          found.vinculo_status = found.rh_clientes[0]?.vinculo_status;
-        } else if (found.rh_clientes) {
-          found.vinculo_status = (found.rh_clientes as any).vinculo_status;
-        }
+      if (found && found.gc_cliente_id) {
+        const { data: rh } = await supabase
+          .from("rh_clientes")
+          .select("vinculo_status")
+          .eq("gc_cliente_id", found.gc_cliente_id)
+          .maybeSingle();
+        found.vinculo_status = rh?.vinculo_status;
       }
       return found;
     },
