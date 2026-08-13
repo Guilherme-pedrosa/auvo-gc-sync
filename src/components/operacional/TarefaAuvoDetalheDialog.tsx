@@ -66,10 +66,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
           merged[key] = value;
         }
       }
-      if (merged.rh_clientes && Array.isArray(merged.rh_clientes)) {
-        merged.vinculo_status = merged.rh_clientes[0]?.vinculo_status;
-      } else if (merged.rh_clientes) {
-        merged.vinculo_status = (merged.rh_clientes as any).vinculo_status;
+      if (merged.gc_cliente_id) {
+        const { data: rh } = await supabase
+          .from("rh_clientes")
+          .select("vinculo_status")
+          .eq("gc_cliente_id", merged.gc_cliente_id)
+          .maybeSingle();
+        merged.vinculo_status = rh?.vinculo_status;
       }
       return merged;
     },
