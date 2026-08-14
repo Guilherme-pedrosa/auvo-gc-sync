@@ -96,6 +96,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   )];
   if (taskIds.length === 0) return agendamentos;
 
+  const indiceVinculos = await carregarIndiceVinculos();
+
   const documentosPorTarefa = new Map<string, {
     os: string | null;
     os_id: string | null;
