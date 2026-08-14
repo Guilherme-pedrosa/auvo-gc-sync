@@ -22,6 +22,10 @@ import { toast } from "sonner";
 import AgendaTagsEditor from "@/components/operacional/AgendaTagsEditor";
 import { useAgendaIdByTask } from "@/hooks/operacional/useAgendaTags";
 import { areNamesDivergent } from "@/lib/clientMatching";
+import {
+  buildClientLinkIndex,
+  resolveClientLinkStatus,
+} from "@/lib/clientLinkStatus";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -65,14 +69,6 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         if (preservesDocument && (merged[key] == null || merged[key] === "")) {
           merged[key] = value;
         }
-      }
-      if (merged.gc_cliente_id) {
-        const { data: rh } = await supabase
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", merged.gc_cliente_id)
-          .maybeSingle();
-        merged.vinculo_status = rh?.vinculo_status;
       }
       return merged;
     },
