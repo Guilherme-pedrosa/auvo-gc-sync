@@ -16,18 +16,35 @@ import {
  */
 async function carregarIndiceVinculos() {
   const rows: any[] = [];
+  const auvoClients: any[] = [];
   const pageSize = 1000;
-  for (let from = 0; from < 20000; from += pageSize) {
-    const { data, error } = await sb
-      .from("rh_clientes")
-      .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
-      .range(from, from + pageSize - 1);
-    if (error) throw error;
-    const chunk = data ?? [];
-    rows.push(...chunk);
-    if (chunk.length < pageSize) break;
-  }
-  return buildClientLinkIndex(rows);
+  await Promise.all([
+    (async () => {
+      for (let from = 0; from < 20000; from += pageSize) {
+        const { data, error } = await sb
+          .from("rh_clientes")
+          .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = data ?? [];
+        rows.push(...chunk);
+        if (chunk.length < pageSize) break;
+      }
+    })(),
+    (async () => {
+      for (let from = 0; from < 20000; from += pageSize) {
+        const { data, error } = await sb
+          .from("auvo_clientes_cache")
+          .select("auvo_id,nome,nome_legal")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = data ?? [];
+        auvoClients.push(...chunk);
+        if (chunk.length < pageSize) break;
+      }
+    })(),
+  ]);
+  return buildClientLinkIndex(rows, auvoClients);
 }
 
 export interface AgendaVeiculo {
@@ -273,13 +290,12 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     const tempo = tempoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
     const clienteGc = documento.cliente_gc || item.gc_os_cliente || null;
-    // O vínculo oficial vale para o PAR de nomes daquela tarefa. Unidades
-    // diferentes do mesmo grupo continuam sendo divergência real.
+    // Resolve primeiro o nome Auvo atual no cache para obter o ID imutável;
+    // somente usa comparação nominal quando a API não forneceu esse vínculo.
     const vinculoStatus = resolveClientLinkStatus(
       item.cliente, 
       clienteGc, 
       indiceVinculos,
-      (item as any).auvo_cliente_id
     )
       || documento.vinculo_status
       || item.vinculo_status
