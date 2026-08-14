@@ -58,11 +58,20 @@ export function mergeAgendaTaskSnapshot(
   if (existing) {
     for (const field of PRESERVE_WHEN_MISSING) {
       if (
-        isMissingSnapshotValue(field, incoming[field])
-        && !isMissingSnapshotValue(field, existing[field])
+        isMissingSnapshotValue(field, incoming[field]) &&
+        !isMissingSnapshotValue(field, existing[field])
       ) {
         merged[field] = existing[field];
       }
+    }
+
+    // Se o nome do cliente mudou no incoming e não é um valor vazio/genérico, 
+    // forçamos a atualização mesmo que o existente fosse válido.
+    if (
+      !isMissingSnapshotValue("cliente", incoming.cliente) &&
+      incoming.cliente !== existing.cliente
+    ) {
+      merged.cliente = incoming.cliente;
     }
   }
 
