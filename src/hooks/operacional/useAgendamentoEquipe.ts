@@ -3,6 +3,32 @@ import { supabase as sb } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { resolveAgendaTaskType } from "@/lib/agendaTaskType";
 import { agendaWorkSnapshotQuality } from "@/lib/agendaWorkedTime";
+import {
+  buildClientLinkIndex,
+  resolveClientLinkStatus,
+} from "@/lib/clientLinkStatus";
+
+/**
+ * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
+ * Antes o vínculo era buscado por `tarefas_central.gc_cliente_id`, coluna que
+ * não existe: o resultado era sempre nulo e a agenda acusava divergência mesmo
+ * em clientes já vinculados.
+ */
+async function carregarIndiceVinculos() {
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    const { data, error } = await sb
+      .from("rh_clientes")
+      .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
+  return buildClientLinkIndex(rows);
+}
 
 export interface AgendaVeiculo {
   id: string;
