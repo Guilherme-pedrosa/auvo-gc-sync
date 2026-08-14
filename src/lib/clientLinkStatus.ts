@@ -69,8 +69,20 @@ export function resolveClientLinkStatus(
   const gc = normalizeClientName(gcNome);
   if (!auvo || !gc) return null;
   
-  // 2. Nomes idênticos após normalização
+  // 2. Nomes idênticos após normalização ou similaridade alta (70%)
   if (auvo === gc) return "vinculado";
+  
+  // Se não for idêntico, testar similaridade de 70% antes de considerar pendente
+  const normAuvo = normalizeClientName(auvoNome);
+  const normGc = normalizeClientName(gcNome);
+  const tokensAuvo = normAuvo.split(" ").filter(t => t.length > 2);
+  const tokensGc = normGc.split(" ").filter(t => t.length > 2);
+  
+  if (tokensAuvo.length > 0 && tokensGc.length > 0) {
+    const intersection = tokensAuvo.filter(t => tokensGc.includes(t));
+    const overlap = intersection.length / Math.max(tokensAuvo.length, tokensGc.length);
+    if (overlap >= 0.7) return "vinculado";
+  }
   
   // 3. Par Auvo <-> GC registrado no vínculo
   const gcNomes = index.gcPorAuvo.get(auvo);
