@@ -3,6 +3,32 @@ import { supabase as sb } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { resolveAgendaTaskType } from "@/lib/agendaTaskType";
 import { agendaWorkSnapshotQuality } from "@/lib/agendaWorkedTime";
+import {
+  buildClientLinkIndex,
+  resolveClientLinkStatus,
+} from "@/lib/clientLinkStatus";
+
+/**
+ * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
+ * Antes o vínculo era buscado por `tarefas_central.gc_cliente_id`, coluna que
+ * não existe: o resultado era sempre nulo e a agenda acusava divergência mesmo
+ * em clientes já vinculados.
+ */
+async function carregarIndiceVinculos() {
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    const { data, error } = await sb
+      .from("rh_clientes")
+      .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
+  return buildClientLinkIndex(rows);
+}
 
 export interface AgendaVeiculo {
   id: string;
@@ -69,6 +95,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       .filter(Boolean),
   )];
   if (taskIds.length === 0) return agendamentos;
+
+  const indiceVinculos = await carregarIndiceVinculos();
 
   const documentosPorTarefa = new Map<string, {
     os: string | null;
@@ -171,21 +199,6 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         });
       }
       const atual = documentosPorTarefa.get(taskId);
-      // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
-      const gcOsId = (row as any).gc_os_id;
-      const gcOrcId = (row as any).gc_orcamento_id;
-      const gcId = gcOsId || gcOrcId;
-      let vinculoStatus = (row as any).vinculo_status || null;
-      
-      if (!vinculoStatus && gcId) {
-        // Consultamos a tabela rh_clientes usando o ID do GestãoClick para verificar o status de vínculo oficial
-        const { data: rh } = await sb
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", String(gcId))
-          .maybeSingle();
-        if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
-      }
 
       documentosPorTarefa.set(taskId, {
         os: atual?.os || (row as any).gc_os_codigo || null,
@@ -202,7 +215,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, (row as any).descricao),
         tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || null,
         tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
-        vinculo_status: vinculoStatus || atual?.vinculo_status,
+        vinculo_status: atual?.vinculo_status ?? null,
       });
     }
   }
@@ -229,21 +242,6 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         // O vínculo direto com 73343 tem precedência; 73344 só preenche o que falta.
         const atual = documentosPorTarefa.get(taskId);
         if (atual?.os) continue;
-        
-        // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
-        const gcOsId = (row as any).gc_os_id;
-        const gcOrcId = (row as any).gc_orcamento_id;
-        const gcId = gcOsId || gcOrcId;
-        let vinculoStatus = (row as any).vinculo_status || null;
-        
-        if (!vinculoStatus && gcId) {
-          const { data: rh } = await sb
-            .from("rh_clientes")
-            .select("vinculo_status")
-            .eq("gc_cliente_id", String(gcId))
-            .maybeSingle();
-          if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
-        }
 
         documentosPorTarefa.set(taskId, {
           os: (row as any).gc_os_codigo || null,
@@ -260,7 +258,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           tipo_descricao: atual?.tipo_descricao || null,
           tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || (row as any).auvo_task_id || null,
           tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
-          vinculo_status: vinculoStatus || atual?.vinculo_status,
+          vinculo_status: atual?.vinculo_status ?? null,
         });
       }
     }
@@ -274,6 +272,13 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     const estado = estadoPorTarefa.get(String(item.auvo_task_id || "").trim());
     const tempo = tempoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
+    const clienteGc = documento.cliente_gc || item.gc_os_cliente || null;
+    // O vínculo oficial vale para o PAR de nomes daquela tarefa. Unidades
+    // diferentes do mesmo grupo continuam sendo divergência real.
+    const vinculoStatus = resolveClientLinkStatus(item.cliente, clienteGc, indiceVinculos)
+      || documento.vinculo_status
+      || item.vinculo_status
+      || null;
     const tipoTarefa = resolveAgendaTaskType({
       taskId: item.auvo_task_id,
       taskTypeId: documento.tipo_id,
@@ -289,7 +294,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       gc_orcamento_id: documento.orcamento_id || item.gc_orcamento_id || null,
 
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
-      gc_os_cliente: documento.cliente_gc || item.gc_os_cliente || null,
+      gc_os_cliente: clienteGc,
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: tempo?.check_in_iso || estado?.check_in || documento.check_in || item.check_in_iso || null,
       check_out_iso: tempo?.check_out_iso || estado?.check_out || documento.check_out || item.check_out_iso || null,
@@ -297,7 +302,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       tipo_tarefa_auvo: tipoTarefa,
       tipo_tarefa_auvo_id: documento.tipo_id,
       tipo_tarefa_auvo_descricao: documento.tipo_descricao,
-      vinculo_status: documento.vinculo_status || item.vinculo_status || null,
+      vinculo_status: vinculoStatus,
     };
   });
 }
