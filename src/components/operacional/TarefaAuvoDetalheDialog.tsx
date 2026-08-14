@@ -195,6 +195,29 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
   });
 
   const vinculoOs = vinculoExecucao || vinculo;
+  const clienteGcNome = tarefa?.gc_os_cliente || vinculoOs?.gc_os_cliente || null;
+
+  // O vínculo oficial é resolvido pelo PAR de nomes (Auvo ↔ GC) no cadastro de
+  // RH > Clientes, porque tarefas_central não guarda o ID do cliente do GC.
+  const { data: vinculoOficial } = useQuery({
+    queryKey: ["tarefa_vinculo_cliente_oficial", tarefa?.cliente, clienteGcNome],
+    enabled: !!tarefa?.cliente && !!clienteGcNome,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rh_clientes")
+        .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status")
+        .eq("vinculo_status", "vinculado")
+        .limit(10000);
+      if (error) throw error;
+      return resolveClientLinkStatus(
+        tarefa?.cliente,
+        clienteGcNome,
+        buildClientLinkIndex(data ?? []),
+      );
+    },
+  });
+
   const os = {
     id: tarefa?.gc_os_id || vinculoOs?.gc_os_id || null,
     codigo: tarefa?.gc_os_codigo || vinculoOs?.gc_os_codigo || null,
@@ -204,10 +227,10 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     link: tarefa?.gc_os_link || vinculoOs?.gc_os_link || null,
     orcLink: tarefa?.gc_orc_link || vinculoOs?.gc_orc_link || null,
     orcamento: tarefa?.gc_orcamento_codigo || vinculoOs?.gc_orcamento_codigo || refOrcamento || null,
-    cliente: tarefa?.gc_os_cliente || vinculoOs?.gc_os_cliente || null,
+    cliente: clienteGcNome,
     herdado: !tarefa?.gc_os_codigo && !!vinculoOs?.gc_os_codigo,
     tarefaOrigem: vinculoOs?.auvo_task_id || null,
-    vinculo_status: tarefa?.vinculo_status || vinculoOs?.vinculo_status || null,
+    vinculo_status: vinculoOficial || tarefa?.vinculo_status || vinculoOs?.vinculo_status || null,
   };
 
   const orcamentoId = tarefa?.gc_orcamento_id || vinculoOs?.gc_orcamento_id || null;
