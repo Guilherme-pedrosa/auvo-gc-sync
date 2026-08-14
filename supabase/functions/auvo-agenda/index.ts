@@ -599,7 +599,7 @@ Deno.serve(async (req) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
 
       const custDesc = String(t.customerDescription || "").trim();
-      const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
+      const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || t.customer?.legalName || "").trim();
       const cliente = custDesc || custName || "Sem cliente";
 
       const rawTecnico = String(t.userToName || t.userTo?.name || t.userTo?.login || "").trim();
