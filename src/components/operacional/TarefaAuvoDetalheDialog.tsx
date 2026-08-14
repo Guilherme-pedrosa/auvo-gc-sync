@@ -94,14 +94,6 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
           .includes(String(taskId)),
       ) as Record<string, any> | null;
 
-      if (found && found.gc_cliente_id) {
-        const { data: rh } = await supabase
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", found.gc_cliente_id)
-          .maybeSingle();
-        found.vinculo_status = rh?.vinculo_status;
-      }
       return found;
     },
   });
@@ -198,14 +190,6 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await q;
       if (error) throw error;
       const found = (data?.[0] ?? null) as Record<string, any> | null;
-      if (found && found.gc_cliente_id) {
-        const { data: rh } = await supabase
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", found.gc_cliente_id)
-          .maybeSingle();
-        found.vinculo_status = rh?.vinculo_status;
-      }
       return found;
     },
   });
