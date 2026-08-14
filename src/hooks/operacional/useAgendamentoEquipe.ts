@@ -171,21 +171,6 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         });
       }
       const atual = documentosPorTarefa.get(taskId);
-      // Busca vínculo de cliente baseado no ID GestãoClick para saber se já está inter-relacionado
-      const gcOsId = (row as any).gc_os_id;
-      const gcOrcId = (row as any).gc_orcamento_id;
-      const gcId = gcOsId || gcOrcId;
-      let vinculoStatus = (row as any).vinculo_status || null;
-      
-      if (!vinculoStatus && gcId) {
-        // Consultamos a tabela rh_clientes usando o ID do GestãoClick para verificar o status de vínculo oficial
-        const { data: rh } = await sb
-          .from("rh_clientes")
-          .select("vinculo_status")
-          .eq("gc_cliente_id", String(gcId))
-          .maybeSingle();
-        if (rh?.vinculo_status) vinculoStatus = rh.vinculo_status;
-      }
 
       documentosPorTarefa.set(taskId, {
         os: atual?.os || (row as any).gc_os_codigo || null,
@@ -202,7 +187,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         tipo_descricao: preferTaskTypeDescription(atual?.tipo_descricao, (row as any).descricao),
         tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || null,
         tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
-        vinculo_status: vinculoStatus || atual?.vinculo_status,
+        vinculo_status: atual?.vinculo_status ?? null,
       });
     }
   }
