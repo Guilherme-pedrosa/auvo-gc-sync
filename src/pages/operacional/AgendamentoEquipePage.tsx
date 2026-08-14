@@ -687,7 +687,7 @@ export default function AgendamentoEquipePage() {
         if (vistos.has(key)) continue;
         vistos.add(key);
         
-        const clienteLimpo = String(t.cliente || "SEM CLIENTE").trim().toUpperCase();
+        const clienteLimpo = String(t.cliente || "SEM CLIENTE").trim();
 
         linhas.push({
           data: t.data_tarefa,
