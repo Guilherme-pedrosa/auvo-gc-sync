@@ -272,6 +272,13 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     const estado = estadoPorTarefa.get(String(item.auvo_task_id || "").trim());
     const tempo = tempoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
+    const clienteGc = documento.cliente_gc || item.gc_os_cliente || null;
+    // O vínculo oficial vale para o PAR de nomes daquela tarefa. Unidades
+    // diferentes do mesmo grupo continuam sendo divergência real.
+    const vinculoStatus = resolveClientLinkStatus(item.cliente, clienteGc, indiceVinculos)
+      || documento.vinculo_status
+      || item.vinculo_status
+      || null;
     const tipoTarefa = resolveAgendaTaskType({
       taskId: item.auvo_task_id,
       taskTypeId: documento.tipo_id,
@@ -287,7 +294,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       gc_orcamento_id: documento.orcamento_id || item.gc_orcamento_id || null,
 
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
-      gc_os_cliente: documento.cliente_gc || item.gc_os_cliente || null,
+      gc_os_cliente: clienteGc,
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: tempo?.check_in_iso || estado?.check_in || documento.check_in || item.check_in_iso || null,
       check_out_iso: tempo?.check_out_iso || estado?.check_out || documento.check_out || item.check_out_iso || null,
@@ -295,7 +302,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       tipo_tarefa_auvo: tipoTarefa,
       tipo_tarefa_auvo_id: documento.tipo_id,
       tipo_tarefa_auvo_descricao: documento.tipo_descricao,
-      vinculo_status: documento.vinculo_status || item.vinculo_status || null,
+      vinculo_status: vinculoStatus,
     };
   });
 }
