@@ -206,7 +206,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rh_clientes")
-        .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status")
+        .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
         .eq("vinculo_status", "vinculado")
         .limit(10000);
       if (error) throw error;
@@ -214,6 +214,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         tarefa?.cliente,
         clienteGcNome,
         buildClientLinkIndex(data ?? []),
+        tarefa?.auvo_customer_id || (tarefa as any)?.auvo_cliente_id
       );
     },
   });
