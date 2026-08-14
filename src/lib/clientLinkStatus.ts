@@ -9,6 +9,12 @@ export type ClientLinkRow = {
   auvo_cliente_id?: number | string | null;
 };
 
+export type AuvoClientCacheRow = {
+  auvo_id?: number | string | null;
+  nome?: string | null;
+  nome_legal?: string | null;
+};
+
 export type ClientLinkIndex = {
   /** chave: nome Auvo normalizado -> conjunto de nomes GC normalizados oficialmente vinculados */
   gcPorAuvo: Map<string, Set<string>>;
@@ -16,16 +22,31 @@ export type ClientLinkIndex = {
   auvoVinculados: Set<string>;
   /** IDs Auvo que pertencem a um cadastro oficialmente vinculado */
   idsAuvoVinculados: Set<string>;
+  /** ID Auvo atual resolvido pelo nome vigente no cache da API */
+  idAuvoPorNomeAtual: Map<string, string>;
 };
 
 /**
  * tarefas_central NÃO possui gc_cliente_id. O vínculo oficial (RH > Clientes)
  * precisa ser resolvido pelo par de NOMES gravado no espelho da tarefa.
  */
-export function buildClientLinkIndex(rows: ClientLinkRow[]): ClientLinkIndex {
+export function buildClientLinkIndex(
+  rows: ClientLinkRow[],
+  auvoClients: AuvoClientCacheRow[] = [],
+): ClientLinkIndex {
   const gcPorAuvo = new Map<string, Set<string>>();
   const auvoVinculados = new Set<string>();
   const idsAuvoVinculados = new Set<string>();
+  const idAuvoPorNomeAtual = new Map<string, string>();
+
+  for (const client of auvoClients) {
+    if (!client.auvo_id) continue;
+    const id = String(client.auvo_id);
+    for (const rawName of [client.nome, client.nome_legal]) {
+      const name = normalizeClientName(rawName);
+      if (name) idAuvoPorNomeAtual.set(name, id);
+    }
+  }
 
   for (const row of rows) {
     if (String(row.vinculo_status || "").toLowerCase() !== "vinculado") continue;
@@ -43,10 +64,13 @@ export function buildClientLinkIndex(rows: ClientLinkRow[]): ClientLinkIndex {
       .map((value) => normalizeClientName(value))
       .filter(Boolean);
     if (!gcPorAuvo.has(auvoNome)) gcPorAuvo.set(auvoNome, new Set());
-    for (const gcNome of gcNomes) gcPorAuvo.get(auvoNome)!.add(gcNome);
+    const linkedGcNames = gcPorAuvo.get(auvoNome);
+    if (linkedGcNames) {
+      for (const gcNome of gcNomes) linkedGcNames.add(gcNome);
+    }
   }
 
-  return { gcPorAuvo, auvoVinculados, idsAuvoVinculados };
+  return { gcPorAuvo, auvoVinculados, idsAuvoVinculados, idAuvoPorNomeAtual };
 }
 
 /**
@@ -61,7 +85,11 @@ export function resolveClientLinkStatus(
   auvoClientId?: string | number | null
 ): "vinculado" | "pendente" | null {
   // 1. Prioridade máxima: ID Auvo oficialmente vinculado
-  if (auvoClientId && index.idsAuvoVinculados.has(String(auvoClientId))) {
+  const auvoNameKey = normalizeClientName(auvoNome);
+  const resolvedAuvoId = auvoClientId
+    ? String(auvoClientId)
+    : index.idAuvoPorNomeAtual.get(auvoNameKey);
+  if (resolvedAuvoId && index.idsAuvoVinculados.has(resolvedAuvoId)) {
     return "vinculado";
   }
 
