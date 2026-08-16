@@ -303,9 +303,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                               {item.children.map((child) => {
                                 const isActive = location.pathname === child.path;
                                 return (
-                                  <button
+                                  <a
                                     key={child.path}
-                                    onClick={(e) => go(child.path, e.ctrlKey || e.metaKey)}
+                                    href={child.path}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      go(child.path, e.ctrlKey || e.metaKey);
+                                    }}
                                     className={cn(
                                       "w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                                       isActive
@@ -315,7 +319,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                   >
                                     <child.icon className={cn("h-3.5 w-3.5 flex-shrink-0", isActive && "text-sidebar-primary")} />
                                     <span className="truncate">{child.label}</span>
-                                  </button>
+                                  </a>
                                 );
                               })}
                             </div>
@@ -327,8 +331,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     return (
                       <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
-                          <button
-                            onClick={(e) => item.path && go(item.path, e.ctrlKey || e.metaKey)}
+                          <a
+                            href={item.path}
+                            onClick={(e) => {
+                              if (!item.path) return;
+                              e.preventDefault();
+                              go(item.path, e.ctrlKey || e.metaKey);
+                            }}
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
                               isCollapsed && "justify-center px-0",
@@ -339,7 +348,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                           >
                             <item.icon className={cn("h-4 w-4 flex-shrink-0", isActive && "text-sidebar-primary")} />
                             {!isCollapsed && <span className="truncate">{item.label}</span>}
-                          </button>
+                          </a>
                         </TooltipTrigger>
                         {isCollapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
                       </Tooltip>
