@@ -436,12 +436,14 @@ Deno.serve(async (req) => {
     // histórico automático. Registros manuais são preservados.
     let staleExecutionsRemoved = 0;
     const activePlanIds = ((activePlanRows ?? []) as ActivePlanCacheRow[]).map((plan) => plan.id);
-    for (let i = 0; i < activePlanIds.length; i += BATCH) {
+    const BATCH_DELETE = 50; // Reduzido para evitar estouro de URL/buffer
+    for (let i = 0; i < activePlanIds.length; i += BATCH_DELETE) {
+      const slice = activePlanIds.slice(i, i + BATCH_DELETE);
       const { data: storedExecutions, error: storedExecutionsError } = await supa
         .from("plano_preventivo_execucao")
         .select("id, item_id, task_id, origem")
         .eq("origem", "auto")
-        .in("item_id", activePlanIds.slice(i, i + BATCH));
+        .in("item_id", slice);
       if (storedExecutionsError) throw storedExecutionsError;
       const staleIds = (storedExecutions ?? [])
         .filter((row: any) => row.task_id && !expectedTasksByItemId.get(String(row.item_id))?.has(String(row.task_id)))
