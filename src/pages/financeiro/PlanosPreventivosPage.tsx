@@ -439,7 +439,7 @@ function EditarPlanoDialog({
       const { data, error } = await supabase
         .from("plano_preventivo_execucao" as any)
         .select("item_id, mes_planejado, data_realizada, task_id")
-        .in("item_id", itens.map(i => i.id).filter(id => !id.startsWith("new-")));
+        .in("item_id", itens.map(i => i.id).filter(id => !id.startsWith("new-"))) as any;
       if (error) throw error;
       return (data ?? []) as { item_id: string; mes_planejado: number | null; data_realizada: string; task_id: string }[];
     },
