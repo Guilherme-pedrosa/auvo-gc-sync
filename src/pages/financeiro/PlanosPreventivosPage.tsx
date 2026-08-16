@@ -56,6 +56,8 @@ type Aggregate = {
   ht_por_mes: number[];
   meses_estourados: number;
   identificadorPorEquip: Map<string, string>;
+  ultima_preventiva_geral?: string | null;
+  proxima_preventiva_geral?: string | null;
 };
 
 function htPorOcorrencia(it: PlanoItem): number {
@@ -174,6 +176,13 @@ export default function PlanosPreventivosPage() {
         if (m >= 1 && m <= 12) agg.ht_por_mes[m - 1] += ht_oc;
       }
       agg.ht_ano += Number(it.horas_total) || 0;
+      
+      if (it.ultima_execucao_data && (!agg.ultima_preventiva_geral || it.ultima_execucao_data > agg.ultima_preventiva_geral)) {
+        agg.ultima_preventiva_geral = it.ultima_execucao_data;
+      }
+      if (it.proxima_data && (!agg.proxima_preventiva_geral || it.proxima_data < agg.proxima_preventiva_geral)) {
+        agg.proxima_preventiva_geral = it.proxima_data;
+      }
     }
     for (const a of map.values()) {
       a.saldo_ano = a.ht_contrato_ano - a.ht_ano;
@@ -339,7 +348,9 @@ export default function PlanosPreventivosPage() {
               <TableHead className="text-right">HT ano (contrato)</TableHead>
               <TableHead className="text-right">Saldo ano</TableHead>
               <TableHead className="text-center">Meses estourados</TableHead>
-              <TableHead className="w-[240px]">Ações</TableHead>
+              <TableHead className="text-center">Última Prev.</TableHead>
+              <TableHead className="text-center">Próxima Prev.</TableHead>
+              <TableHead className="w-[180px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -366,10 +377,16 @@ export default function PlanosPreventivosPage() {
                     ? <Badge variant="destructive">{a.meses_estourados}</Badge>
                     : <Badge variant="secondary">0</Badge>}
                 </TableCell>
+                <TableCell className="text-center text-xs whitespace-nowrap tabular-nums">
+                  {a.ultima_preventiva_geral ? format(parseISO(a.ultima_preventiva_geral), "dd/MM/yyyy") : "—"}
+                </TableCell>
+                <TableCell className="text-center text-xs whitespace-nowrap tabular-nums">
+                  {a.proxima_preventiva_geral ? format(parseISO(a.proxima_preventiva_geral), "dd/MM/yyyy") : "—"}
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <Button size="sm" onClick={() => setEditingKey({ grupo_id: a.grupo_id, ano: a.ano_referencia })}>
-                      <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                      <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => exportExcel(a)} title="Excel">
                       <Download className="h-3.5 w-3.5" />
@@ -415,6 +432,29 @@ function EditarPlanoDialog({
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+
+  const { data: execucoes } = useQuery({
+    queryKey: ["plano-execucoes", agg.grupo_id, agg.ano_referencia],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("plano_preventivo_execucao" as any)
+        .select("item_id, mes_planejado, data_realizada, task_id")
+        .in("item_id", itens.map(i => i.id).filter(id => !id.startsWith("new-")));
+      if (error) throw error;
+      return (data ?? []) as { item_id: string; mes_planejado: number | null; data_realizada: string; task_id: string }[];
+    },
+    enabled: itens.length > 0,
+  });
+
+  const execucoesMap = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    for (const ex of execucoes ?? []) {
+      const mes = ex.mes_planejado || Number(ex.data_realizada.slice(5, 7));
+      if (!map.has(ex.item_id)) map.set(ex.item_id, new Set());
+      map.get(ex.item_id)!.add(mes);
+    }
+    return map;
+  }, [execucoes]);
 
   const setItem = (id: string, patch: Partial<PlanoItem>) => {
     setItens(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
@@ -589,19 +629,21 @@ function EditarPlanoDialog({
                       />
                     </td>
                     {MES_LABEL.map((_, i) => {
-                      const m = i + 1;
-                      const on = set.has(m);
-                      return (
-                        <td key={m}
-                          className={cn(
-                            "text-center text-xs font-medium select-none cursor-pointer hover:ring-2 hover:ring-primary/40 transition",
-                            on ? "bg-emerald-100 text-emerald-900" : "text-muted-foreground",
-                          )}
-                          onClick={() => toggleMes(it.id, m)}
-                        >
-                          {on ? ht_oc.toFixed(1) : "·"}
-                        </td>
-                      );
+                        const m = i + 1;
+                        const on = set.has(m);
+                        const concretizada = execucoesMap.get(it.id)?.has(m);
+                        return (
+                          <td key={m}
+                            className={cn(
+                              "text-center text-xs font-medium select-none cursor-pointer hover:ring-2 hover:ring-primary/40 transition",
+                              concretizada ? "bg-green-500 text-white" : on ? "bg-emerald-100 text-emerald-900" : "text-muted-foreground",
+                            )}
+                            onClick={() => toggleMes(it.id, m)}
+                            title={concretizada ? "Preventiva realizada neste mês" : on ? "Planejado" : ""}
+                          >
+                            {on ? ht_oc.toFixed(1) : concretizada ? "OK" : "·"}
+                          </td>
+                        );
                     })}
                     <td className="px-2 py-1 text-right tabular-nums text-xs">{(Number(it.horas_total) || 0).toFixed(1)}h</td>
                     <td className="px-2 py-1">
