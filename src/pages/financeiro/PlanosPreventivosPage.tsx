@@ -433,6 +433,29 @@ function EditarPlanoDialog({
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
 
+  const { data: execucoes } = useQuery({
+    queryKey: ["plano-execucoes", agg.grupo_id, agg.ano_referencia],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("plano_preventivo_execucao" as any)
+        .select("item_id, mes_planejado, data_realizada, task_id")
+        .in("item_id", itens.map(i => i.id).filter(id => !id.startsWith("new-"))) as any;
+      if (error) throw error;
+      return (data ?? []) as { item_id: string; mes_planejado: number | null; data_realizada: string; task_id: string }[];
+    },
+    enabled: itens.length > 0,
+  });
+
+  const execucoesMap = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    for (const ex of execucoes ?? []) {
+      const mes = ex.mes_planejado || Number(ex.data_realizada.slice(5, 7));
+      if (!map.has(ex.item_id)) map.set(ex.item_id, new Set());
+      map.get(ex.item_id)!.add(mes);
+    }
+    return map;
+  }, [execucoes]);
+
   const setItem = (id: string, patch: Partial<PlanoItem>) => {
     setItens(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
   };
