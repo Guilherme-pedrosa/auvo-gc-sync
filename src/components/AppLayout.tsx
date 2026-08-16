@@ -99,9 +99,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  const go = (path: string) => {
-    navigate(path);
-    setMobileOpen(false);
+  const go = (path: string, newTab: boolean = false) => {
+    if (newTab) {
+      window.open(path, "_blank");
+    } else {
+      navigate(path);
+      setMobileOpen(false);
+    }
   };
 
   const allGroups: NavGroup[] = isAdmin
@@ -301,7 +305,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 return (
                                   <button
                                     key={child.path}
-                                    onClick={() => go(child.path)}
+                                    onClick={(e) => go(child.path, e.ctrlKey || e.metaKey)}
                                     className={cn(
                                       "w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                                       isActive
@@ -324,7 +328,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={() => item.path && go(item.path)}
+                            onClick={(e) => item.path && go(item.path, e.ctrlKey || e.metaKey)}
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
                               isCollapsed && "justify-center px-0",
