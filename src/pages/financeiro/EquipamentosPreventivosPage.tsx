@@ -1125,7 +1125,14 @@ export default function EquipamentosPreventivosPage() {
         queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
       ]);
     } catch (err: any) {
-      toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
+      console.error("[EquipamentosPreventivos] handleSync error:", err);
+      const isHttp2Error = String(err?.message || "").toLowerCase().includes("http2") || 
+                           String(err?.message || "").toLowerCase().includes("stream error");
+      if (isHttp2Error) {
+        toast.error("Erro de conexão (lote muito grande). Tente sincronizar um intervalo menor ou contate o suporte.");
+      } else {
+        toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
+      }
     } finally {
       setSyncing(false);
       setSyncProgress(null);
