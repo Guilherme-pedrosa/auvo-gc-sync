@@ -1103,8 +1103,8 @@ export default function AgendamentoEquipePage() {
             <span className="hidden sm:inline">{isSyncing ? "Sincronizando Auvo/GC..." : "Sincronizar Auvo/GC"}</span>
             <span className="sm:hidden">Auvo/GC</span>
           </Button>
-          <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
-            <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa Auvo</span>
+          <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogChoiceOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa / Previsão</span>
           </Button>
         </div>
       </header>
