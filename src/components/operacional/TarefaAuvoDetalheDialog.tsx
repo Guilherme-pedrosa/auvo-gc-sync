@@ -395,9 +395,23 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               <div className="col-span-2">
                 <span className="text-muted-foreground text-xs block mb-1">Resumo do Relato Técnico</span>
                 {(() => {
-                  const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
-                    String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
-                  );
+                  const flattened = [];
+                  const raw = tarefa?.questionario_respostas;
+                  if (Array.isArray(raw)) {
+                    for (const item of raw) {
+                      if (Array.isArray(item?.answers)) {
+                        flattened.push(...item.answers);
+                      } else {
+                        flattened.push(item);
+                      }
+                    }
+                  }
+                  
+                  const tecnicoRelato = flattened.find(r => {
+                    const q = String(r?.question || r?.questionDescription || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                    return q.includes("INFORME O QUE FOI FEITO") || q.includes("RELATO") || q.includes("DESCRICAO DO SERVICO");
+                  });
+
                   if (tecnicoRelato?.reply) {
                     return (
                       <p className="text-sm font-semibold text-primary line-clamp-2">
@@ -690,9 +704,23 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 </div>
                 <div className="p-3 space-y-4">
                   {(() => {
-                    const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
-                      String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
-                    );
+                    const flattened = [];
+                    const raw = tarefa?.questionario_respostas;
+                    if (Array.isArray(raw)) {
+                      for (const item of raw) {
+                        if (Array.isArray(item?.answers)) {
+                          flattened.push(...item.answers);
+                        } else {
+                          flattened.push(item);
+                        }
+                      }
+                    }
+
+                    const tecnicoRelato = flattened.find(r => {
+                      const q = String(r?.question || r?.questionDescription || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                      return q.includes("INFORME O QUE FOI FEITO") || q.includes("RELATO") || q.includes("DESCRICAO DO SERVICO");
+                    });
+
                     if (!tecnicoRelato?.reply) return null;
                     return (
                       <div className="text-sm border-b border-muted-foreground/10 pb-3 mb-2">
