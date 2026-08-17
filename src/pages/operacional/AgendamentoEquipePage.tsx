@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, CircleCheckBig, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,6 @@ import {
   useSalvarCelulaVeiculo,
   useSaveAgendamento,
   type AgendaAgendamento,
-  type AgendaContractVisitExecution,
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
@@ -148,6 +147,9 @@ const corCliente = (texto: string) => {
 };
 
 const getStatusColor = (a: AgendaAgendamento) => {
+  if (a.previsao_tipo === "CONTRATO_REALIZADO") {
+    return "bg-green-100 text-green-800 border-green-400 dark:bg-green-950/50 dark:text-green-300 dark:border-green-700 font-bold";
+  }
   const status = agendaVisualStatus(a);
   if (status === "finalizada") {
     return "bg-green-100 text-green-800 border-green-300 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800 font-bold";
@@ -177,6 +179,44 @@ interface CelulaProps {
   apenasPrevisaoOrcamento?: boolean;
 }
 
+type ContractVisitTaskDetail = {
+  tarefa_id?: string | number | null;
+  tecnico?: string | null;
+  horas?: string | number | null;
+};
+
+const summarizeContractVisitForTechnician = (item: AgendaAgendamento) => {
+  const details = Array.isArray(item.contrato_visita_tarefas_detalhes)
+    ? (item.contrato_visita_tarefas_detalhes as ContractVisitTaskDetail[])
+    : [];
+  const collaboratorName = norm(item.colaborador_nome);
+  const technicianDetails = details.filter((detail) => {
+    const technicianName = norm(String(detail.tecnico || ""));
+    return Boolean(
+      technicianName
+      && collaboratorName
+      && (
+        technicianName === collaboratorName
+        || collaboratorName.includes(technicianName)
+        || technicianName.includes(collaboratorName)
+      )
+    );
+  });
+  const selected = technicianDetails.length > 0 ? technicianDetails : details;
+  const hours = selected.reduce((total, detail) => {
+    const value = Number(detail.horas);
+    return total + (Number.isFinite(value) && value > 0 ? value : 0);
+  }, 0);
+  const taskIds = [...new Set(selected
+    .map((detail) => String(detail.tarefa_id || "").trim())
+    .filter(Boolean))];
+  return {
+    hours: hours > 0 ? hours : Number(item.contrato_visita_horas_realizadas || 0),
+    taskIds: taskIds.length > 0 ? taskIds : (item.contrato_visita_tarefa_ids ?? []),
+    technicianMatched: technicianDetails.length > 0,
+  };
+};
+
 function Celula({
   itens,
   onSalvar,
@@ -193,7 +233,7 @@ function Celula({
   apenasPrevisaoOrcamento = false,
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
-  const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
+  const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
   const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
   const comparativoOs = summarizeAgendaOsPlannedVsActual(itens);
@@ -300,6 +340,8 @@ function Celula({
           </div>
         )}
         {itens.map((a) => {
+          const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
+          const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
@@ -314,6 +356,7 @@ function Celula({
             a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
           const identificadoresAntesSituacao = [
+            visitaContratualRealizada ? "VISITA CONTRATUAL · REALIZADA" : null,
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
           ].filter(Boolean);
@@ -337,16 +380,24 @@ function Celula({
             >
               <button
                 type="button"
-                draggable
-                onDragStart={() => onDragStart(a)}
-                title={a.origem === "CONTRATO"
+                draggable={!visitaContratualRealizada}
+                onDragStart={() => {
+                  if (!visitaContratualRealizada) onDragStart(a);
+                }}
+                title={visitaContratualRealizada
+                  ? `${a.contrato_visita_numero || ""}ª visita contratual realizada · ${formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} ${resumoVisita?.technicianMatched ? "do técnico" : "da visita"} contabilizadas`
+                  : a.origem === "CONTRATO"
                   ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.auvo_task_id
                     ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
                     : "Agendamento manual"}
-                onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                onClick={() => {
+                  if (visitaContratualRealizada) return;
+                  if (a.auvo_task_id) onAbrirTarefa(a);
+                  else onAbrirAgendamento(a);
+                }}
                 onAuxClick={(e) => {
                   if (e.button === 1 && a.auvo_task_id) {
                     onAbrirAgendamento(a);
@@ -354,6 +405,7 @@ function Celula({
                 }}
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
+                  visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-green-400",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
@@ -423,6 +475,27 @@ function Celula({
                       {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
                     </span>
                   )}
+                  {visitaContratualRealizada && (
+                    <>
+                      <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case">
+                        <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                        {formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} contabilizadas
+                        {resumoVisita?.taskIds.length
+                          ? ` · ${resumoVisita.taskIds.length} tarefa(s)`
+                          : ""}
+                      </span>
+                      {resumoVisita?.technicianMatched ? (
+                        <span className="truncate text-[9px] font-medium normal-case">
+                          {a.colaborador_nome}
+                        </span>
+                      ) : null}
+                      {resumoVisita?.taskIds.length ? (
+                        <span className="truncate text-[9px] font-medium normal-case opacity-80" title={resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}>
+                          Tarefas: {resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
                   {a.previsao_detalhes && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
@@ -444,7 +517,7 @@ function Celula({
                   </span>
                 )}
               </button>
-              <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
+              {!visitaContratualRealizada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
                 {(
                   <button
                     type="button"
@@ -471,7 +544,7 @@ function Celula({
                     ×
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
           );
         })}
@@ -536,88 +609,6 @@ function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: 
       )}
     >
       {valor || <span className="opacity-25 normal-case font-normal">—</span>}
-    </td>
-  );
-}
-
-type ContractVisitTaskDetail = {
-  tarefa_id?: string | number | null;
-  link?: string | null;
-};
-
-const contractVisitTaskDetails = (visita: AgendaContractVisitExecution) => (
-  Array.isArray(visita.tarefas_detalhes)
-    ? visita.tarefas_detalhes.filter((item): item is ContractVisitTaskDetail => Boolean(item && typeof item === "object"))
-    : []
-);
-
-function CelulaVisitasContratuais({ visitas }: { visitas: AgendaContractVisitExecution[] }) {
-  return (
-    <td className="border border-border p-0.5 align-top min-w-[170px] md:min-w-[240px]">
-      <div className="flex h-full flex-col gap-1">
-        {visitas.map((visita) => {
-          const detailsByTask = new Map(
-            contractVisitTaskDetails(visita).map((detail) => [String(detail.tarefa_id || "").trim(), detail]),
-          );
-          const taskIds = [...new Set((visita.tarefa_ids ?? []).map((taskId) => String(taskId).trim()).filter(Boolean))];
-          const hours = formatWorkedMinutes(Math.round(Number(visita.horas_trabalhadas || 0) * 60));
-          const contractName = visita.contratos?.nome?.trim();
-
-          return (
-            <article
-              key={visita.id}
-              className="rounded-sm border-2 border-emerald-400 bg-emerald-50 px-1.5 py-1 text-[10px] text-emerald-950 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-100"
-              title="Visita contratual reconhecida pelas tarefas finalizadas no cliente. As horas abaixo já estão contabilizadas nas tarefas e não são somadas em duplicidade."
-            >
-              <div className="flex items-center gap-1 font-extrabold uppercase">
-                <CircleCheckBig className="h-3.5 w-3.5 shrink-0" />
-                <span>Visita contratual · realizada</span>
-              </div>
-              <div className="mt-0.5 truncate text-[11px] font-extrabold uppercase" title={visita.cliente}>
-                {visita.visita_numero}ª visita · {visita.cliente}
-              </div>
-              {contractName && (
-                <div className="truncate font-medium normal-case opacity-80" title={contractName}>
-                  {contractName}
-                </div>
-              )}
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-bold normal-case">
-                <span className="inline-flex items-center gap-1">
-                  <Clock3 className="h-3 w-3" /> {hours} contabilizadas
-                </span>
-                <span>· {taskIds.length} tarefa(s)</span>
-              </div>
-              {visita.tecnicos?.length > 0 && (
-                <div className="truncate font-medium normal-case" title={visita.tecnicos.join(" · ")}>
-                  {visita.tecnicos.join(" · ")}
-                </div>
-              )}
-              {taskIds.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1 normal-case">
-                  {taskIds.map((taskId) => {
-                    const detail = detailsByTask.get(taskId);
-                    const href = detail?.link?.trim()
-                      || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`;
-                    return (
-                      <a
-                        key={taskId}
-                        href={href}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-0.5 rounded border border-emerald-300 bg-white/80 px-1 py-0.5 font-bold text-emerald-800 hover:underline dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
-                        title={`Abrir tarefa Auvo #${taskId}`}
-                      >
-                        #{taskId}<ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-            </article>
-          );
-        })}
-        {visitas.length === 0 && <span className="p-1.5 text-[11px] text-muted-foreground">—</span>}
-      </div>
     </td>
   );
 }
@@ -992,19 +983,6 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
-  const visitasContratuaisPorDia = useMemo(() => {
-    const result = new Map<string, AgendaContractVisitExecution[]>();
-    for (const visita of data?.visitasContratuais ?? []) {
-      const current = result.get(visita.data_realizada) ?? [];
-      current.push(visita);
-      result.set(visita.data_realizada, current);
-    }
-    for (const visits of result.values()) {
-      visits.sort((left, right) => left.visita_numero - right.visita_numero || left.cliente.localeCompare(right.cliente));
-    }
-    return result;
-  }, [data?.visitasContratuais]);
-
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
     const resultado = new Map<string, AgendaTag[]>();
@@ -1258,23 +1236,6 @@ export default function AgendamentoEquipePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="bg-emerald-50/40 dark:bg-emerald-950/10">
-                      <td className="sticky left-0 z-10 border border-border bg-emerald-50 p-2 text-[11px] font-extrabold uppercase text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
-                        <span className="flex items-center gap-1.5">
-                          <CircleCheckBig className="h-4 w-4" />
-                          Visitas contratuais realizadas
-                        </span>
-                        <span className="mt-1 block text-[9px] font-medium normal-case opacity-75">
-                          horas reais, sem duplicar tarefas
-                        </span>
-                      </td>
-                      {dias.map((dia) => (
-                        <CelulaVisitasContratuais
-                          key={dia}
-                          visitas={visitasContratuaisPorDia.get(dia) ?? []}
-                        />
-                      ))}
-                    </tr>
                     {tecnicos.map((t) => (
                       <tr key={t.id}>
                         <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">

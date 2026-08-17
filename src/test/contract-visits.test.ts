@@ -204,22 +204,23 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("card de previsao deixa");
   });
 
-  it("exibe a visita realizada na Agenda sem duplicar as horas das tarefas", () => {
+  it("converte o card previsto em realizado sem criar uma faixa paralela", () => {
     const agendaPage = readFileSync(
       resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
       "utf8",
     );
-    const agendaHook = readFileSync(
-      resolve(root, "src/hooks/operacional/useAgendamentoEquipe.ts"),
+    const cardMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818013000_convert_contract_forecast_card_to_realized.sql"),
       "utf8",
     );
 
-    expect(agendaHook).toContain('.from("contratos_visitas_execucoes")');
-    expect(agendaHook).toContain("visitasContratuais:");
-    expect(agendaPage).toContain("Visita contratual · realizada");
-    expect(agendaPage).toContain("horas reais, sem duplicar tarefas");
-    expect(agendaPage).toContain("horas_trabalhadas");
-    expect(agendaPage).toContain("Abrir tarefa Auvo #");
+    expect(cardMigration).toContain("materializar_card_visita_contratual");
+    expect(cardMigration).toContain("previsao_tipo = 'CONTRATO_REALIZADO'");
+    expect(cardMigration).toContain("previsao_continuidade = false");
+    expect(cardMigration).toContain("duracao_planejada_minutos = NULL");
+    expect(agendaPage).toContain('a.previsao_tipo === "CONTRATO_REALIZADO"');
+    expect(agendaPage).toContain("VISITA CONTRATUAL · REALIZADA");
+    expect(agendaPage).not.toContain("Visitas contratuais realizadas");
   });
 
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {

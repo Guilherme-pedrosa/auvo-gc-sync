@@ -57,7 +57,13 @@ export type Database = {
           contrato_id: string | null
           contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
+          contrato_visita_execucao_id: string | null
+          contrato_visita_horas_realizadas: number | null
           contrato_visita_numero: number | null
+          contrato_visita_realizada_em: string | null
+          contrato_visita_tarefa_ids: string[]
+          contrato_visita_tarefas_detalhes: Json
+          contrato_visita_tecnicos: string[]
           conversao_erro: string | null
           conversao_status: string | null
           conversao_tentada_em: string | null
@@ -88,7 +94,13 @@ export type Database = {
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
+          contrato_visita_execucao_id?: string | null
+          contrato_visita_horas_realizadas?: number | null
           contrato_visita_numero?: number | null
+          contrato_visita_realizada_em?: string | null
+          contrato_visita_tarefa_ids?: string[]
+          contrato_visita_tarefas_detalhes?: Json
+          contrato_visita_tecnicos?: string[]
           conversao_erro?: string | null
           conversao_status?: string | null
           conversao_tentada_em?: string | null
@@ -119,7 +131,13 @@ export type Database = {
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
+          contrato_visita_execucao_id?: string | null
+          contrato_visita_horas_realizadas?: number | null
           contrato_visita_numero?: number | null
+          contrato_visita_realizada_em?: string | null
+          contrato_visita_tarefa_ids?: string[]
+          contrato_visita_tarefas_detalhes?: Json
+          contrato_visita_tecnicos?: string[]
           conversao_erro?: string | null
           conversao_status?: string | null
           conversao_tentada_em?: string | null
@@ -154,6 +172,13 @@ export type Database = {
             columns: ["contrato_visita_config_id"]
             isOneToOne: false
             referencedRelation: "contratos_visitas_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agenda_agendamentos_contrato_visita_execucao_id_fkey"
+            columns: ["contrato_visita_execucao_id"]
+            isOneToOne: false
+            referencedRelation: "contratos_visitas_execucoes"
             referencedColumns: ["id"]
           },
           {
