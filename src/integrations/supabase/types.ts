@@ -3417,6 +3417,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      normalizar_cliente_visita: { Args: { p_nome: string }; Returns: string }
       promover_previsao_orcamento: {
         Args: {
           p_auvo_task_id: string
@@ -3462,6 +3463,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      reconciliar_dia_visita_contratual: {
+        Args: { p_cliente: string; p_data: string }
+        Returns: string
+      }
       reconciliar_previsoes_visitas_contratuais: {
         Args: {
           p_ano: number
@@ -3473,10 +3478,7 @@ export type Database = {
         Returns: number
       }
       reconciliar_visitas_contratuais_periodo: {
-        Args: {
-          p_fim: string
-          p_inicio: string
-        }
+        Args: { p_fim: string; p_inicio: string }
         Returns: number
       }
       reopen_budget_kanban_item: {
