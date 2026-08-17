@@ -674,11 +674,27 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-semibold">Relato / Questionário</span>
                 </div>
-                <div className="p-3 space-y-2">
+                <div className="p-3 space-y-4">
+                  {(() => {
+                    const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
+                      String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
+                    );
+                    if (!tecnicoRelato?.reply) return null;
+                    return (
+                      <div className="text-sm border-b border-muted-foreground/10 pb-3 mb-2">
+                        <span className="text-primary font-bold text-xs block mb-1">RELATO DO USUÁRIO (TÉCNICO)</span>
+                        <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
+                          <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm font-medium text-foreground">
+                            {tecnicoRelato.reply}
+                          </pre>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {tarefa.orientacao && (
-                    <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2">
-                      <span className="text-muted-foreground text-xs block mb-1">Relato / Orientação</span>
-                      <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm">
+                    <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2 opacity-70">
+                      <span className="text-muted-foreground text-xs block mb-1">Orientação / Descrição da Tarefa</span>
+                      <pre className="whitespace-pre-wrap font-sans leading-relaxed text-xs">
                         {tarefa.orientacao}
                       </pre>
                     </div>
