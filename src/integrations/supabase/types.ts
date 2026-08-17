@@ -3345,6 +3345,51 @@ export type Database = {
         }
         Returns: boolean
       }
+      promover_previsao_orcamento: {
+        Args: {
+          p_auvo_task_id: string
+          p_orcamento_codigo: string
+          p_os_codigo: string
+          p_previsao_id: string
+        }
+        Returns: {
+          atualizado_em: string
+          auvo_task_id: string | null
+          cliente: string
+          colaborador_id: string | null
+          colaborador_nome: string
+          contrato_id: string | null
+          contrato_visita_competencia: string | null
+          contrato_visita_config_id: string | null
+          contrato_visita_numero: number | null
+          conversao_erro: string | null
+          conversao_status: string | null
+          conversao_tentada_em: string | null
+          convertida_em: string | null
+          criado_em: string
+          criado_por: string | null
+          data: string
+          descricao: string | null
+          duracao_planejada_minutos: number | null
+          gc_orcamento_codigo: string | null
+          gc_os_codigo: string | null
+          hora_fim: string
+          hora_inicio: string
+          id: string
+          origem: string
+          previsao_continuidade: boolean | null
+          previsao_detalhes: string | null
+          previsao_tipo: string | null
+          status: string
+          veiculo_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agenda_agendamentos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reconciliar_previsoes_visitas_contratuais: {
         Args: {
           p_ano: number

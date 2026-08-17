@@ -20,16 +20,14 @@ function normalizeText(value: unknown): string {
 }
 
 /**
- * Uma previsão nasce no orçamento e só pode ser convertida pela nova OS criada
- * depois dela. Isso é especialmente importante em baixa parcial: as OS dos
- * lotes anteriores continuam apontando para o mesmo NÚMERO ORÇAMENTO no GC.
+ * A OS só é descartada quando já está encerrada. A data da OS no GC é a data do
+ * serviço (herdada do orçamento), NÃO a data de criação: usá-la como corte fazia
+ * a previsão ficar eternamente "Aguardando geração da OS" mesmo com a OS pronta.
+ * O corte por data continua existindo, porém apenas como desempate quando o mesmo
+ * orçamento tem vários lotes de baixa parcial (ver selectOsForBudgetForecast).
  */
 export function isOsEligibleForBudgetForecast(os: any, forecastCreatedAt: unknown): boolean {
   if (!os || !normalizeGcDocumentCode(os.gc_os_codigo)) return false;
-
-  const forecastDate = normalizeDateKey(forecastCreatedAt);
-  const osDate = normalizeDateKey(os.gc_os_data ?? os.data_entrada ?? os.data);
-  if (forecastDate && osDate && osDate < forecastDate) return false;
 
   const status = normalizeText(os.gc_os_situacao ?? os.nome_situacao);
   const terminalStatus = [
@@ -43,6 +41,24 @@ export function isOsEligibleForBudgetForecast(os: any, forecastCreatedAt: unknow
   if (terminalStatus) return false;
 
   return true;
+}
+
+/**
+ * Escolhe as OS candidatas de um orçamento. Com mais de uma OS aberta (baixa
+ * parcial) preferimos as criadas a partir da previsão; com uma única OS aberta
+ * o vínculo é automático, independentemente da data do serviço.
+ */
+export function selectOsForBudgetForecast(osList: any[], forecastCreatedAt: unknown): any[] {
+  const eligible = (osList || []).filter((os) => isOsEligibleForBudgetForecast(os, forecastCreatedAt));
+  if (eligible.length <= 1) return eligible;
+
+  const forecastDate = normalizeDateKey(forecastCreatedAt);
+  if (!forecastDate) return eligible;
+  const newer = eligible.filter((os) => {
+    const osDate = normalizeDateKey(os.gc_os_data ?? os.data_entrada ?? os.data);
+    return !osDate || osDate >= forecastDate;
+  });
+  return newer.length > 0 ? newer : eligible;
 }
 
 export function normalizeClock(value: unknown): string | null {
