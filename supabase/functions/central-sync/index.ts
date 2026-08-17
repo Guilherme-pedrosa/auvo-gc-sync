@@ -1285,6 +1285,7 @@ type ForecastPromotionSummary = {
 async function reconcileBudgetExecutionForecasts(
   sbClient: ReturnType<typeof createClient>,
   gcOsResult: { byCodigo: Record<string, any> },
+  gcHeaders?: Record<string, string>,
 ): Promise<ForecastPromotionSummary> {
   const summary: ForecastPromotionSummary = {
     forecasts: 0,
@@ -1311,12 +1312,67 @@ async function reconcileBudgetExecutionForecasts(
   if (!forecasts?.length) return summary;
 
   const osByBudget = new Map<string, any[]>();
-  for (const os of Object.values(gcOsResult.byCodigo || {})) {
+  const indexOs = (os: any) => {
     const budgetCode = normalizeGcDocumentCode((os as any)?.gc_os_orcamento_codigo);
-    if (!budgetCode || !(os as any)?.gc_os_codigo) continue;
+    if (!budgetCode || !(os as any)?.gc_os_codigo) return;
     const rows = osByBudget.get(budgetCode) || [];
     if (!rows.some((row) => String(row.gc_os_id) === String((os as any).gc_os_id))) rows.push(os);
     osByBudget.set(budgetCode, rows);
+  };
+  for (const os of Object.values(gcOsResult.byCodigo || {})) indexOs(os);
+
+  // A OS gerada a partir do orçamento pode estar fora da janela de listagem do GC
+  // (a data da OS é herdada do orçamento). Sem esta busca dirigida a previsão
+  // ficava presa em "Aguardando geração da OS" mesmo com a OS já criada.
+  if (gcHeaders) {
+    const pendentes = [...new Set(
+      (forecasts || [])
+        .map((f: any) => normalizeGcDocumentCode(f.gc_orcamento_codigo))
+        .filter((code) => code && !osByBudget.has(code)),
+    )];
+    for (const budgetCode of pendentes) {
+      try {
+        const orcResp = await rateLimitedFetch(
+          `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(budgetCode)}&limite=5`,
+          { headers: gcHeaders },
+          "gc",
+        );
+        if (!orcResp.ok) continue;
+        const orcJson = await orcResp.json().catch(() => ({}));
+        const orc = (Array.isArray(orcJson?.data) ? orcJson.data : [])
+          .find((row: any) => String(row?.codigo || "").trim() === budgetCode);
+        const clienteId = String(orc?.cliente_id || "").trim();
+        if (!clienteId) continue;
+        const osResp = await rateLimitedFetch(
+          `${GC_BASE_URL}/api/ordens_servicos?cliente_id=${encodeURIComponent(clienteId)}&limite=100`,
+          { headers: gcHeaders },
+          "gc",
+        );
+        if (!osResp.ok) continue;
+        const osJson = await osResp.json().catch(() => ({}));
+        for (const os of (Array.isArray(osJson?.data) ? osJson.data : [])) {
+          const atributos: any[] = os?.atributos || [];
+          const attrOrcNum = atributos.find((a: any) => {
+            const nested = a?.atributo || a;
+            return String(nested?.atributo_id || nested?.id || "") === "81831";
+          });
+          const nested = attrOrcNum?.atributo || attrOrcNum;
+          const orcNum = normalizeGcDocumentCode(nested?.conteudo ?? nested?.valor);
+          if (!orcNum || orcNum !== budgetCode) continue;
+          indexOs({
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_os_situacao: String(os.nome_situacao || ""),
+            gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+            gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/"),
+            gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
+            gc_os_orcamento_codigo: orcNum,
+          });
+        }
+      } catch (hydrationError) {
+        console.warn(`[central-sync] previsão orçamento ${budgetCode}: busca dirigida falhou: ${String(hydrationError)}`);
+      }
+    }
   }
 
   const mark = async (id: string, patch: Record<string, unknown>) => {
