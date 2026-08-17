@@ -148,7 +148,7 @@ const corCliente = (texto: string) => {
 
 const getStatusColor = (a: AgendaAgendamento) => {
   if (a.previsao_tipo === "CONTRATO_REALIZADO") {
-    return "bg-green-100 text-green-800 border-green-400 dark:bg-green-950/50 dark:text-green-300 dark:border-green-700 font-bold";
+    return "bg-violet-100 text-violet-900 border-violet-500 dark:bg-violet-950/60 dark:text-violet-200 dark:border-violet-700 font-bold";
   }
   const status = agendaVisualStatus(a);
   if (status === "finalizada") {
@@ -407,7 +407,7 @@ function Celula({
                 }}
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
-                  visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-green-400",
+                  visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-violet-500 shadow-sm",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
