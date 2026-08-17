@@ -1147,9 +1147,19 @@ Deno.serve(async (req) => {
         const responseText = await response.text();
         let responseData: any;
         try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
+        
         if (!response.ok) {
+          // Identifica se o erro é proibição de reagendamento por check-in
+          const hasStarted = auvoTaskHasStarted(await fetchTaskById(taskId, headers).catch(() => ({})));
           return new Response(
-            JSON.stringify({ success: false, status: response.status, data: responseData, reqId }),
+            JSON.stringify({ 
+              success: false, 
+              status: response.status, 
+              data: responseData, 
+              hasStarted, 
+              error: extractAuvoError(responseData, response.status),
+              reqId 
+            }),
             { status: 200, headers: respHeaders },
           );
         }
