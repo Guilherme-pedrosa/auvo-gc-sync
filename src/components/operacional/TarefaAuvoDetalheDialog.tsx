@@ -393,10 +393,24 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <p className="font-medium">{tarefa.status_auvo || "—"}</p>
               </div>
               <div className="col-span-2">
-                <span className="text-muted-foreground text-xs">Relato / Questionário (Resumo)</span>
-                <p className="text-sm font-medium whitespace-pre-wrap line-clamp-3">
-                  {tarefa.orientacao || "Sem relato informado."}
-                </p>
+                <span className="text-muted-foreground text-xs block mb-1">Resumo do Relato Técnico</span>
+                {(() => {
+                  const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
+                    String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
+                  );
+                  if (tecnicoRelato?.reply) {
+                    return (
+                      <p className="text-sm font-semibold text-primary line-clamp-2">
+                        {tecnicoRelato.reply}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="text-sm font-medium text-muted-foreground italic line-clamp-2">
+                      {tarefa.orientacao || "Sem relato informado."}
+                    </p>
+                  );
+                })()}
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">Check-in / Check-out</span>
