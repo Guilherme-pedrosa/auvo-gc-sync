@@ -170,6 +170,40 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(excess.status).toBe("EXCEDENTE");
   });
 
+  it("abate visitas e horas reais sem contar novamente a previsao substituida", () => {
+    const summary = summarizeContractVisitMonth({
+      competencia: "2026-08",
+      visitasContratadas: 2,
+      horasContratadas: 24,
+      forecasts: [
+        { contrato_visita_numero: 2, hora_inicio: "08:00", hora_fim: "14:00" },
+        { contrato_visita_numero: 2, hora_inicio: "08:00", hora_fim: "14:00" },
+      ],
+      executions: [
+        { visita_numero: 1, horas_trabalhadas: 5.5 },
+      ],
+    });
+
+    expect(summary.visitasRealizadas).toBe(1);
+    expect(summary.visitasPlanejadas).toBe(1);
+    expect(summary.visitasPrevistas).toBe(2);
+    expect(summary.horasRealizadas).toBe(5.5);
+    expect(summary.horasRestantes).toBe(18.5);
+    expect(summary.status).toBe("FALTANDO");
+  });
+
+  it("mantem a amarracao contratual no banco e deduplica tarefas Auvo", () => {
+    const migration = readFileSync(
+      resolve(root, "supabase/migrations/20260817234500_reconcile_contract_visits_with_real_tasks.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("contratos_visitas_execucoes");
+    expect(migration).toContain("PARTITION BY tc.auvo_task_id");
+    expect(migration).toContain("contratos_visitas_execucao_cliente_dia_unique");
+    expect(migration).toContain("reconciliar_dia_visita_contratual");
+    expect(migration).toContain("card de previsao deixa");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);

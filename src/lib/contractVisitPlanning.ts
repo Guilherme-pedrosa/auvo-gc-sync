@@ -40,6 +40,11 @@ type ExistingForecast = {
   contrato_visita_numero: number | null;
 };
 
+type ExistingExecution = {
+  competencia: string;
+  visita_numero: number;
+};
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -75,22 +80,31 @@ export async function reconcileContractVisitYear(input: {
     return { inserted: 0, removed: 0, preserved: 0, year };
   }
   const cutoff = year === Number(today.slice(0, 4)) ? today : start;
-  const { data: existingData, error: existingError } = await supabase
-    .from("agenda_agendamentos")
-    .select("data,contrato_visita_numero")
-    .eq("origem", "CONTRATO")
-    .eq("contrato_visita_config_id", config.id)
-    .gte("data", start)
-    .lte("data", end);
-  if (existingError) throw existingError;
+  const [forecastsResult, executionsResult] = await Promise.all([
+    supabase
+      .from("agenda_agendamentos")
+      .select("data,contrato_visita_numero")
+      .eq("origem", "CONTRATO")
+      .eq("contrato_visita_config_id", config.id)
+      .gte("data", start)
+      .lte("data", end),
+    supabase
+      .from("contratos_visitas_execucoes")
+      .select("competencia,visita_numero")
+      .eq("contrato_visita_config_id", config.id)
+      .gte("competencia", start)
+      .lte("competencia", end),
+  ]);
+  if (forecastsResult.error) throw forecastsResult.error;
+  if (executionsResult.error) throw executionsResult.error;
+  const existingData = forecastsResult.data;
   const existing = (existingData || []) as ExistingForecast[];
   const historical = existing.filter((row) => row.data < cutoff);
   const completedByMonth = new Map<string, Set<number>>();
-  for (const row of historical) {
-    if (!row.contrato_visita_numero) continue;
-    const competence = row.data.slice(0, 7);
+  for (const row of (executionsResult.data || []) as ExistingExecution[]) {
+    const competence = row.competencia.slice(0, 7);
     const visits = completedByMonth.get(competence) || new Set<number>();
-    visits.add(row.contrato_visita_numero);
+    visits.add(row.visita_numero);
     completedByMonth.set(competence, visits);
   }
 
@@ -180,7 +194,12 @@ export async function reconcileContractVisitYear(input: {
     },
   );
   if (reconciliationError) throw reconciliationError;
-  return { inserted: Number(insertedCount || 0), removed: futureCount || 0, preserved: historical.length, year };
+  return {
+    inserted: Number(insertedCount || 0),
+    removed: futureCount || 0,
+    preserved: (executionsResult.data || []).length + historical.length,
+    year,
+  };
 }
 
 export async function reconcileFutureContractPlans(contractId: string): Promise<void> {

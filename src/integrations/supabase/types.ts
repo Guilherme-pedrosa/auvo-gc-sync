@@ -714,6 +714,72 @@ export type Database = {
         }
         Relationships: []
       }
+      contratos_visitas_execucoes: {
+        Row: {
+          atualizado_em: string
+          cliente: string
+          cliente_chave: string
+          competencia: string
+          contrato_id: string
+          contrato_visita_config_id: string
+          criado_em: string
+          data_realizada: string
+          horas_trabalhadas: number
+          id: string
+          tarefa_ids: string[]
+          tarefas_detalhes: Json
+          tecnicos: string[]
+          visita_numero: number
+        }
+        Insert: {
+          atualizado_em?: string
+          cliente: string
+          cliente_chave: string
+          competencia: string
+          contrato_id: string
+          contrato_visita_config_id: string
+          criado_em?: string
+          data_realizada: string
+          horas_trabalhadas?: number
+          id?: string
+          tarefa_ids?: string[]
+          tarefas_detalhes?: Json
+          tecnicos?: string[]
+          visita_numero: number
+        }
+        Update: {
+          atualizado_em?: string
+          cliente?: string
+          cliente_chave?: string
+          competencia?: string
+          contrato_id?: string
+          contrato_visita_config_id?: string
+          criado_em?: string
+          data_realizada?: string
+          horas_trabalhadas?: number
+          id?: string
+          tarefa_ids?: string[]
+          tarefas_detalhes?: Json
+          tecnicos?: string[]
+          visita_numero?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contratos_visitas_execucoes_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "contratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contratos_visitas_execucoes_contrato_visita_config_id_fkey"
+            columns: ["contrato_visita_config_id"]
+            isOneToOne: false
+            referencedRelation: "contratos_visitas_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       demerito_lancamentos: {
         Row: {
           criado_em: string
@@ -3403,6 +3469,13 @@ export type Database = {
           p_data_corte: string
           p_duracao_minutos: number
           p_linhas: Json
+        }
+        Returns: number
+      }
+      reconciliar_visitas_contratuais_periodo: {
+        Args: {
+          p_fim: string
+          p_inicio: string
         }
         Returns: number
       }

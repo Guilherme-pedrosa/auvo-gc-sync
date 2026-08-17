@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Edit,
   ExternalLink,
   Loader2,
@@ -52,6 +54,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
 type VisitConfig = Database["public"]["Tables"]["contratos_visitas_config"]["Row"];
+type ContractExecution = Database["public"]["Tables"]["contratos_visitas_execucoes"]["Row"];
 type ContractForecast = Database["public"]["Tables"]["agenda_agendamentos"]["Row"];
 type Technician = Pick<
   Database["public"]["Tables"]["rh_colaboradores"]["Row"],
@@ -204,10 +207,35 @@ export default function VisitasContratuaisPage() {
     },
   });
 
+  const executionsQuery = useQuery({
+    queryKey: ["contractual-visits", "executions", year],
+    queryFn: async () => {
+      const start = `${year}-01-01`;
+      const end = year === currentYear ? todayISO() : `${year}-12-31`;
+      if (year <= currentYear) {
+        const { error: reconciliationError } = await supabase.rpc(
+          "reconciliar_visitas_contratuais_periodo",
+          { p_inicio: start, p_fim: end },
+        );
+        if (reconciliationError) throw reconciliationError;
+      }
+      const { data, error } = await supabase
+        .from("contratos_visitas_execucoes")
+        .select("*")
+        .gte("competencia", start)
+        .lte("competencia", `${year}-12-31`)
+        .order("data_realizada", { ascending: false });
+      if (error) throw error;
+      return data as ContractExecution[];
+    },
+    staleTime: 30_000,
+  });
+
   const contracts = contractsQuery.data || [];
   const configs = configsQuery.data || [];
   const technicians = techniciansQuery.data || [];
   const forecasts = forecastsQuery.data || [];
+  const executions = executionsQuery.data || [];
   const configByContract = useMemo(() => new Map(configs.map((config) => [config.contrato_id, config])), [configs]);
   const contractById = useMemo(() => new Map(contracts.map((contract) => [contract.id, contract])), [contracts]);
   const technicianById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician])), [technicians]);
@@ -222,6 +250,15 @@ export default function VisitasContratuaisPage() {
     }
     return map;
   }, [forecasts]);
+  const executionsByConfig = useMemo(() => {
+    const map = new Map<string, ContractExecution[]>();
+    for (const execution of executions) {
+      const rows = map.get(execution.contrato_visita_config_id) || [];
+      rows.push(execution);
+      map.set(execution.contrato_visita_config_id, rows);
+    }
+    return map;
+  }, [executions]);
   const stackedConfigIds = useMemo(() => {
     const visitsByWeek = new Map<string, Set<number>>();
     for (const forecast of forecasts) {
@@ -244,6 +281,7 @@ export default function VisitasContratuaisPage() {
       const contract = contractById.get(config.contrato_id);
       if (!contract || !contract.horas_mes_contratadas) continue;
       const rows = forecastsByConfig.get(config.id) || [];
+      const realized = executionsByConfig.get(config.id) || [];
       map.set(config.id, MONTHS.map((_, monthIndex) => {
         const competence = monthCompetence(year, monthIndex);
         const hoursContratadas = Number(contract.horas_mes_contratadas || 0);
@@ -254,16 +292,26 @@ export default function VisitasContratuaisPage() {
           vigenciaInicio: contract.vigencia_inicio,
           vigenciaFim: contract.vigencia_fim,
           forecasts: rows.filter((row) => row.data.slice(0, 7) === competence),
+          executions: realized
+            .filter((row) => row.competencia.slice(0, 7) === competence)
+            .map((row) => ({ visita_numero: row.visita_numero, horas_trabalhadas: row.horas_trabalhadas })),
         });
       }));
     }
     return map;
-  }, [configs, contractById, forecastsByConfig, year]);
+  }, [configs, contractById, forecastsByConfig, executionsByConfig, year]);
 
   const planYear = useMutation({
     mutationFn: async (configIds?: string[]) => {
       const selected = configs.filter((config) => config.ativo && (!configIds || configIds.includes(config.id)));
       if (!selected.length) throw new Error("Nenhuma configuração ativa para planejar.");
+      if (year <= currentYear) {
+        const { error: reconciliationError } = await supabase.rpc(
+          "reconciliar_visitas_contratuais_periodo",
+          { p_inicio: `${year}-01-01`, p_fim: year === currentYear ? todayISO() : `${year}-12-31` },
+        );
+        if (reconciliationError) throw reconciliationError;
+      }
       const { data: authData } = await supabase.auth.getUser();
       let inserted = 0;
       let removed = 0;
@@ -402,19 +450,19 @@ export default function VisitasContratuaisPage() {
     if (!contract || !MONTHS.some((_, month) => contractMonthIsActive(monthCompetence(year, month), contract.vigencia_inicio, contract.vigencia_fim))) return false;
     return config.planejamento_pendente
       || stackedConfigIds.has(config.id)
-      || (year >= currentYear && !(forecastsByConfig.get(config.id)?.length));
-  }).map((config) => config.id), [configs, contractById, forecastsByConfig, stackedConfigIds, year, currentYear]);
+      || (year >= currentYear && !(forecastsByConfig.get(config.id)?.length || executionsByConfig.get(config.id)?.length));
+  }).map((config) => config.id), [configs, contractById, forecastsByConfig, executionsByConfig, stackedConfigIds, year, currentYear]);
 
   useEffect(() => {
-    if (configsQuery.isLoading || forecastsQuery.isLoading || techniciansQuery.isLoading || planYear.isPending) return;
+    if (configsQuery.isLoading || forecastsQuery.isLoading || executionsQuery.isLoading || techniciansQuery.isLoading || planYear.isPending) return;
     if (!initialPlanIds.length || year < currentYear) return;
     const key = `${year}:${initialPlanIds.sort().join(",")}`;
     if (automaticPlanKey.current === key) return;
     automaticPlanKey.current = key;
     planYear.mutate(initialPlanIds);
-  }, [configsQuery.isLoading, forecastsQuery.isLoading, techniciansQuery.isLoading, initialPlanIds, planYear, year, currentYear]);
+  }, [configsQuery.isLoading, forecastsQuery.isLoading, executionsQuery.isLoading, techniciansQuery.isLoading, initialPlanIds, planYear, year, currentYear]);
 
-  const loading = contractsQuery.isLoading || configsQuery.isLoading || techniciansQuery.isLoading || forecastsQuery.isLoading;
+  const loading = contractsQuery.isLoading || configsQuery.isLoading || techniciansQuery.isLoading || forecastsQuery.isLoading || executionsQuery.isLoading;
   const withoutPlanning = contracts.filter((contract) => !configByContract.has(contract.id) || !Number(contract.horas_mes_contratadas || 0));
   const allSummaries = [...monthlySummaries.values()].flat();
   const missingMonths = allSummaries.filter((summary) => summary.status === "FALTANDO");
@@ -424,6 +472,10 @@ export default function VisitasContratuaisPage() {
       .filter((forecast) => forecast.contrato_visita_config_id && forecast.contrato_visita_numero)
       .map((forecast) => `${forecast.contrato_visita_config_id}|${forecast.data.slice(0, 7)}|${forecast.contrato_visita_numero}`),
   ).size;
+  const realizedHours = executions.reduce((total, execution) => total + Number(execution.horas_trabalhadas || 0), 0);
+  const currentCompetence = `${year}-${String(year === currentYear ? new Date().getMonth() + 1 : 12).padStart(2, "0")}`;
+  const currentMonthSummaries = allSummaries.filter((summary) => summary.competencia === currentCompetence);
+  const currentMonthRemainingHours = currentMonthSummaries.reduce((total, summary) => total + summary.horasRestantes, 0);
   const annualControlByConfig = useMemo(() => new Map(configs.map((config) => {
     const summaries = monthlySummaries.get(config.id) || [];
     const missing = summaries.filter((summary) => summary.status === "FALTANDO");
@@ -472,11 +524,13 @@ export default function VisitasContratuaisPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <Card><CardContent className="flex items-center gap-3 p-4"><CalendarDays className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Contratos ativos</p><p className="text-xl font-bold">{contracts.length}</p></div></CardContent></Card>
-          <Card><CardContent className="flex items-center gap-3 p-4"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Visitas lançadas em {year}</p><p className="text-xl font-bold">{launchedVisits}</p></div></CardContent></Card>
+          <Card><CardContent className="flex items-center gap-3 p-4"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Visitas ainda planejadas</p><p className="text-xl font-bold">{launchedVisits}</p></div></CardContent></Card>
+          <Card><CardContent className="flex items-center gap-3 p-4"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><div><p className="text-xs text-muted-foreground">Visitas reconhecidas</p><p className="text-xl font-bold text-emerald-700">{executions.length}</p></div></CardContent></Card>
+          <Card><CardContent className="flex items-center gap-3 p-4"><Clock3 className="h-5 w-5 text-emerald-600" /><div><p className="text-xs text-muted-foreground">Horas reais em {year}</p><p className="text-xl font-bold text-emerald-700">{hoursLabel(realizedHours)}</p></div></CardContent></Card>
+          <Card><CardContent className="flex items-center gap-3 p-4"><Clock3 className="h-5 w-5 text-amber-600" /><div><p className="text-xs text-muted-foreground">Saldo de {MONTHS[Number(currentCompetence.slice(5, 7)) - 1]}</p><p className="text-xl font-bold text-amber-700">{hoursLabel(currentMonthRemainingHours)}</p></div></CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4"><AlertTriangle className="h-5 w-5 text-amber-600" /><div><p className="text-xs text-muted-foreground">Meses faltando</p><p className="text-xl font-bold text-amber-700">{missingMonths.length}</p></div></CardContent></Card>
-          <Card><CardContent className="flex items-center gap-3 p-4"><AlertTriangle className="h-5 w-5 text-red-600" /><div><p className="text-xs text-muted-foreground">Meses excedentes</p><p className="text-xl font-bold text-red-700">{excessMonths.length}</p></div></CardContent></Card>
         </div>
 
         {(withoutPlanning.length > 0 || missingMonths.length > 0 || excessMonths.length > 0) && (
@@ -489,6 +543,38 @@ export default function VisitasContratuaisPage() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Execuções reconhecidas por cliente e dia</CardTitle>
+            <p className="text-xs text-muted-foreground">Tarefas reais finalizadas no mesmo cliente são consolidadas em uma visita, com horas, técnicos e links do Auvo. O registro realizado não volta para o planejamento.</p>
+          </CardHeader>
+          <CardContent>
+            {executionsQuery.isLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+            ) : executions.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhuma visita real reconhecida em {year}.</div>
+            ) : (
+              <div className="max-h-[360px] overflow-auto rounded-lg border">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Data real</TableHead><TableHead>Contrato / cliente</TableHead><TableHead>Visita</TableHead><TableHead>Técnicos</TableHead><TableHead>Horas reais</TableHead><TableHead>Tarefas Auvo</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {executions.slice(0, 100).map((execution) => (
+                      <TableRow key={execution.id}>
+                        <TableCell className="whitespace-nowrap font-medium">{dateLabel(execution.data_realizada)}</TableCell>
+                        <TableCell className="min-w-[280px]"><p className="font-semibold">{contractById.get(execution.contrato_id)?.nome || "Contrato"}</p><p className="text-xs text-muted-foreground">{execution.cliente}</p></TableCell>
+                        <TableCell className="whitespace-nowrap">{execution.visita_numero}ª realizada</TableCell>
+                        <TableCell className="min-w-[200px] text-xs">{execution.tecnicos.join(" · ") || "Não identificado"}</TableCell>
+                        <TableCell className="whitespace-nowrap font-bold text-emerald-700">{hoursLabel(Number(execution.horas_trabalhadas || 0))}</TableCell>
+                        <TableCell className="min-w-[240px]"><div className="flex flex-wrap gap-1">{execution.tarefa_ids.map((taskId) => <a key={taskId} href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`} target="_blank" rel="noreferrer" className="rounded border bg-muted px-2 py-1 font-mono text-xs text-primary hover:underline">#{taskId}</a>)}</div></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -508,6 +594,9 @@ export default function VisitasContratuaisPage() {
                     {contracts.map((contract) => {
                       const config = configByContract.get(contract.id);
                       const control = config ? annualControlByConfig.get(config.id) : null;
+                      const monthControl = config
+                        ? (monthlySummaries.get(config.id) || []).find((summary) => summary.competencia === currentCompetence)
+                        : null;
                       let duration: number | null = null;
                       const requiredVisits = config && contract.horas_mes_contratadas
                         ? minimumContractVisitsPerMonth(Number(contract.horas_mes_contratadas), config.qtd_tecnicos)
@@ -536,6 +625,12 @@ export default function VisitasContratuaisPage() {
                             {config ? <div className="space-y-1"><p>Semanas {(config.semanas_mes || [1, 2, 3, 4, 5]).join(", ")} · {WEEKDAYS.filter((day) => config.dias_semana.includes(day.value)).map((day) => day.label).join(", ")}</p><p className="text-muted-foreground">Início preferencial: {config.hora_inicio.slice(0, 5)}</p>{config.observacao && <p className="line-clamp-2 text-muted-foreground">{config.observacao}</p>}</div> : "—"}
                           </TableCell>
                           <TableCell className="min-w-[210px] text-xs">
+                            {monthControl && (
+                              <div className="mb-2 rounded-md border bg-muted/30 p-2">
+                                <p className="font-semibold text-emerald-700">{monthControl.visitasRealizadas}/{monthControl.visitasContratadas} realizada(s) · {hoursLabel(monthControl.horasRealizadas)}</p>
+                                <p className="mt-0.5 text-muted-foreground">Saldo real: {monthControl.visitasRestantes} visita(s) · {hoursLabel(monthControl.horasRestantes)}</p>
+                              </div>
+                            )}
                             {!config ? (
                               <Badge variant="outline" className={!Number(contract.horas_mes_contratadas || 0) ? "border-amber-300 bg-amber-50 text-amber-800" : ""}>
                                 {!Number(contract.horas_mes_contratadas || 0) ? "Cadastre as horas no contrato" : "Aguardando configuração"}
