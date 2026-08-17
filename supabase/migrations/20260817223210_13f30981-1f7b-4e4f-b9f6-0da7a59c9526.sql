@@ -1,0 +1,1 @@
+ALTER TABLE public.tarefas_central ADD COLUMN IF NOT EXISTS relato_usuario text;
