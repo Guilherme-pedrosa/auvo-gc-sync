@@ -1103,8 +1103,8 @@ export default function AgendamentoEquipePage() {
             <span className="hidden sm:inline">{isSyncing ? "Sincronizando Auvo/GC..." : "Sincronizar Auvo/GC"}</span>
             <span className="sm:hidden">Auvo/GC</span>
           </Button>
-          <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
-            <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa Auvo</span>
+          <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogChoiceOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa / Previsão</span>
           </Button>
         </div>
       </header>
@@ -1202,7 +1202,9 @@ export default function AgendamentoEquipePage() {
                                   auvoUserId: (t as any).auvo_user_id ? String((t as any).auvo_user_id) : null,
                                   nome: t.nome,
                                 });
-                                setDialogCreateTaskOpen(true);
+                                setSelectedDate(parseISO(dia));
+                                setSelectedColabId(t.id);
+                                setDialogChoiceOpen(true);
                               }}
                               onPreverProximoDia={async (a) => {
                                  const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
