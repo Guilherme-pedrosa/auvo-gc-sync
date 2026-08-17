@@ -705,7 +705,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
             )}
 
 
-            {(relatoUsuario || textos.length > 0 || fotos.length > 0 || tarefa.orientacao) && (
+            {(relatoUsuario || temQuestionarios || tarefa.orientacao) && (
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
@@ -730,61 +730,34 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                       </pre>
                     </div>
                   )}
-                  {textos.map((r, i) => (
-                    <div key={i} className="text-sm">
-                      <span className="text-muted-foreground text-xs">{r.question}</span>
-                      <p className="font-medium">{r.reply}</p>
+                  {blocosQuestionarios.map((bloco, bi) => (
+                    <div
+                      key={bi}
+                      className="space-y-3 pb-3 border-b border-muted-foreground/10 last:border-0 last:pb-0"
+                    >
+                      <p className="text-xs font-bold uppercase text-primary/80">{bloco.titulo}</p>
+                      {bloco.textos.map((r: any, i: number) => (
+                        <div key={i} className="text-sm">
+                          <span className="text-muted-foreground text-xs">{r.question}</span>
+                          <p className="font-medium whitespace-pre-wrap">{r.reply}</p>
+                        </div>
+                      ))}
+                      {bloco.fotos.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2 pt-1">
+                          {bloco.fotos.map((r: any, i: number) => (
+                            <a key={i} href={r.reply} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={r.reply}
+                                alt={r.question || "Anexo da tarefa"}
+                                loading="lazy"
+                                className="rounded-md border object-cover w-full h-24"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
-
-                  {fotos.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 pt-2">
-                      {fotos.map((r, i) => (
-                        <a key={i} href={r.reply} target="_blank" rel="noopener noreferrer">
-                          <img
-                            src={r.reply}
-                            alt={r.question || "Foto da tarefa"}
-                            loading="lazy"
-                            className="rounded-md border object-cover w-full h-24"
-                          />
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  {outrosQuestionarios.length > 0 && (
-                    <div className="pt-4 space-y-4 border-t border-muted-foreground/10">
-                      <span className="text-muted-foreground text-xs font-bold block uppercase">Questionários Adicionais</span>
-                      {outrosQuestionarios.map((q: any, qi: number) => {
-                        // Se for o mesmo questionário principal já exibido (mesmo ID ou conteúdo), podemos pular
-                        // mas para garantir trazemos todos que tenham respostas
-                        const qRespostas = Array.isArray(q.answers) ? q.answers : Array.isArray(q.questions) ? q.questions : [];
-                        if (qRespostas.length === 0) return null;
-                        
-                        return (
-                          <div key={qi} className="space-y-2 pb-3 border-b border-muted-foreground/5 last:border-0">
-                            <p className="text-xs font-semibold text-primary/80">{q.description || q.name || `Questionário ${qi + 1}`}</p>
-                            <div className="grid grid-cols-1 gap-2">
-                              {qRespostas.map((ans: any, ai: number) => (
-                                <div key={ai} className="text-sm">
-                                  <span className="text-muted-foreground text-[10px] block leading-tight">{ans.question || ans.description}</span>
-                                  <p className="font-medium text-xs">
-                                    {String(ans.reply || ans.answer || "—").startsWith("http") ? (
-                                      <a href={ans.reply || ans.answer} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                                        Ver anexo
-                                      </a>
-                                    ) : (
-                                      ans.reply || ans.answer || "—"
-                                    )}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
               {tarefa && (
                 <Button 
                   size="sm" 
