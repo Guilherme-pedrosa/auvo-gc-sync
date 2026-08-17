@@ -618,6 +618,10 @@ function sanitizeCentralRow(row: any) {
     result.questionario_respostas = row.questionario_respostas;
   }
 
+  if (hasOwn(row, "outros_questionarios")) {
+    result.outros_questionarios = row.outros_questionarios;
+  }
+
   if (hasOwn(row, "pausas")) {
     result.pausas = row.pausas;
   }
@@ -806,6 +810,18 @@ Deno.serve(async (req) => {
       setKnown("status_auvo", status);
       setKnown("orientacao", orientation || agenda?.descricao);
       setKnown("relato_usuario", userReport);
+      
+      const questionnaires = Array.isArray(task?.questionnaires) 
+        ? task.questionnaires 
+        : Array.isArray(task?.questionnaireAnswers)
+          ? task.questionnaireAnswers
+          : [];
+      
+      if (questionnaires.length > 0) {
+        // O Auvo v2 em /tasks/:id costuma devolver uma lista de questionários respondidos.
+        // O primeiro costuma ser o principal. Guardamos todos para exibição.
+        patch.outros_questionarios = questionnaires;
+      }
       setKnown("task_type_id", currentTaskTypeId);
       setKnown("descricao", currentTaskTypeDescription);
       setKnown("gc_os_codigo", agenda?.gc_os_codigo || existing?.gc_os_codigo);

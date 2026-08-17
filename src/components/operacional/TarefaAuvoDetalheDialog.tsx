@@ -268,6 +268,11 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
     : [];
+  
+  const outrosQuestionarios: any[] = Array.isArray((tarefa as any)?.outros_questionarios)
+    ? (tarefa as any).outros_questionarios
+    : [];
+
   const relatoUsuario = String((tarefa as any)?.relato_usuario || "").trim();
   const textos = respostas.filter((r) => r?.reply && !String(r.reply).startsWith("http"));
   const fotos = respostas.filter((r) => r?.reply && String(r.reply).startsWith("http"));
@@ -716,6 +721,40 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                           />
                         </a>
                       ))}
+                    </div>
+                  )}
+
+                  {outrosQuestionarios.length > 0 && (
+                    <div className="pt-4 space-y-4 border-t border-muted-foreground/10">
+                      <span className="text-muted-foreground text-xs font-bold block uppercase">Questionários Adicionais</span>
+                      {outrosQuestionarios.map((q: any, qi: number) => {
+                        // Se for o mesmo questionário principal já exibido (mesmo ID ou conteúdo), podemos pular
+                        // mas para garantir trazemos todos que tenham respostas
+                        const qRespostas = Array.isArray(q.answers) ? q.answers : Array.isArray(q.questions) ? q.questions : [];
+                        if (qRespostas.length === 0) return null;
+                        
+                        return (
+                          <div key={qi} className="space-y-2 pb-3 border-b border-muted-foreground/5 last:border-0">
+                            <p className="text-xs font-semibold text-primary/80">{q.description || q.name || `Questionário ${qi + 1}`}</p>
+                            <div className="grid grid-cols-1 gap-2">
+                              {qRespostas.map((ans: any, ai: number) => (
+                                <div key={ai} className="text-sm">
+                                  <span className="text-muted-foreground text-[10px] block leading-tight">{ans.question || ans.description}</span>
+                                  <p className="font-medium text-xs">
+                                    {String(ans.reply || ans.answer || "—").startsWith("http") ? (
+                                      <a href={ans.reply || ans.answer} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                        Ver anexo
+                                      </a>
+                                    ) : (
+                                      ans.reply || ans.answer || "—"
+                                    )}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
               {tarefa && (
