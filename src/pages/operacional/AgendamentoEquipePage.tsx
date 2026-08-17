@@ -356,7 +356,9 @@ function Celula({
             a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
           const identificadoresAntesSituacao = [
-            visitaContratualRealizada ? "VISITA CONTRATUAL · REALIZADA" : null,
+            visitaContratualRealizada
+              ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · REALIZADA`
+              : null,
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
           ].filter(Boolean);
@@ -496,7 +498,7 @@ function Celula({
                       ) : null}
                     </>
                   )}
-                  {a.previsao_detalhes && (
+                  {a.previsao_detalhes && !visitaContratualRealizada && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
                     </span>

@@ -219,7 +219,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(cardMigration).toContain("previsao_continuidade = false");
     expect(cardMigration).toContain("duracao_planejada_minutos = NULL");
     expect(agendaPage).toContain('a.previsao_tipo === "CONTRATO_REALIZADO"');
-    expect(agendaPage).toContain("VISITA CONTRATUAL · REALIZADA");
+    expect(agendaPage).toContain("ª VISITA · REALIZADA");
     expect(agendaPage).not.toContain("Visitas contratuais realizadas");
   });
 
