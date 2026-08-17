@@ -1202,7 +1202,9 @@ export default function AgendamentoEquipePage() {
                                   auvoUserId: (t as any).auvo_user_id ? String((t as any).auvo_user_id) : null,
                                   nome: t.nome,
                                 });
-                                setDialogCreateTaskOpen(true);
+                                setSelectedDate(parseISO(dia));
+                                setSelectedColabId(t.id);
+                                setDialogChoiceOpen(true);
                               }}
                               onPreverProximoDia={async (a) => {
                                  const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
