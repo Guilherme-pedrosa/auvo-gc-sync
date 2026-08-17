@@ -393,10 +393,24 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <p className="font-medium">{tarefa.status_auvo || "—"}</p>
               </div>
               <div className="col-span-2">
-                <span className="text-muted-foreground text-xs">Relato / Questionário (Resumo)</span>
-                <p className="text-sm font-medium whitespace-pre-wrap line-clamp-3">
-                  {tarefa.orientacao || "Sem relato informado."}
-                </p>
+                <span className="text-muted-foreground text-xs block mb-1">Resumo do Relato Técnico</span>
+                {(() => {
+                  const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
+                    String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
+                  );
+                  if (tecnicoRelato?.reply) {
+                    return (
+                      <p className="text-sm font-semibold text-primary line-clamp-2">
+                        {tecnicoRelato.reply}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="text-sm font-medium text-muted-foreground italic line-clamp-2">
+                      {tarefa.orientacao || "Sem relato informado."}
+                    </p>
+                  );
+                })()}
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">Check-in / Check-out</span>
@@ -672,13 +686,29 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Relato / Questionário</span>
+                  <span className="text-sm font-semibold">Relatos e Questionário</span>
                 </div>
-                <div className="p-3 space-y-2">
+                <div className="p-3 space-y-4">
+                  {(() => {
+                    const tecnicoRelato = (tarefa?.questionario_respostas as any[])?.find(r => 
+                      String(r?.question || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().includes("INFORME O QUE FOI FEITO")
+                    );
+                    if (!tecnicoRelato?.reply) return null;
+                    return (
+                      <div className="text-sm border-b border-muted-foreground/10 pb-3 mb-2">
+                        <span className="text-primary font-bold text-xs block mb-1">RELATO DO USUÁRIO (TÉCNICO)</span>
+                        <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
+                          <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm font-medium text-foreground">
+                            {tecnicoRelato.reply}
+                          </pre>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {tarefa.orientacao && (
-                    <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2">
-                      <span className="text-muted-foreground text-xs block mb-1">Relato / Orientação</span>
-                      <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm">
+                    <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2 opacity-70">
+                      <span className="text-muted-foreground text-xs block mb-1">Orientação / Descrição da Tarefa</span>
+                      <pre className="whitespace-pre-wrap font-sans leading-relaxed text-xs">
                         {tarefa.orientacao}
                       </pre>
                     </div>
