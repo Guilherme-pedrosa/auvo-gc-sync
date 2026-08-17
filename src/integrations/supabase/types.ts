@@ -2954,6 +2954,7 @@ export type Database = {
           orcamento_realizado: boolean | null
           orientacao: string | null
           os_realizada: boolean | null
+          outros_questionarios: Json | null
           pausas: Json | null
           pendencia: string | null
           questionario_id: string | null
@@ -3022,6 +3023,7 @@ export type Database = {
           orcamento_realizado?: boolean | null
           orientacao?: string | null
           os_realizada?: boolean | null
+          outros_questionarios?: Json | null
           pausas?: Json | null
           pendencia?: string | null
           questionario_id?: string | null
@@ -3090,6 +3092,7 @@ export type Database = {
           orcamento_realizado?: boolean | null
           orientacao?: string | null
           os_realizada?: boolean | null
+          outros_questionarios?: Json | null
           pausas?: Json | null
           pendencia?: string | null
           questionario_id?: string | null
