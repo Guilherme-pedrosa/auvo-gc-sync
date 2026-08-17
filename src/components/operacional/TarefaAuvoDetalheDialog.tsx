@@ -686,7 +686,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Relato / Questionário</span>
+                  <span className="text-sm font-semibold">Relatos e Questionário</span>
                 </div>
                 <div className="p-3 space-y-4">
                   {(() => {
