@@ -5,8 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
-  isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
+  selectOsForBudgetForecast,
 } from "../_shared/agenda-forecast-promotion.ts";
 import {
   auvoTaskTypeDescription,
@@ -1337,8 +1337,7 @@ async function reconcileBudgetExecutionForecasts(
   const candidates: Array<{ forecastId: string; budgetCode: string; osCode: string; execTaskId: string }> = [];
   for (const forecast of forecasts) {
     const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
-    const osMatches = (osByBudget.get(budgetCode) || [])
-      .filter((os) => isOsEligibleForBudgetForecast(os, forecast.criado_em));
+    const osMatches = selectOsForBudgetForecast(osByBudget.get(budgetCode) || [], forecast.criado_em);
     if (osMatches.length === 0) {
       summary.waitingOs += 1;
       await mark(forecast.id, {
