@@ -266,7 +266,17 @@ export default function AgendamentoEquipeDialog({
           const { data: res, error } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "edit", taskId: agendamento.auvo_task_id, patches }
           });
-          if (error || res?.status >= 400) throw new Error(res?.data?.message || res?.error || "Erro ao sincronizar com Auvo");
+          if (error || res?.status >= 400) {
+            const auvoErr = res?.data?.message || res?.error || "Erro ao sincronizar com Auvo";
+            // Mesmo erro do reagendamento: se for algo relacionado a check-in que o Auvo bloqueia,
+            // avisamos mas permitimos prosseguir para salvar localmente.
+            if (auvoErr.includes("check in") || res?.hasStarted) {
+              console.warn("Ignorando erro de edição parcial pois a tarefa possui check-in:", auvoErr);
+              toast.warning("Nota: Algumas edições no Auvo podem ser limitadas para tarefas com check-in.");
+            } else {
+              throw new Error(auvoErr);
+            }
+          }
         }
       }
 
