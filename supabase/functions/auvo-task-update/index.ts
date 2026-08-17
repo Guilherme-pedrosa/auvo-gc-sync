@@ -605,6 +605,7 @@ function sanitizeCentralRow(row: any) {
   setIfProvided(result, row, "pendencia");
   setIfProvided(result, row, "equipamento_nome");
   setIfProvided(result, row, "equipamento_id_serie");
+  setIfProvided(result, row, "relato_usuario");
 
   // orientacao accepts either "orientacao" or legacy "descricao"
   if (hasOwn(row, "orientacao")) {
@@ -771,6 +772,7 @@ Deno.serve(async (req) => {
       const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
       const orientation = String(task?.orientation ?? task?.description ?? "").trim();
+      const userReport = String(task?.report ?? "").trim();
       const plannedDurationMinutes = parseAuvoDurationMinutes(
         task?.estimatedDuration ?? task?.estimated_duration,
       );
@@ -803,6 +805,7 @@ Deno.serve(async (req) => {
       setKnown("hora_fim", timePart(checkOutDate) || timePart(taskEndDate) || agenda?.hora_fim);
       setKnown("status_auvo", status);
       setKnown("orientacao", orientation || agenda?.descricao);
+      setKnown("relato_usuario", userReport);
       setKnown("task_type_id", currentTaskTypeId);
       setKnown("descricao", currentTaskTypeDescription);
       setKnown("gc_os_codigo", agenda?.gc_os_codigo || existing?.gc_os_codigo);

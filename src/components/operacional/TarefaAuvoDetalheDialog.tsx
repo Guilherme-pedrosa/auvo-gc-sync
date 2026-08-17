@@ -268,6 +268,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
     : [];
+  const relatoUsuario = String((tarefa as any)?.relato_usuario || "").trim();
   const textos = respostas.filter((r) => r?.reply && !String(r.reply).startsWith("http"));
   const fotos = respostas.filter((r) => r?.reply && String(r.reply).startsWith("http"));
   const auvoAdminUrl = taskId
@@ -394,37 +395,12 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
               <div className="col-span-2">
                 <span className="text-muted-foreground text-xs block mb-1">Resumo do Relato Técnico</span>
-                {(() => {
-                  const flattened = [];
-                  const raw = tarefa?.questionario_respostas;
-                  if (Array.isArray(raw)) {
-                    for (const item of raw) {
-                      if (Array.isArray(item?.answers)) {
-                        flattened.push(...item.answers);
-                      } else {
-                        flattened.push(item);
-                      }
-                    }
-                  }
-                  
-                  const tecnicoRelato = flattened.find(r => {
-                    const q = String(r?.question || r?.questionDescription || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                    return q.includes("INFORME O QUE FOI FEITO") || q.includes("RELATO") || q.includes("DESCRICAO DO SERVICO");
-                  });
-
-                  if (tecnicoRelato?.reply) {
-                    return (
-                      <p className="text-sm font-semibold text-primary line-clamp-2">
-                        {tecnicoRelato.reply}
-                      </p>
-                    );
-                  }
-                  return (
-                    <p className="text-sm font-medium text-muted-foreground italic line-clamp-2">
-                      {tarefa.orientacao || "Sem relato informado."}
-                    </p>
-                  );
-                })()}
+                <p className={cn(
+                  "text-sm line-clamp-2",
+                  relatoUsuario ? "font-semibold text-primary" : "font-medium text-muted-foreground italic",
+                )}>
+                  {relatoUsuario || "Relato do usuário ainda não sincronizado."}
+                </p>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">Check-in / Check-out</span>
@@ -696,43 +672,23 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
             )}
 
 
-            {(textos.length > 0 || fotos.length > 0 || tarefa.orientacao) && (
+            {(relatoUsuario || textos.length > 0 || fotos.length > 0 || tarefa.orientacao) && (
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-semibold">Relatos e Questionário</span>
                 </div>
                 <div className="p-3 space-y-4">
-                  {(() => {
-                    const flattened = [];
-                    const raw = tarefa?.questionario_respostas;
-                    if (Array.isArray(raw)) {
-                      for (const item of raw) {
-                        if (Array.isArray(item?.answers)) {
-                          flattened.push(...item.answers);
-                        } else {
-                          flattened.push(item);
-                        }
-                      }
-                    }
-
-                    const tecnicoRelato = flattened.find(r => {
-                      const q = String(r?.question || r?.questionDescription || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                      return q.includes("INFORME O QUE FOI FEITO") || q.includes("RELATO") || q.includes("DESCRICAO DO SERVICO");
-                    });
-
-                    if (!tecnicoRelato?.reply) return null;
-                    return (
-                      <div className="text-sm border-b border-muted-foreground/10 pb-3 mb-2">
-                        <span className="text-primary font-bold text-xs block mb-1">RELATO DO USUÁRIO (TÉCNICO)</span>
-                        <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
-                          <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm font-medium text-foreground">
-                            {tecnicoRelato.reply}
-                          </pre>
-                        </div>
+                  {relatoUsuario && (
+                    <div className="text-sm border-b border-muted-foreground/10 pb-3 mb-2">
+                      <span className="text-primary font-bold text-xs block mb-1">RELATO DO USUÁRIO (TÉCNICO)</span>
+                      <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
+                        <pre className="whitespace-pre-wrap font-sans leading-relaxed text-sm font-medium text-foreground">
+                          {relatoUsuario}
+                        </pre>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
                   {tarefa.orientacao && (
                     <div className="text-sm border-b border-muted-foreground/10 pb-2 mb-2 opacity-70">
                       <span className="text-muted-foreground text-xs block mb-1">Orientação / Descrição da Tarefa</span>
