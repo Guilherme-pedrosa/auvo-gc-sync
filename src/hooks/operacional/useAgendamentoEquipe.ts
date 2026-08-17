@@ -7,6 +7,7 @@ import {
   buildClientLinkIndex,
   resolveClientLinkStatus,
 } from "@/lib/clientLinkStatus";
+import type { Database } from "@/integrations/supabase/types";
 
 /**
  * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
@@ -87,6 +88,15 @@ export interface AgendaAgendamento {
   atualizado_em?: string | null;
   vinculo_status?: string | null;
 }
+
+type ContractVisitExecutionRow = Database["public"]["Tables"]["contratos_visitas_execucoes"]["Row"];
+
+export type AgendaContractVisitExecution = ContractVisitExecutionRow & {
+  contratos?: {
+    nome: string;
+    cliente_nome: string | null;
+  } | null;
+};
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   const taskIds = [...new Set(
@@ -403,15 +413,27 @@ export function useAgendaSemana(dias: string[]) {
     gcTime: 30 * 60 * 1000,
     placeholderData: (previousData) => previousData,
     queryFn: async () => {
-      const [ag, vd] = await Promise.all([
+      const [ag, vd, visitas] = await Promise.all([
         sb.from("agenda_agendamentos").select("*").gte("data", inicio).lte("data", fim),
         sb.from("agenda_veiculo_dia").select("*").gte("data", inicio).lte("data", fim),
+        sb
+          .from("contratos_visitas_execucoes")
+          .select("*, contratos(nome,cliente_nome)")
+          .gte("data_realizada", inicio)
+          .lte("data_realizada", fim)
+          .order("data_realizada")
+          .order("visita_numero"),
       ]);
       if (ag.error) throw ag.error;
       if (vd.error) throw vd.error;
+      if (visitas.error) throw visitas.error;
       return {
         agendamentos: await preencherDocumentosGc((ag.data ?? []) as AgendaAgendamento[]),
         veiculoDias: (vd.data ?? []) as AgendaVeiculoDia[],
+        // A execucao contratual fica separada dos espelhos de tarefas. Assim o
+        // card comprova a visita e suas horas sem somar novamente o trabalho
+        // que as tarefas individuais ja representam na linha dos tecnicos.
+        visitasContratuais: (visitas.data ?? []) as unknown as AgendaContractVisitExecution[],
       };
     },
   });

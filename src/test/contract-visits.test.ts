@@ -204,6 +204,24 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("card de previsao deixa");
   });
 
+  it("exibe a visita realizada na Agenda sem duplicar as horas das tarefas", () => {
+    const agendaPage = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+    const agendaHook = readFileSync(
+      resolve(root, "src/hooks/operacional/useAgendamentoEquipe.ts"),
+      "utf8",
+    );
+
+    expect(agendaHook).toContain('.from("contratos_visitas_execucoes")');
+    expect(agendaHook).toContain("visitasContratuais:");
+    expect(agendaPage).toContain("Visita contratual · realizada");
+    expect(agendaPage).toContain("horas reais, sem duplicar tarefas");
+    expect(agendaPage).toContain("horas_trabalhadas");
+    expect(agendaPage).toContain("Abrir tarefa Auvo #");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);

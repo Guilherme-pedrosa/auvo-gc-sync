@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, CircleCheckBig, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import {
   useSalvarCelulaVeiculo,
   useSaveAgendamento,
   type AgendaAgendamento,
+  type AgendaContractVisitExecution,
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
@@ -539,6 +540,88 @@ function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: 
   );
 }
 
+type ContractVisitTaskDetail = {
+  tarefa_id?: string | number | null;
+  link?: string | null;
+};
+
+const contractVisitTaskDetails = (visita: AgendaContractVisitExecution) => (
+  Array.isArray(visita.tarefas_detalhes)
+    ? visita.tarefas_detalhes.filter((item): item is ContractVisitTaskDetail => Boolean(item && typeof item === "object"))
+    : []
+);
+
+function CelulaVisitasContratuais({ visitas }: { visitas: AgendaContractVisitExecution[] }) {
+  return (
+    <td className="border border-border p-0.5 align-top min-w-[170px] md:min-w-[240px]">
+      <div className="flex h-full flex-col gap-1">
+        {visitas.map((visita) => {
+          const detailsByTask = new Map(
+            contractVisitTaskDetails(visita).map((detail) => [String(detail.tarefa_id || "").trim(), detail]),
+          );
+          const taskIds = [...new Set((visita.tarefa_ids ?? []).map((taskId) => String(taskId).trim()).filter(Boolean))];
+          const hours = formatWorkedMinutes(Math.round(Number(visita.horas_trabalhadas || 0) * 60));
+          const contractName = visita.contratos?.nome?.trim();
+
+          return (
+            <article
+              key={visita.id}
+              className="rounded-sm border-2 border-emerald-400 bg-emerald-50 px-1.5 py-1 text-[10px] text-emerald-950 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-100"
+              title="Visita contratual reconhecida pelas tarefas finalizadas no cliente. As horas abaixo já estão contabilizadas nas tarefas e não são somadas em duplicidade."
+            >
+              <div className="flex items-center gap-1 font-extrabold uppercase">
+                <CircleCheckBig className="h-3.5 w-3.5 shrink-0" />
+                <span>Visita contratual · realizada</span>
+              </div>
+              <div className="mt-0.5 truncate text-[11px] font-extrabold uppercase" title={visita.cliente}>
+                {visita.visita_numero}ª visita · {visita.cliente}
+              </div>
+              {contractName && (
+                <div className="truncate font-medium normal-case opacity-80" title={contractName}>
+                  {contractName}
+                </div>
+              )}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-bold normal-case">
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="h-3 w-3" /> {hours} contabilizadas
+                </span>
+                <span>· {taskIds.length} tarefa(s)</span>
+              </div>
+              {visita.tecnicos?.length > 0 && (
+                <div className="truncate font-medium normal-case" title={visita.tecnicos.join(" · ")}>
+                  {visita.tecnicos.join(" · ")}
+                </div>
+              )}
+              {taskIds.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1 normal-case">
+                  {taskIds.map((taskId) => {
+                    const detail = detailsByTask.get(taskId);
+                    const href = detail?.link?.trim()
+                      || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`;
+                    return (
+                      <a
+                        key={taskId}
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-0.5 rounded border border-emerald-300 bg-white/80 px-1 py-0.5 font-bold text-emerald-800 hover:underline dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                        title={`Abrir tarefa Auvo #${taskId}`}
+                      >
+                        #{taskId}<ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {visitas.length === 0 && <span className="p-1.5 text-[11px] text-muted-foreground">—</span>}
+      </div>
+    </td>
+  );
+}
+
 export default function AgendamentoEquipePage() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -909,6 +992,19 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
+  const visitasContratuaisPorDia = useMemo(() => {
+    const result = new Map<string, AgendaContractVisitExecution[]>();
+    for (const visita of data?.visitasContratuais ?? []) {
+      const current = result.get(visita.data_realizada) ?? [];
+      current.push(visita);
+      result.set(visita.data_realizada, current);
+    }
+    for (const visits of result.values()) {
+      visits.sort((left, right) => left.visita_numero - right.visita_numero || left.cliente.localeCompare(right.cliente));
+    }
+    return result;
+  }, [data?.visitasContratuais]);
+
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
     const resultado = new Map<string, AgendaTag[]>();
@@ -1162,6 +1258,23 @@ export default function AgendamentoEquipePage() {
                     </tr>
                   </thead>
                   <tbody>
+                    <tr className="bg-emerald-50/40 dark:bg-emerald-950/10">
+                      <td className="sticky left-0 z-10 border border-border bg-emerald-50 p-2 text-[11px] font-extrabold uppercase text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+                        <span className="flex items-center gap-1.5">
+                          <CircleCheckBig className="h-4 w-4" />
+                          Visitas contratuais realizadas
+                        </span>
+                        <span className="mt-1 block text-[9px] font-medium normal-case opacity-75">
+                          horas reais, sem duplicar tarefas
+                        </span>
+                      </td>
+                      {dias.map((dia) => (
+                        <CelulaVisitasContratuais
+                          key={dia}
+                          visitas={visitasContratuaisPorDia.get(dia) ?? []}
+                        />
+                      ))}
+                    </tr>
                     {tecnicos.map((t) => (
                       <tr key={t.id}>
                         <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
