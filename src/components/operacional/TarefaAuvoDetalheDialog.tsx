@@ -274,8 +274,36 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     : [];
 
   const relatoUsuario = String((tarefa as any)?.relato_usuario || "").trim();
-  const textos = respostas.filter((r) => r?.reply && !String(r.reply).startsWith("http"));
-  const fotos = respostas.filter((r) => r?.reply && String(r.reply).startsWith("http"));
+
+  // Auvo devolve as respostas com as chaves questionDescription / reply
+  const normalizarResposta = (r: any) => ({
+    question: String(r?.questionDescription ?? r?.question ?? r?.description ?? "").trim(),
+    reply: String(r?.reply ?? r?.answer ?? "").trim(),
+  });
+
+  const blocosQuestionarios = (
+    outrosQuestionarios.length > 0
+      ? outrosQuestionarios.map((q: any, i: number) => ({
+          titulo: String(
+            q?.questionnaireDescription ?? q?.description ?? q?.name ?? `Questionário ${i + 1}`,
+          ),
+          itens: (Array.isArray(q?.answers)
+            ? q.answers
+            : Array.isArray(q?.questions)
+              ? q.questions
+              : []
+          ).map(normalizarResposta),
+        }))
+      : [{ titulo: "Questionário", itens: respostas.map(normalizarResposta) }]
+  )
+    .map((b) => ({
+      titulo: b.titulo,
+      textos: b.itens.filter((r: any) => r.reply && !r.reply.startsWith("http")),
+      fotos: b.itens.filter((r: any) => r.reply && r.reply.startsWith("http")),
+    }))
+    .filter((b) => b.textos.length > 0 || b.fotos.length > 0);
+
+  const temQuestionarios = blocosQuestionarios.length > 0;
   const auvoAdminUrl = taskId
     ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}#`
     : null;
