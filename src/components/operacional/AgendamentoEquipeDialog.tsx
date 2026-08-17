@@ -238,19 +238,35 @@ export default function AgendamentoEquipeDialog({
         }
 
         if (scheduleChanged) {
-          const { data: scheduleResult, error: scheduleError } = await supabase.functions.invoke("auvo-task-update", {
-            body: {
-              action: "edit-schedule",
-              taskId: agendamento.auvo_task_id,
-              taskDate: `${data}T${horaInicio}:00`,
-              durationMinutes: duracaoMin,
-              ...(technicianChanged ? { idUserTo: Number(colab?.auvo_user_id) } : {}),
-            },
-          });
-          if (scheduleError || scheduleResult?.success === false || scheduleResult?.status >= 400) {
-            throw new Error(scheduleResult?.data?.message || scheduleResult?.error || "Erro ao atualizar agenda no Auvo");
+          try {
+            const { data: scheduleResult, error: scheduleError } = await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "edit-schedule",
+                taskId: agendamento.auvo_task_id,
+                taskDate: `${data}T${horaInicio}:00`,
+                durationMinutes: duracaoMin,
+                ...(technicianChanged ? { idUserTo: Number(colab?.auvo_user_id) } : {}),
+              },
+            });
+            if (scheduleError || scheduleResult?.success === false || scheduleResult?.status >= 400) {
+              const auvoErr = scheduleResult?.data?.message || scheduleResult?.error || "Erro ao atualizar agenda no Auvo";
+              // Se a tarefa já começou (check-in), o Auvo proíbe reagendar.
+              // Nesses casos, ignoramos o erro de reagendamento e permitimos salvar o restante localmente.
+              if (auvoErr.includes("check in") || scheduleResult?.hasStarted) {
+                console.warn("Ignorando erro de reagendamento pois a tarefa já possui check-in:", auvoErr);
+                toast.warning("Agenda mantida no Auvo: tarefas com check-in não podem ser movidas.");
+              } else {
+                throw new Error(auvoErr);
+              }
+            }
+            if (scheduleResult?.warning) toast.warning(scheduleResult.warning);
+          } catch (scheduleErr: any) {
+            // Repassa o erro se não for o caso específico de check-in
+            if (!scheduleErr.message?.includes("check in")) {
+              throw scheduleErr;
+            }
+            toast.warning("Agenda mantida no Auvo: tarefas com check-in não podem ser movidas.");
           }
-          if (scheduleResult?.warning) toast.warning(scheduleResult.warning);
         }
 
         const patches = [];

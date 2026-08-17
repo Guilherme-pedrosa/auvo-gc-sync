@@ -1162,12 +1162,17 @@ Deno.serve(async (req) => {
       const requestedDurationMinutes = durationResolution?.durationMinutes || null;
       const durationVerified = requestedDurationMinutes === null || actualDurationMinutes === requestedDurationMinutes;
 
+      // Se a tarefa já teve check-in, o Auvo recusa reagendamento (PATCH taskDate/idUserTo).
+      // Mas o usuário quer pelo menos conseguir editar a descrição/questionário ou salvar localmente.
+      const hasStarted = auvoTaskHasStarted(verifiedTask);
+
       return new Response(
         JSON.stringify({
           success: true,
           status: 200,
           taskId,
           patches,
+          hasStarted,
           duration: durationResolution ? {
             requestedMinutes: requestedDurationMinutes,
             actualMinutes: actualDurationMinutes || null,
