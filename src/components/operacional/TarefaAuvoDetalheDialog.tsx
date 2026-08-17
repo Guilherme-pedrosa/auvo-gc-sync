@@ -392,6 +392,12 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <span className="text-muted-foreground text-xs">Status Auvo</span>
                 <p className="font-medium">{tarefa.status_auvo || "—"}</p>
               </div>
+              <div className="col-span-2">
+                <span className="text-muted-foreground text-xs">Relato / Questionário (Resumo)</span>
+                <p className="text-sm font-medium whitespace-pre-wrap line-clamp-3">
+                  {tarefa.orientacao || "Sem relato informado."}
+                </p>
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">Check-in / Check-out</span>
                 <div className="flex items-center gap-2 font-medium">
