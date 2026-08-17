@@ -224,6 +224,24 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(agendaPage).not.toContain("Visitas contratuais realizadas");
   });
 
+  it("alinha visitas futuras aos clientes, tarefas e técnicos realmente agendados", () => {
+    const agendaPage = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+    const scheduledMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818023000_sync_scheduled_contract_visit_cards.sql"),
+      "utf8",
+    );
+
+    expect(scheduledMigration).toContain("reconciliar_dia_visita_contratual_agendada");
+    expect(scheduledMigration).toContain("contrato_visita_tarefa_ids");
+    expect(scheduledMigration).toContain("visita extra alem das");
+    expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
+    expect(agendaPage).toContain("ª VISITA · PLANEJADA");
+    expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);

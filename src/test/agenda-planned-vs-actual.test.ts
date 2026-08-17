@@ -23,14 +23,14 @@ const agendaEdge = readFileSync(
 const incremental = readFileSync(resolve(root, "src/lib/agendaIncrementalSync.ts"), "utf8");
 
 describe("planejado x real diário das OS", () => {
-  it("soma somente duração planejada de itens vinculados a OS", () => {
+  it("soma OS e demais tarefas que tenham duração planejada", () => {
     const summary = summarizeAgendaOsPlannedVsActual([
       { id: "os", gc_os_codigo: "1001", duracao_planejada_minutos: 120 },
       { id: "preventiva", duracao_planejada_minutos: 480 },
       { id: "sem-plano", gc_os_codigo: "1002", duracao_planejada_minutos: null },
     ]);
 
-    expect(summary.plannedMinutes).toBe(120);
+    expect(summary.plannedMinutes).toBe(600);
     expect(summary.plannedOsCount).toBe(1);
     expect(summary.totalOsCount).toBe(2);
     expect(summary.missingPlannedOsCount).toBe(1);
@@ -87,6 +87,28 @@ describe("planejado x real diário das OS", () => {
     expect(summary.plannedOsCount).toBe(1);
     expect(summary.actualCompletedMinutes).toBe(130);
     expect(summary.differenceMinutes).toBe(10);
+  });
+
+  it("não soma duas vezes o card contratual alinhado e as tarefas do cliente", () => {
+    const summary = summarizeAgendaOsPlannedVsActual([
+      {
+        id: "task-savoy",
+        auvo_task_id: "78530947",
+        cliente: "SODEXO DO BRASIL COMERCIAL SAVOY",
+        duracao_planejada_minutos: 480,
+      },
+      {
+        id: "contract-savoy",
+        cliente: "Sodexo do Brasil Comercial Savoy",
+        previsao_tipo: "CONTRATO",
+        contrato_visita_tarefa_ids: ["78530947"],
+        duracao_planejada_minutos: 480,
+        previsao_continuidade: true,
+      } as any,
+    ]);
+
+    expect(summary.plannedMinutes).toBe(480);
+    expect(summary.pendingOsCount).toBe(1);
   });
 
   it("formata economia, excesso e igualdade", () => {

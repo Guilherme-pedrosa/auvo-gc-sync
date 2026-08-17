@@ -150,6 +150,9 @@ const getStatusColor = (a: AgendaAgendamento) => {
   if (a.previsao_tipo === "CONTRATO_REALIZADO") {
     return "bg-violet-100 text-violet-900 border-violet-500 dark:bg-violet-950/60 dark:text-violet-200 dark:border-violet-700 font-bold";
   }
+  if (a.previsao_tipo === "CONTRATO") {
+    return "bg-sky-100 text-sky-950 border-sky-500 dark:bg-sky-950/60 dark:text-sky-100 dark:border-sky-600 font-bold";
+  }
   const status = agendaVisualStatus(a);
   if (status === "finalizada") {
     return "bg-green-100 text-green-800 border-green-300 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800 font-bold";
@@ -341,6 +344,10 @@ function Celula({
         )}
         {itens.map((a) => {
           const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
+          const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
+          const visitaContratualAlinhada = visitaContratualPlanejada
+            && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
+          const visitaContratualBloqueada = visitaContratualRealizada || visitaContratualAlinhada;
           const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
@@ -358,7 +365,9 @@ function Celula({
           const identificadoresAntesSituacao = [
             visitaContratualRealizada
               ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · REALIZADA`
-              : null,
+              : visitaContratualPlanejada
+                ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · PLANEJADA`
+                : null,
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
           ].filter(Boolean);
@@ -382,9 +391,9 @@ function Celula({
             >
               <button
                 type="button"
-                draggable={!visitaContratualRealizada}
+                draggable={!visitaContratualBloqueada}
                 onDragStart={() => {
-                  if (!visitaContratualRealizada) onDragStart(a);
+                  if (!visitaContratualBloqueada) onDragStart(a);
                 }}
                 title={visitaContratualRealizada
                   ? `${a.contrato_visita_numero || ""}ª visita contratual realizada · ${formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} ${resumoVisita?.technicianMatched ? "do técnico" : "da visita"} contabilizadas`
@@ -396,7 +405,7 @@ function Celula({
                     ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
                     : "Agendamento manual"}
                 onClick={() => {
-                  if (visitaContratualRealizada) return;
+                  if (visitaContratualBloqueada) return;
                   if (a.auvo_task_id) onAbrirTarefa(a);
                   else onAbrirAgendamento(a);
                 }}
@@ -408,7 +417,8 @@ function Celula({
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
                   visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-violet-500 shadow-sm",
-                  a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
+                  visitaContratualAlinhada && "cursor-default active:cursor-default border-2 border-sky-500 shadow-sm",
+                  a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
@@ -519,7 +529,7 @@ function Celula({
                   </span>
                 )}
               </button>
-              {!visitaContratualRealizada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
+              {!visitaContratualBloqueada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
                 {(
                   <button
                     type="button"

@@ -4,6 +4,9 @@ export type AgendaOsPlanningSource = AgendaWorkedTimeSource & {
   gc_os_codigo?: string | null;
   tipo_tarefa_auvo?: string | null;
   duracao_planejada_minutos?: number | null;
+  cliente?: string | null;
+  previsao_tipo?: string | null;
+  contrato_visita_tarefa_ids?: string[] | null;
 };
 
 export type AgendaOsDailyComparison = {
@@ -20,6 +23,13 @@ export type AgendaOsDailyComparison = {
 };
 
 const normalizeOsCode = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+
+const normalizeClient = (value: unknown) => String(value ?? "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9]+/gi, "-")
+  .replace(/^-+|-+$/g, "")
+  .toLowerCase();
 
 const plannedMinutes = (value: unknown) => {
   const minutes = Math.round(Number(value));
@@ -50,6 +60,12 @@ export function summarizeAgendaOsPlannedVsActual(
 ): AgendaOsDailyComparison {
   const byOs = new Map<string, AgendaOsPlanningSource[]>();
   const otherPlannedTasks: AgendaOsPlanningSource[] = [];
+  const clientsWithPlannedAuvoTask = new Set(
+    items
+      .filter((item) => item.auvo_task_id && plannedMinutes(item.duracao_planejada_minutos) > 0)
+      .map((item) => normalizeClient(item.cliente))
+      .filter(Boolean),
+  );
 
   for (const item of items) {
     const osCode = normalizeOsCode(item.gc_os_codigo);
@@ -58,6 +74,14 @@ export function summarizeAgendaOsPlannedVsActual(
       rows.push(item);
       byOs.set(osCode, rows);
     } else if ((item as any).previsao_continuidade || plannedMinutes(item.duracao_planejada_minutos) > 0) {
+      const isTaskAlignedContractCard = item.previsao_tipo === "CONTRATO"
+        && (item.contrato_visita_tarefa_ids?.length ?? 0) > 0;
+      if (
+        isTaskAlignedContractCard
+        && clientsWithPlannedAuvoTask.has(normalizeClient(item.cliente))
+      ) {
+        continue;
+      }
       // Se não tem OS vinculada, mas tem duração planejada (ex: preventiva no Auvo ou contrato), 
       // ou é uma previsão manual, incluímos no cálculo de tempo planejado.
       otherPlannedTasks.push(item);
