@@ -2807,7 +2807,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // O modo rápido de situações não entra aqui para continuar leve e não disputar
     // cota da API Auvo a cada 15 minutos.
     if (!isGcSolicitadasOnly) {
-      forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult);
+      forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult, gcH);
     }
 
     // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
