@@ -130,6 +130,30 @@ BEGIN
     LIMIT 1;
   END IF;
 
+  -- Uma remarcacao pode apagar o card alinhado antes de cria-lo no novo dia.
+  -- Nesse caso, reutiliza primeiro o menor numero nominal que ficou livre.
+  IF v_visita_numero IS NULL THEN
+    SELECT numero
+    INTO v_visita_numero
+    FROM generate_series(1, v_config.qtd_visitas) numero
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM public.contratos_visitas_execucoes execucao
+      WHERE execucao.contrato_visita_config_id = v_config.id
+        AND execucao.competencia = v_competencia
+        AND execucao.visita_numero = numero
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.agenda_agendamentos agenda
+        WHERE agenda.contrato_visita_config_id = v_config.id
+          AND date_trunc('month', agenda.contrato_visita_competencia::date)::date = v_competencia
+          AND agenda.contrato_visita_numero = numero
+      )
+    ORDER BY numero
+    LIMIT 1;
+  END IF;
+
   -- Sem card nominal livre, a ida passa a ser a proxima visita extra do mes.
   IF v_visita_numero IS NULL THEN
     SELECT COALESCE(max(numero), 0) + 1
@@ -160,7 +184,10 @@ BEGIN
     END,
     cardinality(v_tarefa_ids),
     CASE WHEN v_extra
-      THEN format(' · visita extra alem das %s contratadas', v_config.qtd_visitas)
+      THEN CASE WHEN v_config.qtd_visitas = 1
+        THEN ' · visita extra alem da 1 contratada'
+        ELSE format(' · visita extra alem das %s contratadas', v_config.qtd_visitas)
+      END
       ELSE '' END
   );
 

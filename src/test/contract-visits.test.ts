@@ -237,6 +237,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scheduledMigration).toContain("reconciliar_dia_visita_contratual_agendada");
     expect(scheduledMigration).toContain("contrato_visita_tarefa_ids");
     expect(scheduledMigration).toContain("visita extra alem das");
+    expect(scheduledMigration).toContain("generate_series(1, v_config.qtd_visitas)");
     expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
     expect(agendaPage).toContain("ª VISITA · PLANEJADA");
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
