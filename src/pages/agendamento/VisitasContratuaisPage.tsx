@@ -72,6 +72,7 @@ type VisitConfigDraft = {
   dias_semana: number[];
   semanas_mes: number[];
   meses_ativos: number[];
+  visitas_consecutivas: boolean;
   regra_texto: string;
   observacao: string;
   ativo: boolean;
@@ -124,6 +125,7 @@ function emptyDraft(contractId = ""): VisitConfigDraft {
     dias_semana: [1, 2, 3, 4, 5],
     semanas_mes: [1, 2, 3, 4, 5],
     meses_ativos: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    visitas_consecutivas: false,
     regra_texto: "",
     observacao: "",
     ativo: true,
@@ -140,6 +142,7 @@ function configDraft(config: VisitConfig): VisitConfigDraft {
     tecnico_ids: config.tecnico_ids || [],
     dias_semana: config.dias_semana || [1, 2, 3, 4, 5],
     semanas_mes: config.semanas_mes || [1, 2, 3, 4, 5],
+    visitas_consecutivas: Boolean((config as { visitas_consecutivas?: boolean | null }).visitas_consecutivas),
     meses_ativos: (config as { meses_ativos?: number[] | null }).meses_ativos?.length
       ? ((config as { meses_ativos?: number[] | null }).meses_ativos as number[])
       : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -394,8 +397,11 @@ export default function VisitasContratuaisPage() {
       if (!value.dias_semana.length) throw new Error("Selecione pelo menos um dia da semana.");
       if (!value.semanas_mes.length) throw new Error("Selecione pelo menos uma semana do mês.");
       if (!value.meses_ativos.length) throw new Error("Selecione pelo menos um mês com visita.");
-      if (value.semanas_mes.length < value.qtd_visitas) {
+      if (!value.visitas_consecutivas && value.semanas_mes.length < value.qtd_visitas) {
         throw new Error("Selecione ao menos uma semana diferente para cada visita mensal.");
+      }
+      if (value.visitas_consecutivas && value.dias_semana.length < value.qtd_visitas) {
+        throw new Error("Para visitas consecutivas, selecione ao menos um dia da semana para cada visita.");
       }
       const minimumVisits = minimumContractVisitsPerMonth(
         Number(contract.horas_mes_contratadas),
@@ -426,6 +432,7 @@ export default function VisitasContratuaisPage() {
         dias_semana: value.dias_semana,
         semanas_mes: value.semanas_mes,
         meses_ativos: value.meses_ativos,
+        visitas_consecutivas: value.visitas_consecutivas,
         regra_texto: value.regra_texto.trim() || null,
         observacao: value.observacao.trim() || null,
         ativo: value.ativo,
@@ -782,6 +789,13 @@ export default function VisitasContratuaisPage() {
             </div>
 
             <div className="space-y-2"><Label>Semanas permitidas no mês</Label><div className="flex flex-wrap gap-2">{[1, 2, 3, 4, 5].map((week) => <label key={week} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"><Checkbox checked={draft.semanas_mes.includes(week)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, semanas_mes: checked ? [...current.semanas_mes, week].sort() : current.semanas_mes.filter((value) => value !== week) }))} />{week}ª semana</label>)}</div></div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm">
+              <Checkbox checked={draft.visitas_consecutivas} onCheckedChange={(checked) => setDraft((current) => ({ ...current, visitas_consecutivas: checked === true }))} />
+              <span>
+                <span className="font-medium">Visitas consecutivas na mesma semana</span>
+                <span className="block text-xs text-muted-foreground">Use para contratos com 2 ou mais visitas em dias seguidos (ex.: 2 visitas a cada 2 meses).</span>
+              </span>
+            </label>
             <div className="space-y-2"><Label>Dias permitidos</Label><div className="flex flex-wrap gap-2">{WEEKDAYS.map((day) => <label key={day.value} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"><Checkbox checked={draft.dias_semana.includes(day.value)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, dias_semana: checked ? [...current.dias_semana, day.value].sort() : current.dias_semana.filter((value) => value !== day.value) }))} />{day.label}</label>)}</div></div>
 
             <div className="space-y-2"><div className="flex items-center justify-between"><Label>Técnicos do RH que podem atender este contrato</Label><span className="text-xs text-muted-foreground">{draft.tecnico_ids.length} selecionado(s)</span></div><div className="grid max-h-56 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">{technicians.map((technician) => <label key={technician.id} className="flex cursor-pointer items-start gap-2 rounded p-1.5 hover:bg-muted"><Checkbox checked={draft.tecnico_ids.includes(technician.id)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, tecnico_ids: checked ? [...current.tecnico_ids, technician.id] : current.tecnico_ids.filter((id) => id !== technician.id) }))} /><span className="text-sm"><span className="block font-medium leading-tight">{technician.nome}</span><span className="text-[11px] text-muted-foreground">{technician.cargo || technician.funcao || "Sem cargo"}</span></span></label>)}</div><p className="text-xs text-muted-foreground">Se houver mais técnicos selecionados que pessoas por visita, o sistema faz rodízio ao longo do ano.</p></div>

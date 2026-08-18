@@ -26,6 +26,7 @@ export type ContractPlanningConfig = {
   dias_semana: number[];
   semanas_mes?: number[] | null;
   meses_ativos?: number[] | null;
+  visitas_consecutivas?: boolean | null;
   regra_texto?: string | null;
   observacao: string | null;
   ativo: boolean;
@@ -143,6 +144,7 @@ export async function reconcileContractVisitYear(input: {
         diasSemana: config.dias_semana,
         semanasMes: config.semanas_mes || [1, 2, 3, 4, 5],
         mesesAtivos: config.meses_ativos && config.meses_ativos.length ? config.meses_ativos : null,
+        visitasConsecutivas: Boolean(config.visitas_consecutivas),
         vigenciaInicio: contract.vigencia_inicio,
         vigenciaFim: contract.vigencia_fim,
         naoAntesDe: cutoff,

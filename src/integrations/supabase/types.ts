@@ -733,6 +733,7 @@ export type Database = {
           regra_texto: string | null
           semanas_mes: number[]
           tecnico_ids: string[] | null
+          visitas_consecutivas: boolean
         }
         Insert: {
           ativo?: boolean
@@ -753,6 +754,7 @@ export type Database = {
           regra_texto?: string | null
           semanas_mes?: number[]
           tecnico_ids?: string[] | null
+          visitas_consecutivas?: boolean
         }
         Update: {
           ativo?: boolean
@@ -773,6 +775,7 @@ export type Database = {
           regra_texto?: string | null
           semanas_mes?: number[]
           tecnico_ids?: string[] | null
+          visitas_consecutivas?: boolean
         }
         Relationships: []
       }
