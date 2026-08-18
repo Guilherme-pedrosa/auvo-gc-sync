@@ -309,6 +309,7 @@ export default function VisitasContratuaisPage() {
   }, [forecasts]);
 
   const monthlySummaries = useMemo(() => {
+    if (!configs.length || !contracts.length) return new Map<string, ContractVisitMonthSummary[]>();
     const map = new Map<string, ContractVisitMonthSummary[]>();
     for (const config of configs) {
       const contract = contractById.get(config.contrato_id);
@@ -332,7 +333,7 @@ export default function VisitasContratuaisPage() {
       }));
     }
     return map;
-  }, [configs, contractById, forecastsByConfig, executionsByConfig, year]);
+  }, [configs, contracts.length, contractById, forecastsByConfig, executionsByConfig, year]);
 
   const planYear = useMutation({
     mutationFn: async (configIds?: string[]) => {
