@@ -1102,27 +1102,30 @@ export default function AgendamentoEquipePage() {
       if (isPrevisao && !mostrarPrevisoes) continue;
       if (isVisita && !mostrarVisitasContratuais) continue;
 
-      // Filtro de Cliente (ID específico se selecionado)
+      // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
       if (clienteId !== "todos") {
-        const contratoParaAgendamento = data?.agendamentos?.find(item => item.id === a.id);
-        // Assumindo que o contrato_id está presente nos metadados ou resolvemos pelo cliente
-        // No banco, agenda_agendamentos tem contrato_id para visitas contratuais
+        // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
         if (a.contrato_id && a.contrato_id !== clienteId) continue;
         
         // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
         if (!a.contrato_id) {
           const clienteSelecionado = rhClientes.find(c => c.id === clienteId);
-          if (clienteSelecionado && !norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
+          // Correção: Se um cliente específico foi selecionado, a atividade DEVE corresponder a ele.
+          // Se não houver correspondência de nome, removemos da lista.
+          if (clienteSelecionado) {
+            if (!norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
+          }
         }
       }
 
-      // Filtro de Texto (Cliente ou Técnico) - Busca ampla por substring
+      // Filtro de Texto (Cliente, Técnico, Descrição ou OS) - Busca ampla por substring
       if (search) {
         const matchesCliente = norm(a.cliente).includes(search);
         const matchesTecnico = norm(a.colaborador_nome).includes(search);
         const matchesDescricao = norm(a.descricao || "").includes(search);
         const matchesOs = norm(a.gc_os_codigo || "").includes(search);
         
+        // Se houver busca textual, o item só aparece se bater em um dos campos
         if (!matchesCliente && !matchesTecnico && !matchesDescricao && !matchesOs) continue;
       }
 
