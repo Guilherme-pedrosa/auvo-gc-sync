@@ -50,6 +50,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { RegraVisitaTextoIA, type RegraInterpretada } from "@/components/agendamento/RegraVisitaTextoIA";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
@@ -683,6 +684,37 @@ export default function VisitasContratuaisPage() {
             {selectedContract && <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Horas contratadas</p><p className="text-lg font-bold">{selectedContract.horas_mes_contratadas ? `${hoursLabel(Number(selectedContract.horas_mes_contratadas))}/mês` : "Não cadastradas"}</p></div><div><p className="text-xs text-muted-foreground">Visitas previstas</p><p className="text-lg font-bold">{draft.qtd_visitas}/mês</p>{minimumVisits && <p className="text-[10px] text-muted-foreground">mínimo {minimumVisits} com jornada de até 8h</p>}</div><div><p className="text-xs text-muted-foreground">Carga calculada por visita</p><p className="text-lg font-bold">{calculatedDuration ? durationLabel(calculatedDuration) : minimumVisits && draft.qtd_visitas < minimumVisits ? `Mínimo ${minimumVisits} visitas` : "Revisar dados"}</p><p className="text-[10px] text-muted-foreground">horas ÷ visitas ÷ pessoas</p></div></div>}
 
             <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Visitas por mês</Label><Input type="number" min={1} max={31} value={draft.qtd_visitas} onChange={(event) => setDraft((current) => ({ ...current, qtd_visitas: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Pessoas por visita</Label><Input type="number" min={1} max={10} value={draft.qtd_tecnicos} onChange={(event) => setDraft((current) => ({ ...current, qtd_tecnicos: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Horário preferencial</Label><Input type="time" value={draft.hora_inicio} onChange={(event) => setDraft((current) => ({ ...current, hora_inicio: event.target.value }))} /></div></div>
+
+            <RegraVisitaTextoIA
+              value={draft.regra_texto}
+              onChange={(texto) => setDraft((current) => ({ ...current, regra_texto: texto }))}
+              onApply={(resultado: RegraInterpretada) => {
+                setDraft((current) => ({
+                  ...current,
+                  qtd_visitas: resultado.qtd_visitas ?? current.qtd_visitas,
+                  qtd_tecnicos: resultado.qtd_tecnicos ?? current.qtd_tecnicos,
+                  hora_inicio: resultado.hora_inicio ?? current.hora_inicio,
+                  semanas_mes: resultado.semanas_mes?.length ? resultado.semanas_mes : current.semanas_mes,
+                  dias_semana: resultado.dias_semana?.length ? resultado.dias_semana : current.dias_semana,
+                  meses_ativos: resultado.meses_ativos?.length ? resultado.meses_ativos : current.meses_ativos,
+                }));
+                toast.success("Campos preenchidos pela interpretação. Revise e salve.");
+              }}
+            />
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Meses com visita</Label>
+                <Button variant="ghost" size="sm" onClick={() => setDraft((current) => ({ ...current, meses_ativos: current.meses_ativos.length === 12 ? [] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] }))}>{draft.meses_ativos.length === 12 ? "Limpar" : "Todos os meses"}</Button>
+              </div>
+              <div className="flex flex-wrap gap-2">{MONTHS.map((label, index) => { const month = index + 1; return (
+                <label key={label} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                  <Checkbox checked={draft.meses_ativos.includes(month)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, meses_ativos: checked ? [...current.meses_ativos, month].sort((a, b) => a - b) : current.meses_ativos.filter((value) => value !== month) }))} />
+                  {label}
+                </label>
+              ); })}</div>
+              <p className="text-xs text-muted-foreground">Marque apenas os meses com visita. Ex.: 1 vez a cada 2 meses = 6 meses marcados.</p>
+            </div>
 
             <div className="space-y-2"><Label>Semanas permitidas no mês</Label><div className="flex flex-wrap gap-2">{[1, 2, 3, 4, 5].map((week) => <label key={week} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"><Checkbox checked={draft.semanas_mes.includes(week)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, semanas_mes: checked ? [...current.semanas_mes, week].sort() : current.semanas_mes.filter((value) => value !== week) }))} />{week}ª semana</label>)}</div></div>
             <div className="space-y-2"><Label>Dias permitidos</Label><div className="flex flex-wrap gap-2">{WEEKDAYS.map((day) => <label key={day.value} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"><Checkbox checked={draft.dias_semana.includes(day.value)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, dias_semana: checked ? [...current.dias_semana, day.value].sort() : current.dias_semana.filter((value) => value !== day.value) }))} />{day.label}</label>)}</div></div>
