@@ -660,6 +660,8 @@ export default function AgendamentoEquipePage() {
   const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
+  const [dialogBulkUpdateOpen, setDialogBulkUpdateOpen] = useState(false);
+  const [bulkUpdateContext, setBulkUpdateContext] = useState<{ item: AgendaAgendamento, newDate: string, newColabId: string } | null>(null);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
@@ -971,63 +973,106 @@ export default function AgendamentoEquipePage() {
     const item = dragItem.current;
     if (!item) return;
 
-    // Se mudou de técnico ou data
     if (item.data === date && item.colaborador_id === colabId) return;
 
+    // Se for uma visita contratual, perguntamos se deseja alterar todas as futuras
+    const isVisita = Boolean(
+      item.previsao_tipo === "CONTRATO" || 
+      item.previsao_tipo === "CONTRATO_REALIZADO" || 
+      item.origem === "CONTRATO"
+    );
+
+    if (isVisita && item.contrato_visita_config_id) {
+      setBulkUpdateContext({ item, newDate: date, newColabId: colabId });
+      setDialogBulkUpdateOpen(true);
+      dragItem.current = null;
+      return;
+    }
+
+    await executeMove(item, date, colabId);
+    dragItem.current = null;
+  };
+
+  const executeMove = async (item: AgendaAgendamento, date: string, colabId: string, updateFuture: boolean = false) => {
     const colab = colaboradores.find((c) => c.id === colabId);
     if (!colab) return;
 
     const ehPrevisao = Boolean(item.previsao_continuidade);
-    const toastId = toast.loading(ehPrevisao ? "Movendo previsão..." : "Atualizando agendamento...");
+    const toastId = toast.loading(updateFuture ? "Atualizando responsável em todas as visitas..." : (ehPrevisao ? "Movendo previsão..." : "Atualizando agendamento..."));
+    
     try {
-      // 1. Atualiza no Auvo se for origem AUVO
-      if (item.auvo_task_id && item.origem === "AUVO") {
-        const patches = [
-          { op: "replace", path: "taskDate", value: `${date}T${item.hora_inicio.slice(0, 5)}:00` },
-        ];
-        
-        if (colab.auvo_user_id) {
-          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+      if (updateFuture && item.contrato_visita_config_id) {
+        // Busca todas as previsões futuras deste contrato a partir da data atual do item movido
+        const { data: futuras, error: fetchErr } = await supabase
+          .from("agenda_agendamentos")
+          .select("*")
+          .eq("contrato_visita_config_id", item.contrato_visita_config_id)
+          .gte("data", item.data)
+          .order("data", { ascending: true });
+
+        if (fetchErr) throw fetchErr;
+
+        if (futuras && futuras.length > 0) {
+          const updates = futuras.map(f => ({
+            ...f,
+            colaborador_id: colabId,
+            colaborador_nome: colab.nome,
+            // Apenas a primeira (a que foi arrastada) muda de data se necessário
+            data: f.id === item.id ? date : f.data
+          }));
+
+          const { error: bulkErr } = await supabase
+            .from("agenda_agendamentos")
+            .upsert(updates as any);
+
+          if (bulkErr) throw bulkErr;
+        }
+      } else {
+        // Movimentação individual (Lógica original)
+        if (item.auvo_task_id && item.origem === "AUVO") {
+          const patches = [
+            { op: "replace", path: "taskDate", value: `${date}T${item.hora_inicio.slice(0, 5)}:00` },
+          ];
+          
+          if (colab.auvo_user_id) {
+            patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+          }
+
+          const { data: auvoRes, error: auvoErr } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "edit", taskId: item.auvo_task_id, patches },
+          });
+
+          if (auvoErr || auvoRes?.status >= 400) {
+            throw new Error(auvoRes?.data?.message || "Erro ao atualizar no Auvo");
+          }
         }
 
-        const { data: auvoRes, error: auvoErr } = await supabase.functions.invoke("auvo-task-update", {
-          body: { action: "edit", taskId: item.auvo_task_id, patches },
+        await saveAgendamento.mutateAsync({
+          id: item.id,
+          data: date,
+          colaborador_id: colabId,
+          colaborador_nome: colab.nome,
+          hora_inicio: item.hora_inicio,
+          hora_fim: item.hora_fim,
+          duracao_planejada_minutos: item.duracao_planejada_minutos,
+          veiculo_id: item.veiculo_id,
+          cliente: item.cliente,
+          descricao: item.descricao,
+          status: item.status,
+          auvo_task_id: item.auvo_task_id,
+          origem: item.origem,
+          gc_os_codigo: item.gc_os_codigo,
+          gc_orcamento_codigo: item.gc_orcamento_codigo,
+          previsao_continuidade: item.previsao_continuidade,
+          previsao_detalhes: item.previsao_detalhes,
         });
-
-        if (auvoErr || auvoRes?.status >= 400) {
-          throw new Error(auvoRes?.data?.message || "Erro ao atualizar no Auvo");
-        }
       }
 
-      // 2. Atualiza localmente
-      await saveAgendamento.mutateAsync({
-        id: item.id,
-        data: date,
-        colaborador_id: colabId,
-        colaborador_nome: colab.nome,
-        // Mantém o resto
-        hora_inicio: item.hora_inicio,
-        hora_fim: item.hora_fim,
-        duracao_planejada_minutos: item.duracao_planejada_minutos,
-        veiculo_id: item.veiculo_id,
-        cliente: item.cliente,
-        descricao: item.descricao,
-        status: item.status,
-        auvo_task_id: item.auvo_task_id,
-        origem: item.origem,
-        gc_os_codigo: item.gc_os_codigo,
-        gc_orcamento_codigo: item.gc_orcamento_codigo,
-        previsao_continuidade: item.previsao_continuidade,
-        previsao_detalhes: item.previsao_detalhes,
-      });
-
-      toast.success(ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!", { id: toastId });
+      toast.success(updateFuture ? "Responsável atualizado em todas as visitas futuras!" : (ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!"), { id: toastId });
       refetchLocal();
     } catch (err: any) {
       console.error("Erro ao mover agendamento:", err);
       toast.error(err.message || "Erro ao mover agendamento", { id: toastId });
-    } finally {
-      dragItem.current = null;
     }
   };
 
@@ -1605,6 +1650,67 @@ export default function AgendamentoEquipePage() {
               </div>
               <span className="font-bold">Previsão</span>
               <span className="text-[10px] text-muted-foreground font-normal">Apenas escala interna</span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Atualização em Massa para Visitas Contratuais */}
+      <Dialog open={dialogBulkUpdateOpen} onOpenChange={setDialogBulkUpdateOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Mover Visita Contratual</DialogTitle>
+            <DialogDescription>
+              Você está movendo uma visita contratual. Deseja alterar o responsável apenas desta visita ou de todas as visitas futuras deste contrato a partir deste ponto?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 py-4">
+            <Button
+              className="w-full justify-start gap-3 h-auto py-3 px-4"
+              variant="outline"
+              onClick={() => {
+                if (bulkUpdateContext) {
+                  executeMove(bulkUpdateContext.item, bulkUpdateContext.newDate, bulkUpdateContext.newColabId, false);
+                }
+                setDialogBulkUpdateOpen(false);
+                setBulkUpdateContext(null);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                <CalendarClock className="h-5 w-5 text-slate-600" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold">Mudar apenas esta</div>
+                <div className="text-[10px] text-muted-foreground font-normal">Altera apenas a visita selecionada</div>
+              </div>
+            </Button>
+
+            <Button
+              className="w-full justify-start gap-3 h-auto py-3 px-4 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50"
+              variant="outline"
+              onClick={() => {
+                if (bulkUpdateContext) {
+                  executeMove(bulkUpdateContext.item, bulkUpdateContext.newDate, bulkUpdateContext.newColabId, true);
+                }
+                setDialogBulkUpdateOpen(false);
+                setBulkUpdateContext(null);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold">Mudar todas as futuras</div>
+                <div className="text-[10px] text-muted-foreground font-normal">Altera o responsável desta e de todas as próximas visitas deste contrato</div>
+              </div>
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={() => {
+              setDialogBulkUpdateOpen(false);
+              setBulkUpdateContext(null);
+            }}>
+              Cancelar
             </Button>
           </div>
         </DialogContent>
