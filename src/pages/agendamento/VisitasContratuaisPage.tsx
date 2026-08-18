@@ -165,7 +165,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as Contract[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
   const configsQuery = useQuery({
@@ -175,7 +176,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as VisitConfig[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
   const techniciansQuery = useQuery({
