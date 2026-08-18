@@ -974,7 +974,12 @@ export default function AgendamentoEquipePage() {
     const item = dragItem.current;
     if (!item) return;
 
-    if (item.data === date && item.colaborador_id === colabId) return;
+    // Se for previsão, ignoramos a trava de mesma célula para permitir que a UI force o refresh/reposicionamento se necessário
+    // mas na prática, se for a mesma data e colab, não fazemos nada no banco.
+    if (item.data === date && item.colaborador_id === colabId) {
+      dragItem.current = null;
+      return;
+    }
 
     // Se for uma visita contratual, perguntamos se deseja alterar todas as futuras
     const isVisita = Boolean(
