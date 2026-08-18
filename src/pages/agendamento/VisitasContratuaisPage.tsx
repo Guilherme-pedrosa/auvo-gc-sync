@@ -237,13 +237,16 @@ export default function VisitasContratuaisPage() {
     queryFn: async () => {
       const start = `${year}-01-01`;
       const end = year === currentYear ? todayISO() : `${year}-12-31`;
-      if (year <= currentYear) {
+      
+      // Apenas reconcilia se for o ano atual e não houver reconciliação recente
+      if (year === currentYear) {
         const { error: reconciliationError } = await supabase.rpc(
           "reconciliar_visitas_contratuais_periodo",
           { p_inicio: start, p_fim: end },
         );
-        if (reconciliationError) throw reconciliationError;
+        if (reconciliationError) console.error("Reconciliation error:", reconciliationError);
       }
+      
       const { data, error } = await supabase
         .from("contratos_visitas_execucoes")
         .select("*")
@@ -253,7 +256,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as ContractExecution[];
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const contracts = contractsQuery.data || [];
