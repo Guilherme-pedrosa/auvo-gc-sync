@@ -427,6 +427,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       + (row?.gc_os_valor_total ? 2 : 0)
       + (row?.gc_os_tarefa_exec ? 1 : 0);
     const bestByTaskOs = new Map<string, any>();
+    const tasksComOs = new Set(
+      items.filter((it) => String(it.gc_os_id || "").trim()).map((it) => String(it.auvo_task_id || "")),
+    );
+    items = items.filter((it) =>
+      String(it.gc_os_id || "").trim() || !tasksComOs.has(String(it.auvo_task_id || "")));
     for (const it of items) {
       const key = `${String(it.auvo_task_id || "")}::${String(it.gc_os_id || "")}`;
       const current = bestByTaskOs.get(key);
