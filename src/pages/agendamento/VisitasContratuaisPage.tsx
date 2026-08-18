@@ -72,6 +72,7 @@ type VisitConfigDraft = {
   dias_semana: number[];
   semanas_mes: number[];
   meses_ativos: number[];
+  visitas_consecutivas: boolean;
   regra_texto: string;
   observacao: string;
   ativo: boolean;
@@ -124,6 +125,7 @@ function emptyDraft(contractId = ""): VisitConfigDraft {
     dias_semana: [1, 2, 3, 4, 5],
     semanas_mes: [1, 2, 3, 4, 5],
     meses_ativos: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    visitas_consecutivas: false,
     regra_texto: "",
     observacao: "",
     ativo: true,
@@ -140,6 +142,7 @@ function configDraft(config: VisitConfig): VisitConfigDraft {
     tecnico_ids: config.tecnico_ids || [],
     dias_semana: config.dias_semana || [1, 2, 3, 4, 5],
     semanas_mes: config.semanas_mes || [1, 2, 3, 4, 5],
+    visitas_consecutivas: Boolean((config as { visitas_consecutivas?: boolean | null }).visitas_consecutivas),
     meses_ativos: (config as { meses_ativos?: number[] | null }).meses_ativos?.length
       ? ((config as { meses_ativos?: number[] | null }).meses_ativos as number[])
       : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -394,8 +397,11 @@ export default function VisitasContratuaisPage() {
       if (!value.dias_semana.length) throw new Error("Selecione pelo menos um dia da semana.");
       if (!value.semanas_mes.length) throw new Error("Selecione pelo menos uma semana do mês.");
       if (!value.meses_ativos.length) throw new Error("Selecione pelo menos um mês com visita.");
-      if (value.semanas_mes.length < value.qtd_visitas) {
+      if (!value.visitas_consecutivas && value.semanas_mes.length < value.qtd_visitas) {
         throw new Error("Selecione ao menos uma semana diferente para cada visita mensal.");
+      }
+      if (value.visitas_consecutivas && value.dias_semana.length < value.qtd_visitas) {
+        throw new Error("Para visitas consecutivas, selecione ao menos um dia da semana para cada visita.");
       }
       const minimumVisits = minimumContractVisitsPerMonth(
         Number(contract.horas_mes_contratadas),
@@ -426,6 +432,7 @@ export default function VisitasContratuaisPage() {
         dias_semana: value.dias_semana,
         semanas_mes: value.semanas_mes,
         meses_ativos: value.meses_ativos,
+        visitas_consecutivas: value.visitas_consecutivas,
         regra_texto: value.regra_texto.trim() || null,
         observacao: value.observacao.trim() || null,
         ativo: value.ativo,
