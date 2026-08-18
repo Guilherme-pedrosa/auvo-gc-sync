@@ -43,6 +43,7 @@ describe("cards de visitas contratuais na agenda", () => {
       contrato_horas_previstas: 32,
       contrato_visita_execucao_id: "done",
       contrato_visita_realizada_em: "2026-08-11",
+      contrato_visita_ultima_realizada_em: "2026-08-11",
       contrato_visita_horas_realizadas: 8.25,
     });
   });
@@ -72,11 +73,13 @@ describe("cards de visitas contratuais na agenda", () => {
     expect(cards[0]).toMatchObject({
       contrato_visita_execucao_id: "execution-1",
       contrato_visita_realizada_em: "2026-08-11",
+      contrato_visita_ultima_realizada_em: "2026-08-11",
       contrato_horas_cumpridas: 12.5,
       contrato_horas_previstas: 32,
     });
     expect(cards[1]).toMatchObject({
       contrato_visita_execucao_id: null,
+      contrato_visita_ultima_realizada_em: "2026-08-11",
       contrato_visitas_cumpridas: 1,
     });
   });

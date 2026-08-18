@@ -239,7 +239,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scheduledMigration).toContain("visita extra alem das");
     expect(scheduledMigration).toContain("generate_series(1, v_config.qtd_visitas)");
     expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
-    expect(agendaPage).toContain("ª VISITA · PROGRAMADA");
+    expect(agendaPage).toContain('visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"');
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
   });
 
@@ -325,8 +325,9 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).not.toContain("SET data = v_exec.data_realizada");
     expect(migration).toContain("OLD.previsao_tipo = 'CONTRATO_REALIZADO'");
     expect(migration).toContain("RETURN OLD");
-    expect(agendaPage).toContain("Visita já realizada neste mês");
+    expect(agendaPage).toContain("JÁ CUMPRIDO NO MÊS:");
     expect(agendaPage).toContain("disponíveis");
+    expect(agendaPage).toContain("bg-emerald-100 text-emerald-950");
   });
 
   it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {

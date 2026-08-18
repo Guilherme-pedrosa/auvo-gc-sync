@@ -156,8 +156,8 @@ const getStatusColor = (a: AgendaAgendamento) => {
     return "bg-violet-100 text-violet-900 border-violet-500 dark:bg-violet-950/60 dark:text-violet-200 dark:border-violet-700 font-bold";
   }
   if (a.previsao_tipo === "CONTRATO") {
-    if (a.contrato_visita_execucao_id || a.contrato_visita_realizada_em) {
-      return "bg-sky-100 text-sky-950 border-emerald-500 dark:bg-sky-950/60 dark:text-sky-100 dark:border-emerald-500 font-bold";
+    if (Number(a.contrato_visitas_cumpridas || 0) > 0) {
+      return "bg-emerald-100 text-emerald-950 border-emerald-600 ring-1 ring-emerald-400 dark:bg-emerald-950/70 dark:text-emerald-100 dark:border-emerald-500 font-bold";
     }
     return "bg-sky-100 text-sky-950 border-sky-500 dark:bg-sky-950/60 dark:text-sky-100 dark:border-sky-600 font-bold";
   }
@@ -355,6 +355,8 @@ function Celula({
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
           const visitaContratualCumprida = visitaContratualPlanejada
             && Boolean(a.contrato_visita_execucao_id || a.contrato_visita_realizada_em);
+          const visitaContratualComExecucaoNoMes = visitaContratualPlanejada
+            && Number(a.contrato_visitas_cumpridas || 0) > 0;
           const visitaContratualAlinhada = visitaContratualPlanejada
             && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada
@@ -368,6 +370,9 @@ function Celula({
           const dataRealizadaLabel = a.contrato_visita_realizada_em
             ? format(parseISO(a.contrato_visita_realizada_em.slice(0, 10)), "dd/MM/yyyy")
             : null;
+          const ultimaRealizadaLabel = a.contrato_visita_ultima_realizada_em
+            ? format(parseISO(a.contrato_visita_ultima_realizada_em.slice(0, 10)), "dd/MM/yyyy")
+            : dataRealizadaLabel;
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
@@ -385,7 +390,7 @@ function Celula({
             visitaContratualRealizada
               ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · REALIZADA`
               : visitaContratualPlanejada
-                ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · PROGRAMADA`
+                ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · ${visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"}`
                 : null,
             tipoTarefa,
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
@@ -416,8 +421,8 @@ function Celula({
                 }}
                 title={visitaContratualRealizada
                   ? `${a.contrato_visita_numero || ""}ª visita contratual realizada · ${formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} ${resumoVisita?.technicianMatched ? "do técnico" : "da visita"} contabilizadas`
-                  : visitaContratualCumprida
-                    ? `Programação preservada · visita já realizada em ${dataRealizadaLabel || "data não informada"} · ${formatContractHours(horasContratuaisDisponiveis)} disponíveis no mês`
+                  : visitaContratualComExecucaoNoMes
+                    ? `${formatContractHours(a.contrato_horas_cumpridas)} já cumpridas no mês · última visita em ${ultimaRealizadaLabel || "data não informada"} · ${formatContractHours(horasContratuaisDisponiveis)} disponíveis`
                   : a.origem === "CONTRATO"
                   ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.previsao_continuidade
@@ -481,11 +486,12 @@ function Celula({
                       Contrato seguido: {a.contrato_nome || "não identificado"} · Tipo: {a.contrato_tipo_nome || "não definido"}
                     </span>
                   )}
-                  {visitaContratualCumprida && (
-                    <span className="mt-0.5 flex items-center gap-1 rounded-sm border border-emerald-400 bg-emerald-50 px-1 py-0.5 text-[9px] font-extrabold normal-case text-emerald-900 dark:border-emerald-600 dark:bg-emerald-950/70 dark:text-emerald-100">
-                      <CircleCheckBig className="h-2.5 w-2.5 shrink-0" />
-                      <span className="truncate">
-                        Visita já realizada neste mês{dataRealizadaLabel ? ` em ${dataRealizadaLabel}` : ""} · {formatContractHours(horasContratuaisDisponiveis)} disponíveis
+                  {visitaContratualComExecucaoNoMes && (
+                    <span className="mt-1 flex items-center gap-1 rounded border border-emerald-600 bg-emerald-50 px-1.5 py-1 text-[10px] font-black normal-case text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950 dark:text-emerald-50">
+                      <CircleCheckBig className="h-3 w-3 shrink-0" />
+                      <span>
+                        JÁ CUMPRIDO NO MÊS: {formatContractHours(a.contrato_horas_cumpridas)} · {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas ?? 0} visita(s)
+                        {ultimaRealizadaLabel ? ` · última em ${ultimaRealizadaLabel}` : ""} · saldo: {formatContractHours(horasContratuaisDisponiveis)} disponíveis
                       </span>
                     </span>
                   )}
