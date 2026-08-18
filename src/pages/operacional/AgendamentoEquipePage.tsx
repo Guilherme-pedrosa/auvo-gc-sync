@@ -665,6 +665,7 @@ export default function AgendamentoEquipePage() {
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
+  const [clienteId, setClienteId] = useState("todos");
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
@@ -1101,8 +1102,26 @@ export default function AgendamentoEquipePage() {
       if (isPrevisao && !mostrarPrevisoes) continue;
       if (isVisita && !mostrarVisitasContratuais) continue;
 
-      // Filtro de Texto (Cliente)
-      if (search && !norm(a.cliente).includes(search)) continue;
+      // Filtro de Cliente (ID específico se selecionado)
+      if (clienteId !== "todos") {
+        const contratoParaAgendamento = data?.agendamentos?.find(item => item.id === a.id);
+        // Assumindo que o contrato_id está presente nos metadados ou resolvemos pelo cliente
+        // No banco, agenda_agendamentos tem contrato_id para visitas contratuais
+        if (a.contrato_id && a.contrato_id !== clienteId) continue;
+        
+        // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
+        if (!a.contrato_id) {
+          const clienteSelecionado = rhClientes.find(c => c.id === clienteId);
+          if (clienteSelecionado && !norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
+        }
+      }
+
+      // Filtro de Texto (Cliente ou Técnico)
+      if (search) {
+        const matchesCliente = norm(a.cliente).includes(search);
+        const matchesTecnico = norm(a.colaborador_nome).includes(search);
+        if (!matchesCliente && !matchesTecnico) continue;
+      }
 
       const k = `${a.colaborador_id}|${a.data}`;
       const arr = m.get(k) ?? [];
@@ -1114,7 +1133,7 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto]);
+  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteId, rhClientes]);
 
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
@@ -1321,12 +1340,12 @@ export default function AgendamentoEquipePage() {
           <AgendaFilters
             filtroTexto={filtroTexto}
             setFiltroTexto={setFiltroTexto}
-            tiposSelecionados={[]}
-            setTiposSelecionados={() => {}}
             mostrarPrevisoes={mostrarPrevisoes}
             setMostrarPrevisoes={setMostrarPrevisoes}
             mostrarVisitasContratuais={mostrarVisitasContratuais}
             setMostrarVisitasContratuais={setMostrarVisitasContratuais}
+            clienteId={clienteId}
+            setClienteId={setClienteId}
           />
 
           <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
