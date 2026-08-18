@@ -36,6 +36,7 @@ import {
   agendaVisualStatus,
   shouldHighlightPendingGcExecution,
 } from "@/lib/agendaTaskStatus";
+import { AgendaFilters } from "@/components/operacional/AgendaFilters";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
