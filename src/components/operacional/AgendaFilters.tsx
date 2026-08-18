@@ -29,10 +29,24 @@ export function AgendaFilters({
   clienteId,
   setClienteId,
 }: AgendaFiltersProps) {
-  const { data: clientes = [] } = useQuery({
-    queryKey: ["agenda-filters-clientes"],
+  const { data: clientesRh = [] } = useQuery({
+    queryKey: ["agenda-filters-clientes-rh"],
     queryFn: async () => {
-      // Buscamos contratos mas focamos nos nomes dos clientes vinculados
+      // Buscamos a lista oficial de clientes do banco de dados (rh_clientes)
+      const { data, error } = await supabase
+        .from("rh_clientes")
+        .select("id, nome")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return (data || []).map(c => ({ value: c.id, label: c.nome }));
+    },
+  });
+
+  const { data: contratos = [] } = useQuery({
+    queryKey: ["agenda-filters-contratos"],
+    queryFn: async () => {
+      // Buscamos contratos ativos para complementar a lista
       const { data, error } = await supabase
         .from("contratos")
         .select("id, nome")
@@ -42,6 +56,19 @@ export function AgendaFilters({
       return (data || []).map(c => ({ value: c.id, label: c.nome }));
     },
   });
+
+  const options = useMemo(() => {
+    const combined = [...clientesRh];
+    
+    // Adicionamos contratos que por ventura não estejam na rh_clientes (embora devam estar)
+    contratos.forEach(contrato => {
+      if (!combined.find(c => c.value === contrato.value)) {
+        combined.push(contrato);
+      }
+    });
+
+    return combined.sort((a, b) => a.label.localeCompare(b.label));
+  }, [clientesRh, contratos]);
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-muted/30 rounded-lg border border-border/50 lg:flex-row lg:items-center lg:justify-between">
