@@ -54,6 +54,7 @@ import { RegraVisitaTextoIA, type RegraInterpretada } from "@/components/agendam
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
 type VisitConfig = Database["public"]["Tables"]["contratos_visitas_config"]["Row"];
@@ -182,7 +183,7 @@ export default function VisitasContratuaisPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
-  const [filtroCliente, setFiltroCliente] = useState("todos");
+  const [filtroCliente, setFiltroCliente] = useState<string>("todos");
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -606,20 +607,18 @@ export default function VisitasContratuaisPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-              <SelectTrigger className="w-full sm:w-64">
-                <Filter className="mr-2 h-4 w-4 opacity-50" />
-                <SelectValue placeholder="Filtrar por Cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Clientes</SelectItem>
-                {(contractsQuery.data || []).map((cliente) => (
-                  <SelectItem key={cliente.id} value={cliente.id}>
-                    {cliente.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                { value: "todos", label: "Todos os Clientes" },
+                ...(contractsQuery.data || []).map(c => ({ value: c.id, label: c.nome }))
+              ]}
+              value={filtroCliente}
+              onValueChange={(val) => setFiltroCliente(val || "todos")}
+              placeholder="Filtrar por Cliente"
+              searchPlaceholder="Buscar cliente..."
+              icon={<Filter className="h-4 w-4 opacity-50" />}
+              className="w-full sm:w-64 h-10"
+            />
             <Button variant="outline" onClick={() => navigate("/operacional/agendamento-equipe")}><ExternalLink className="mr-2 h-4 w-4" />Abrir Agendamento Equipe</Button>
             <Button variant="outline" size="icon" onClick={() => setYear((value) => value - 1)}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="flex h-10 min-w-28 items-center justify-center rounded-md border bg-background px-4 text-sm font-semibold">{year}</div>
