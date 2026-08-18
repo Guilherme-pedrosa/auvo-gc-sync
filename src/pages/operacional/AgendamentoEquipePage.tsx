@@ -662,6 +662,9 @@ export default function AgendamentoEquipePage() {
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
+  const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
