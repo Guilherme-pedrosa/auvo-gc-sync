@@ -1112,7 +1112,11 @@ export default function AgendamentoEquipePage() {
         // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
         if (!a.contrato_id) {
           const clienteSelecionado = rhClientes.find(c => c.id === clienteId);
-          if (clienteSelecionado && !norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
+          // Correção: Se um cliente específico foi selecionado, a atividade DEVE corresponder a ele.
+          // Se não houver correspondência de nome, removemos da lista.
+          if (clienteSelecionado) {
+            if (!norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
+          }
         }
       }
 
