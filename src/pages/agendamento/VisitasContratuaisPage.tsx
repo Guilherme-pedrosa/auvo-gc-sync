@@ -98,23 +98,19 @@ function monthCompetence(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 }
 
-async function reconcileContractVisitsInMonthlyBatches(startDate: string, endDate: string) {
+async function reconcileContractVisitsInDailyBatches(startDate: string, endDate: string) {
   let cursor = startDate;
 
   while (cursor <= endDate) {
-    const [cursorYear, cursorMonth] = cursor.split("-").map(Number);
-    const monthLastDay = new Date(Date.UTC(cursorYear, cursorMonth, 0)).getUTCDate();
-    const monthEnd = `${cursorYear}-${String(cursorMonth).padStart(2, "0")}-${String(monthLastDay).padStart(2, "0")}`;
-    const batchEnd = monthEnd < endDate ? monthEnd : endDate;
     const { error } = await supabase.rpc("reconciliar_visitas_contratuais_periodo", {
       p_inicio: cursor,
-      p_fim: batchEnd,
+      p_fim: cursor,
     });
     if (error) throw error;
 
-    const nextMonth = cursorMonth === 12 ? 1 : cursorMonth + 1;
-    const nextYear = cursorMonth === 12 ? cursorYear + 1 : cursorYear;
-    cursor = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+    const next = new Date(`${cursor}T12:00:00`);
+    next.setDate(next.getDate() + 1);
+    cursor = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
   }
 }
 
@@ -419,9 +415,13 @@ export default function VisitasContratuaisPage() {
       const selected = configs.filter((config) => config.ativo && (!configIds || configIds.includes(config.id)));
       if (!selected.length) throw new Error("Nenhuma configuração ativa para planejar.");
       if (year <= currentYear) {
-        await reconcileContractVisitsInMonthlyBatches(
-          `${year}-01-01`,
-          year === currentYear ? todayISO() : `${year}-12-31`,
+        const reconciliationEnd = year === currentYear ? todayISO() : `${year}-12-31`;
+        const reconciliationStart = year === currentYear
+          ? `${reconciliationEnd.slice(0, 7)}-01`
+          : `${year}-12-01`;
+        await reconcileContractVisitsInDailyBatches(
+          reconciliationStart,
+          reconciliationEnd,
         );
       }
       const { data: authData } = await supabase.auth.getUser();
@@ -675,7 +675,7 @@ export default function VisitasContratuaisPage() {
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <Card><CardContent className="flex items-center gap-3 p-4"><CalendarDays className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Contratos ativos</p><p className="text-xl font-bold">{contracts.length}</p></div></CardContent></Card>
-          <Card><CardContent className="flex items-center gap-3 p-4"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Visitas ainda planejadas</p><p className="text-xl font-bold">{launchedVisits}</p></div></CardContent></Card>
+          <Card><CardContent className="flex items-center gap-3 p-4"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Visitas programadas</p><p className="text-xl font-bold">{launchedVisits}</p></div></CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><div><p className="text-xs text-muted-foreground">Visitas reconhecidas</p><p className="text-xl font-bold text-emerald-700">{executions.length}</p></div></CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4"><Clock3 className="h-5 w-5 text-emerald-600" /><div><p className="text-xs text-muted-foreground">Horas reais em {year}</p><p className="text-xl font-bold text-emerald-700">{hoursLabel(realizedHours)}</p></div></CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4"><Clock3 className="h-5 w-5 text-amber-600" /><div><p className="text-xs text-muted-foreground">Saldo de {MONTHS[Number(currentCompetence.slice(5, 7)) - 1]}</p><p className="text-xl font-bold text-amber-700">{hoursLabel(currentMonthRemainingHours)}</p></div></CardContent></Card>
@@ -696,7 +696,7 @@ export default function VisitasContratuaisPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Execuções reconhecidas por cliente e dia</CardTitle>
-            <p className="text-xs text-muted-foreground">Tarefas reais finalizadas no mesmo cliente são consolidadas em uma visita, com horas, técnicos e links do Auvo. O registro realizado não volta para o planejamento.</p>
+            <p className="text-xs text-muted-foreground">Tarefas reais finalizadas no mesmo cliente são consolidadas em uma visita, com horas, técnicos e links do Auvo. A execução cumpre o slot correspondente sem retirar a programação da data original.</p>
           </CardHeader>
           <CardContent>
             {executionsQuery.isLoading ? (

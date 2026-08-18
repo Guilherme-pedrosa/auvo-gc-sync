@@ -22,6 +22,8 @@ export type ContractVisitProgressExecution = {
   id: string;
   contrato_visita_config_id: string;
   competencia: string;
+  visita_numero: number;
+  data_realizada: string;
   horas_trabalhadas: number;
 };
 
@@ -33,6 +35,10 @@ export type ContractVisitAgendaItem = {
   contrato_id?: string | null;
   contrato_visita_config_id?: string | null;
   contrato_visita_competencia?: string | null;
+  contrato_visita_numero?: number | null;
+  contrato_visita_execucao_id?: string | null;
+  contrato_visita_realizada_em?: string | null;
+  contrato_visita_horas_realizadas?: number | null;
   contrato_nome?: string | null;
   contrato_tipo_id?: string | null;
   contrato_tipo_nome?: string | null;
@@ -59,14 +65,20 @@ export function attachContractVisitProgress<T extends ContractVisitAgendaItem>(
   const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
   const contractTypeById = new Map(contractTypes.map((type) => [type.id, type]));
   const progressByConfigMonth = new Map<string, { visits: number; hours: number }>();
+  const executionByConfigMonthVisit = new Map<string, ContractVisitProgressExecution>();
 
   for (const execution of executions) {
-    const key = `${execution.contrato_visita_config_id}|${competenceKey(execution.competencia)}`;
+    const competence = competenceKey(execution.competencia);
+    const key = `${execution.contrato_visita_config_id}|${competence}`;
     const current = progressByConfigMonth.get(key) ?? { visits: 0, hours: 0 };
     progressByConfigMonth.set(key, {
       visits: current.visits + 1,
       hours: current.hours + Math.max(0, Number(execution.horas_trabalhadas) || 0),
     });
+    executionByConfigMonthVisit.set(
+      `${key}|${Number(execution.visita_numero)}`,
+      execution,
+    );
   }
 
   return items.map((item) => {
@@ -91,9 +103,19 @@ export function attachContractVisitProgress<T extends ContractVisitAgendaItem>(
 
     const competence = competenceKey(item.contrato_visita_competencia || item.id);
     const progress = progressByConfigMonth.get(`${config.id}|${competence}`) ?? { visits: 0, hours: 0 };
+    const execution = item.contrato_visita_numero == null
+      ? undefined
+      : executionByConfigMonthVisit.get(
+        `${config.id}|${competence}|${Number(item.contrato_visita_numero)}`,
+      );
 
     return {
       ...identifiedItem,
+      contrato_visita_execucao_id: execution?.id || item.contrato_visita_execucao_id || null,
+      contrato_visita_realizada_em: execution?.data_realizada || item.contrato_visita_realizada_em || null,
+      contrato_visita_horas_realizadas: execution
+        ? Math.max(0, Number(execution.horas_trabalhadas) || 0)
+        : item.contrato_visita_horas_realizadas ?? null,
       contrato_visitas_cumpridas: progress.visits,
       contrato_visitas_previstas: Math.max(0, Number(config.qtd_visitas) || 0),
       contrato_horas_cumpridas: Number(progress.hours.toFixed(2)),

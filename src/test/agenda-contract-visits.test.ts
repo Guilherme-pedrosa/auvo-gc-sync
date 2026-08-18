@@ -13,6 +13,7 @@ describe("cards de visitas contratuais na agenda", () => {
         previsao_tipo: "CONTRATO",
         contrato_visita_config_id: "config",
         contrato_visita_competencia: "2026-08-01",
+        contrato_visita_numero: 1,
       }],
       [{ id: "config", contrato_id: "contract", qtd_visitas: 2 }],
       [{
@@ -25,6 +26,8 @@ describe("cards de visitas contratuais na agenda", () => {
         id: "done",
         contrato_visita_config_id: "config",
         competencia: "2026-08-01",
+        visita_numero: 1,
+        data_realizada: "2026-08-11",
         horas_trabalhadas: 8.25,
       }],
       [{ id: "maintenance", nome: "Manutenção Preventiva" }],
@@ -38,6 +41,43 @@ describe("cards de visitas contratuais na agenda", () => {
       contrato_visitas_previstas: 2,
       contrato_horas_cumpridas: 8.25,
       contrato_horas_previstas: 32,
+      contrato_visita_execucao_id: "done",
+      contrato_visita_realizada_em: "2026-08-11",
+      contrato_visita_horas_realizadas: 8.25,
+    });
+  });
+
+  it("anexa a execução somente ao número programado correspondente", () => {
+    const cards = attachContractVisitProgress(
+      [1, 2].map((visitaNumero) => ({
+        id: `card-${visitaNumero}`,
+        cliente: "HYPERMARCAS",
+        previsao_tipo: "CONTRATO",
+        contrato_visita_config_id: "config",
+        contrato_visita_competencia: "2026-08-01",
+        contrato_visita_numero: visitaNumero,
+      })),
+      [{ id: "config", contrato_id: "contract", qtd_visitas: 2 }],
+      [{ id: "contract", nome: "HYPERMARCAS", tipo_id: null, horas_mes_contratadas: 32 }],
+      [{
+        id: "execution-1",
+        contrato_visita_config_id: "config",
+        competencia: "2026-08-01",
+        visita_numero: 1,
+        data_realizada: "2026-08-11",
+        horas_trabalhadas: 12.5,
+      }],
+    );
+
+    expect(cards[0]).toMatchObject({
+      contrato_visita_execucao_id: "execution-1",
+      contrato_visita_realizada_em: "2026-08-11",
+      contrato_horas_cumpridas: 12.5,
+      contrato_horas_previstas: 32,
+    });
+    expect(cards[1]).toMatchObject({
+      contrato_visita_execucao_id: null,
+      contrato_visitas_cumpridas: 1,
     });
   });
 

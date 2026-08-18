@@ -104,7 +104,7 @@ describe("planejamento anual de visitas contratuais", () => {
     ]);
   });
 
-  it("preserva visitas passadas e gera somente as que faltam", () => {
+  it("preserva todos os slots programados mesmo quando uma visita já foi realizada", () => {
     const forecasts = buildContractVisitForecasts({
       competencia: "2026-09",
       qtdVisitas: 3,
@@ -116,7 +116,7 @@ describe("planejamento anual de visitas contratuais", () => {
       visitasRealizadas: [1],
       naoAntesDe: "2026-09-10",
     });
-    expect(forecasts.map((forecast) => forecast.visitaNumero)).toEqual([2, 3]);
+    expect(forecasts.map((forecast) => forecast.visitaNumero)).toEqual([1, 2, 3]);
     expect(forecasts.every((forecast) => forecast.data >= "2026-09-10")).toBe(true);
   });
 
@@ -239,7 +239,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scheduledMigration).toContain("visita extra alem das");
     expect(scheduledMigration).toContain("generate_series(1, v_config.qtd_visitas)");
     expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
-    expect(agendaPage).toContain("ª VISITA · PLANEJADA");
+    expect(agendaPage).toContain("ª VISITA · PROGRAMADA");
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
   });
 
@@ -301,11 +301,30 @@ describe("planejamento anual de visitas contratuais", () => {
       "utf8",
     );
 
-    expect(page).toContain("reconcileContractVisitsInMonthlyBatches");
+    expect(page).toContain("reconcileContractVisitsInDailyBatches");
+    expect(page).toContain("p_fim: cursor");
     expect(page).not.toContain("Apenas reconcilia se for o ano atual");
     expect(periodMigration).toContain("task_clients AS MATERIALIZED");
     expect(periodMigration).toContain("contract_clients AS MATERIALIZED");
     expect(periodMigration).not.toContain("clientes_rh_relacionados(c.cliente_nome, task.cliente)");
+  });
+
+  it("mantém o card na data programada e anota a execução real sem duplicá-lo", () => {
+    const migration = readFileSync(
+      resolve(root, "supabase/migrations/20260818183000_preserve_scheduled_contract_visit_after_execution.sql"),
+      "utf8",
+    );
+    const agendaPage = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+
+    expect(migration).toContain("NEW.status := 'CUMPRIDA_NO_MES'");
+    expect(migration).toContain("Visita já realizada neste mês em %s");
+    expect(migration).toContain("SET atualizado_em = now()");
+    expect(migration).not.toContain("SET data = v_exec.data_realizada");
+    expect(agendaPage).toContain("Visita já realizada neste mês");
+    expect(agendaPage).toContain("disponíveis");
   });
 
   it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {

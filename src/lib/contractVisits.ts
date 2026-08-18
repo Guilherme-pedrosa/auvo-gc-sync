@@ -270,12 +270,10 @@ export function buildContractVisitForecasts(input: ContractVisitConfigInput): Co
   }
   if (!contractMonthIsActive(input.competencia, input.vigenciaInicio, input.vigenciaFim)) return [];
 
-  const completed = new Set(
-    (input.visitasRealizadas || []).filter((visit) => Number.isInteger(visit) && visit >= 1),
-  );
-  const missingNumbers = Array.from({ length: input.qtdVisitas }, (_, index) => index + 1)
-    .filter((visit) => !completed.has(visit));
-  if (completed.size >= input.qtdVisitas || missingNumbers.length === 0) return [];
+  // A grade conserva o calendário contratual inteiro. Uma execução antecipada
+  // cumpre o slot nominal correspondente, mas não remove nem desloca a data em
+  // que a visita estava programada.
+  const visitNumbers = Array.from({ length: input.qtdVisitas }, (_, index) => index + 1);
 
   const durationMinutes = contractVisitDurationMinutes(
     input.horasMesContratadas,
@@ -291,13 +289,13 @@ export function buildContractVisitForecasts(input: ContractVisitConfigInput): Co
     input.naoAntesDe,
   );
   const dates = input.visitasConsecutivas
-    ? consecutiveVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, missingNumbers)
-    : interleavedVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, missingNumbers);
+    ? consecutiveVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, visitNumbers)
+    : interleavedVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, visitNumbers);
   const teams = rotatingVisitTeams(input.tecnicoIds, input.qtdTecnicos, input.qtdVisitas);
   const start = input.horaInicio.slice(0, 5);
   const end = addMinutesToClock(start, durationMinutes);
 
-  return missingNumbers.slice(0, dates.length).map((visitaNumero, index) => ({
+  return visitNumbers.slice(0, dates.length).map((visitaNumero, index) => ({
     competencia: input.competencia,
     visitaNumero,
     data: dates[index],

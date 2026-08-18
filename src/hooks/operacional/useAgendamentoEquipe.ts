@@ -381,11 +381,13 @@ async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendame
     id: string;
     contrato_visita_config_id: string;
     competencia: string;
+    visita_numero: number;
+    data_realizada: string;
     horas_trabalhadas: number;
   }> = [];
   if (configIds.length > 0 && competencias.length > 0) {
     const result = await sb.from("contratos_visitas_execucoes")
-      .select("id,contrato_visita_config_id,competencia,horas_trabalhadas")
+      .select("id,contrato_visita_config_id,competencia,visita_numero,data_realizada,horas_trabalhadas")
       .in("contrato_visita_config_id", configIds)
       .gte("competencia", `${competencias[0]}-01`)
       .lte("competencia", `${competencias[competencias.length - 1]}-01`);

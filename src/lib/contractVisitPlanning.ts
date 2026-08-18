@@ -43,11 +43,6 @@ type ExistingForecast = {
   contrato_visita_numero: number | null;
 };
 
-type ExistingExecution = {
-  competencia: string;
-  visita_numero: number;
-};
-
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -82,7 +77,9 @@ export async function reconcileContractVisitYear(input: {
   if (year < Number(today.slice(0, 4))) {
     return { inserted: 0, removed: 0, preserved: 0, year };
   }
-  const cutoff = year === Number(today.slice(0, 4)) ? today : start;
+  // Recalcula o mês atual desde o primeiro dia para preservar os slots
+  // originalmente programados, inclusive quando a visita foi feita antes.
+  const cutoff = year === Number(today.slice(0, 4)) ? `${today.slice(0, 7)}-01` : start;
   const [forecastsResult, executionsResult] = await Promise.all([
     supabase
       .from("agenda_agendamentos")
@@ -103,14 +100,6 @@ export async function reconcileContractVisitYear(input: {
   const existingData = forecastsResult.data;
   const existing = (existingData || []) as ExistingForecast[];
   const historical = existing.filter((row) => row.data < cutoff);
-  const completedByMonth = new Map<string, Set<number>>();
-  for (const row of (executionsResult.data || []) as ExistingExecution[]) {
-    const competence = row.competencia.slice(0, 7);
-    const visits = completedByMonth.get(competence) || new Set<number>();
-    visits.add(row.visita_numero);
-    completedByMonth.set(competence, visits);
-  }
-
   const { count: futureCount, error: countError } = await supabase
     .from("agenda_agendamentos")
     .select("id", { count: "exact", head: true })
@@ -148,9 +137,6 @@ export async function reconcileContractVisitYear(input: {
         vigenciaInicio: contract.vigencia_inicio,
         vigenciaFim: contract.vigencia_fim,
         naoAntesDe: cutoff,
-        visitasRealizadasPorMes: Object.fromEntries(
-          [...completedByMonth.entries()].map(([competence, visits]) => [competence, [...visits]]),
-        ),
       })
     : [];
 
