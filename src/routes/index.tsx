@@ -1,4 +1,6 @@
 export default function Index() {
+  // onde está a página para eu cadastrar mais tipos de contrato???? que eu te pedi!!
+
   return (
     <div className="p-8 space-y-8 max-w-4xl mx-auto">
       <header className="space-y-2 border-b pb-6">

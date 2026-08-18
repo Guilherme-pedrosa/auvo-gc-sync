@@ -78,6 +78,7 @@ const navGroups: NavGroup[] = [
     label: "Configurações",
     items: [
       { label: "Contratos", icon: Settings, path: "/configuracoes/contratos" },
+      { label: "Tipos de Contrato", icon: FileCheck, path: "/configuracoes/contratos?tipos=true" },
       { label: "Tipos de Equipamento", icon: Thermometer, path: "/configuracoes/tipos-equipamento" },
       { label: "Tipos de Tarefa Preventiva", icon: Thermometer, path: "/configuracoes/tipos-tarefa-preventiva" },
     ],
