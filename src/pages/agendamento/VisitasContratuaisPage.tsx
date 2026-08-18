@@ -341,16 +341,46 @@ export default function VisitasContratuaisPage() {
     return map;
   }, [executions]);
 
-  const executionsByMonth = useMemo(() => {
-    const map = new Map<string, ContractExecution[]>();
+  const executionsByClientAndMonth = useMemo(() => {
+    const map = new Map<string, Map<string, ContractExecution[]>>();
+    
     for (const execution of executions) {
+      const clientName = execution.cliente || "Desconhecido";
       const monthKey = execution.data_realizada.slice(0, 7);
-      const rows = map.get(monthKey) || [];
+      
+      if (!map.has(clientName)) {
+        map.set(clientName, new Map());
+      }
+      
+      const clientMonths = map.get(clientName)!;
+      const rows = clientMonths.get(monthKey) || [];
       rows.push(execution);
-      map.set(monthKey, rows);
+      clientMonths.set(monthKey, rows);
     }
     return map;
   }, [executions]);
+
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  const toggleClient = (client: string) => {
+    setExpandedClients((prev) => {
+      const next = new Set(prev);
+      if (next.has(client)) next.delete(client);
+      else next.add(client);
+      return next;
+    });
+  };
+
+  const toggleMonth = (client: string, monthKey: string) => {
+    const compositeKey = `${client}|${monthKey}`;
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(compositeKey)) next.delete(compositeKey);
+      else next.add(compositeKey);
+      return next;
+    });
+  };
   const stackedConfigIds = useMemo(() => {
     const visitsByWeek = new Map<string, Set<number>>();
     for (const forecast of forecasts) {
