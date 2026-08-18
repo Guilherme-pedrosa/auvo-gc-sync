@@ -165,7 +165,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as Contract[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
   const configsQuery = useQuery({
@@ -175,7 +176,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as VisitConfig[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
   const techniciansQuery = useQuery({
@@ -235,13 +237,16 @@ export default function VisitasContratuaisPage() {
     queryFn: async () => {
       const start = `${year}-01-01`;
       const end = year === currentYear ? todayISO() : `${year}-12-31`;
-      if (year <= currentYear) {
+      
+      // Apenas reconcilia se for o ano atual e não houver reconciliação recente
+      if (year === currentYear) {
         const { error: reconciliationError } = await supabase.rpc(
           "reconciliar_visitas_contratuais_periodo",
           { p_inicio: start, p_fim: end },
         );
-        if (reconciliationError) throw reconciliationError;
+        if (reconciliationError) console.error("Reconciliation error:", reconciliationError);
       }
+      
       const { data, error } = await supabase
         .from("contratos_visitas_execucoes")
         .select("*")
@@ -251,7 +256,8 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as ContractExecution[];
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const contracts = contractsQuery.data || [];
@@ -303,6 +309,7 @@ export default function VisitasContratuaisPage() {
   }, [forecasts]);
 
   const monthlySummaries = useMemo(() => {
+    if (!configs.length || !contracts.length) return new Map<string, ContractVisitMonthSummary[]>();
     const map = new Map<string, ContractVisitMonthSummary[]>();
     for (const config of configs) {
       const contract = contractById.get(config.contrato_id);
@@ -326,7 +333,7 @@ export default function VisitasContratuaisPage() {
       }));
     }
     return map;
-  }, [configs, contractById, forecastsByConfig, executionsByConfig, year]);
+  }, [configs, contracts.length, contractById, forecastsByConfig, executionsByConfig, year]);
 
   const planYear = useMutation({
     mutationFn: async (configIds?: string[]) => {
