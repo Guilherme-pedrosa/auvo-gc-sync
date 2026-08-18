@@ -186,16 +186,6 @@ export default function VisitasContratuaisPage() {
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-
-  const toggleMonth = (monthKey: string) => {
-    setExpandedMonths((prev) => {
-      const next = new Set(prev);
-      if (next.has(monthKey)) next.delete(monthKey);
-      else next.add(monthKey);
-      return next;
-    });
-  };
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -341,16 +331,46 @@ export default function VisitasContratuaisPage() {
     return map;
   }, [executions]);
 
-  const executionsByMonth = useMemo(() => {
-    const map = new Map<string, ContractExecution[]>();
+  const executionsByClientAndMonth = useMemo(() => {
+    const map = new Map<string, Map<string, ContractExecution[]>>();
+    
     for (const execution of executions) {
+      const clientName = execution.cliente || "Desconhecido";
       const monthKey = execution.data_realizada.slice(0, 7);
-      const rows = map.get(monthKey) || [];
+      
+      if (!map.has(clientName)) {
+        map.set(clientName, new Map());
+      }
+      
+      const clientMonths = map.get(clientName)!;
+      const rows = clientMonths.get(monthKey) || [];
       rows.push(execution);
-      map.set(monthKey, rows);
+      clientMonths.set(monthKey, rows);
     }
     return map;
   }, [executions]);
+
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  const toggleClient = (client: string) => {
+    setExpandedClients((prev) => {
+      const next = new Set(prev);
+      if (next.has(client)) next.delete(client);
+      else next.add(client);
+      return next;
+    });
+  };
+
+  const toggleMonth = (client: string, monthKey: string) => {
+    const compositeKey = `${client}|${monthKey}`;
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(compositeKey)) next.delete(compositeKey);
+      else next.add(compositeKey);
+      return next;
+    });
+  };
   const stackedConfigIds = useMemo(() => {
     const visitsByWeek = new Map<string, Set<number>>();
     for (const forecast of forecasts) {
@@ -699,65 +719,100 @@ export default function VisitasContratuaisPage() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const monthKeys = Array.from(executionsByMonth.keys()).sort((a, b) => b.localeCompare(a));
-                      return monthKeys.map((monthKey) => {
-                        const monthExecutions = executionsByMonth.get(monthKey) || [];
-                        const isExpanded = expandedMonths.has(monthKey);
-                        const totalHours = monthExecutions.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
-                        const [yearPart, monthPart] = monthKey.split("-");
-                        const monthLabel = `${MONTHS[Number(monthPart) - 1]} / ${yearPart}`;
+                      const clients = Array.from(executionsByClientAndMonth.keys()).sort((a, b) => a.localeCompare(b));
+                      return clients.map((client) => {
+                        const clientMonthsMap = executionsByClientAndMonth.get(client)!;
+                        const isClientExpanded = expandedClients.has(client);
+                        const monthKeys = Array.from(clientMonthsMap.keys()).sort((a, b) => b.localeCompare(a));
+                        
+                        // Total general de horas del cliente en el año
+                        let clientTotalHours = 0;
+                        clientMonthsMap.forEach(monthExecs => {
+                          clientTotalHours += monthExecs.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
+                        });
 
                         return (
-                          <React.Fragment key={monthKey}>
+                          <React.Fragment key={client}>
+                            {/* Linha do Cliente */}
                             <TableRow 
-                              className="cursor-pointer bg-muted/20 font-semibold hover:bg-muted/40"
-                              onClick={() => toggleMonth(monthKey)}
+                              className="cursor-pointer bg-slate-50 font-bold hover:bg-slate-100"
+                              onClick={() => toggleClient(client)}
                             >
                               <TableCell>
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                {isClientExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                               </TableCell>
                               <TableCell colSpan={4} className="py-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-sm uppercase tracking-wider text-muted-foreground">{monthLabel}</span>
-                                  <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
-                                    {monthExecutions.length} visita(s)
-                                  </Badge>
-                                </div>
+                                <span className="text-sm font-bold text-slate-900">{client}</span>
                               </TableCell>
-                              <TableCell className="font-bold text-emerald-700">
-                                {hoursLabel(totalHours)}
+                              <TableCell className="font-bold text-slate-900">
+                                {hoursLabel(clientTotalHours)}
                               </TableCell>
                               <TableCell></TableCell>
                             </TableRow>
-                            {isExpanded && monthExecutions.map((execution) => (
-                              <TableRow key={execution.id} className="bg-background">
-                                <TableCell></TableCell>
-                                <TableCell className="whitespace-nowrap text-xs font-medium">{dateLabel(execution.data_realizada)}</TableCell>
-                                <TableCell className="min-w-[280px]">
-                                  <p className="font-semibold">{contractById.get(execution.contrato_id)?.nome || "Contrato"}</p>
-                                  <p className="text-[11px] text-muted-foreground">{execution.cliente}</p>
-                                </TableCell>
-                                <TableCell className="whitespace-nowrap text-xs">{execution.visita_numero}ª realizada</TableCell>
-                                <TableCell className="min-w-[200px] text-[11px]">{execution.tecnicos.join(" · ") || "Não identificado"}</TableCell>
-                                <TableCell className="whitespace-nowrap text-xs font-bold text-emerald-700">{hoursLabel(Number(execution.horas_trabalhadas || 0))}</TableCell>
-                                <TableCell className="min-w-[240px]">
-                                  <div className="flex flex-wrap gap-1">
-                                    {execution.tarefa_ids.map((taskId) => (
-                                      <a 
-                                        key={taskId} 
-                                        href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`} 
-                                        target="_blank" 
-                                        rel="noreferrer" 
-                                        className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary hover:underline"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        #{taskId}
-                                      </a>
-                                    ))}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
+
+                            {/* Linhas dos Meses (se cliente expandido) */}
+                            {isClientExpanded && monthKeys.map((monthKey) => {
+                              const monthExecutions = clientMonthsMap.get(monthKey) || [];
+                              const isMonthExpanded = expandedMonths.has(`${client}|${monthKey}`);
+                              const monthTotalHours = monthExecutions.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
+                              const [yearPart, monthPart] = monthKey.split("-");
+                              const monthLabel = `${MONTHS[Number(monthPart) - 1]} / ${yearPart}`;
+
+                              return (
+                                <React.Fragment key={`${client}-${monthKey}`}>
+                                  <TableRow 
+                                    className="cursor-pointer bg-muted/20 font-semibold hover:bg-muted/40"
+                                    onClick={() => toggleMonth(client, monthKey)}
+                                  >
+                                    <TableCell className="pl-6">
+                                      {isMonthExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                    </TableCell>
+                                    <TableCell colSpan={4} className="py-2">
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-xs uppercase tracking-wider text-muted-foreground">{monthLabel}</span>
+                                        <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[10px] py-0">
+                                          {monthExecutions.length} visita(s)
+                                        </Badge>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="font-bold text-emerald-700 text-xs">
+                                      {hoursLabel(monthTotalHours)}
+                                    </TableCell>
+                                    <TableCell></TableCell>
+                                  </TableRow>
+
+                                  {/* Linhas das Visitas (se mês expandido) */}
+                                  {isMonthExpanded && monthExecutions.map((execution) => (
+                                    <TableRow key={execution.id} className="bg-background">
+                                      <TableCell></TableCell>
+                                      <TableCell className="whitespace-nowrap text-[10px] font-medium pl-8">{dateLabel(execution.data_realizada)}</TableCell>
+                                      <TableCell className="min-w-[280px]">
+                                        <p className="font-semibold text-[11px]">{contractById.get(execution.contrato_id)?.nome || "Contrato"}</p>
+                                      </TableCell>
+                                      <TableCell className="whitespace-nowrap text-[10px]">{execution.visita_numero}ª realizada</TableCell>
+                                      <TableCell className="min-w-[200px] text-[10px]">{execution.tecnicos.join(" · ") || "Não identificado"}</TableCell>
+                                      <TableCell className="whitespace-nowrap text-[10px] font-bold text-emerald-700">{hoursLabel(Number(execution.horas_trabalhadas || 0))}</TableCell>
+                                      <TableCell className="min-w-[240px]">
+                                        <div className="flex flex-wrap gap-1">
+                                          {execution.tarefa_ids.map((taskId) => (
+                                            <a 
+                                              key={taskId} 
+                                              href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`} 
+                                              target="_blank" 
+                                              rel="noreferrer" 
+                                              className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[9px] text-primary hover:underline"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              #{taskId}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </React.Fragment>
+                              );
+                            })}
                           </React.Fragment>
                         );
                       });
