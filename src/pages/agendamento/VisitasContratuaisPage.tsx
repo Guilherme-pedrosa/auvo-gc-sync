@@ -644,6 +644,11 @@ export default function VisitasContratuaisPage() {
                         <TableRow key={contract.id} className="align-top">
                           <TableCell className="min-w-[230px]">
                             <p className="font-semibold">{contract.nome}</p>
+                            <p className="mt-0.5 text-[11px]">
+                              <Badge variant="outline" className={contract.tipo_id && contractTypeById.get(contract.tipo_id) ? "border-primary/40 bg-primary/10 text-primary" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                                {(contract.tipo_id && contractTypeById.get(contract.tipo_id)) || "Tipo não definido"}
+                              </Badge>
+                            </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">{contract.cliente_nome || (contract.grupo_id ? `Grupo: ${groupById.get(contract.grupo_id) || "não localizado"}` : "Sem cliente vinculado")}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">Vigência: {contract.vigencia_inicio ? dateLabel(contract.vigencia_inicio) : "sem início"} → {contract.vigencia_fim ? dateLabel(contract.vigencia_fim) : "sem fim"}</p>
                           </TableCell>
