@@ -8,7 +8,14 @@ export type ContractVisitProgressConfig = {
 
 export type ContractVisitProgressContract = {
   id: string;
+  nome: string;
+  tipo_id: string | null;
   horas_mes_contratadas: number | null;
+};
+
+export type ContractVisitProgressType = {
+  id: string;
+  nome: string;
 };
 
 export type ContractVisitProgressExecution = {
@@ -23,8 +30,12 @@ export type ContractVisitAgendaItem = {
   cliente: string;
   hora_inicio?: string | null;
   previsao_tipo?: string | null;
+  contrato_id?: string | null;
   contrato_visita_config_id?: string | null;
   contrato_visita_competencia?: string | null;
+  contrato_nome?: string | null;
+  contrato_tipo_id?: string | null;
+  contrato_tipo_nome?: string | null;
   contrato_visitas_cumpridas?: number;
   contrato_visitas_previstas?: number;
   contrato_horas_cumpridas?: number;
@@ -42,9 +53,11 @@ export function attachContractVisitProgress<T extends ContractVisitAgendaItem>(
   configs: ContractVisitProgressConfig[],
   contracts: ContractVisitProgressContract[],
   executions: ContractVisitProgressExecution[],
+  contractTypes: ContractVisitProgressType[] = [],
 ): T[] {
   const configById = new Map(configs.map((config) => [config.id, config]));
   const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+  const contractTypeById = new Map(contractTypes.map((type) => [type.id, type]));
   const progressByConfigMonth = new Map<string, { visits: number; hours: number }>();
 
   for (const execution of executions) {
@@ -57,17 +70,30 @@ export function attachContractVisitProgress<T extends ContractVisitAgendaItem>(
   }
 
   return items.map((item) => {
-    if (item.previsao_tipo !== "CONTRATO" || !item.contrato_visita_config_id) return item;
+    if (!isContractVisitCard(item)) return item;
 
-    const config = configById.get(item.contrato_visita_config_id);
-    if (!config) return item;
+    const config = item.contrato_visita_config_id
+      ? configById.get(item.contrato_visita_config_id)
+      : undefined;
+    const contract = contractById.get(item.contrato_id || config?.contrato_id || "");
+    const contractType = contract?.tipo_id
+      ? contractTypeById.get(contract.tipo_id)
+      : undefined;
+    const identifiedItem = {
+      ...item,
+      contrato_id: contract?.id || item.contrato_id || null,
+      contrato_nome: contract?.nome || null,
+      contrato_tipo_id: contract?.tipo_id || null,
+      contrato_tipo_nome: contractType?.nome || null,
+    };
+
+    if (item.previsao_tipo !== "CONTRATO" || !config) return identifiedItem;
 
     const competence = competenceKey(item.contrato_visita_competencia || item.id);
     const progress = progressByConfigMonth.get(`${config.id}|${competence}`) ?? { visits: 0, hours: 0 };
-    const contract = contractById.get(config.contrato_id);
 
     return {
-      ...item,
+      ...identifiedItem,
       contrato_visitas_cumpridas: progress.visits,
       contrato_visitas_previstas: Math.max(0, Number(config.qtd_visitas) || 0),
       contrato_horas_cumpridas: Number(progress.hours.toFixed(2)),

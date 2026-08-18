@@ -15,20 +15,54 @@ describe("cards de visitas contratuais na agenda", () => {
         contrato_visita_competencia: "2026-08-01",
       }],
       [{ id: "config", contrato_id: "contract", qtd_visitas: 2 }],
-      [{ id: "contract", horas_mes_contratadas: 32 }],
+      [{
+        id: "contract",
+        nome: "CONTRATO SODEXO SAVOY",
+        tipo_id: "maintenance",
+        horas_mes_contratadas: 32,
+      }],
       [{
         id: "done",
         contrato_visita_config_id: "config",
         competencia: "2026-08-01",
         horas_trabalhadas: 8.25,
       }],
+      [{ id: "maintenance", nome: "Manutenção Preventiva" }],
     );
 
     expect(card).toMatchObject({
+      contrato_nome: "CONTRATO SODEXO SAVOY",
+      contrato_tipo_id: "maintenance",
+      contrato_tipo_nome: "Manutenção Preventiva",
       contrato_visitas_cumpridas: 1,
       contrato_visitas_previstas: 2,
       contrato_horas_cumpridas: 8.25,
       contrato_horas_previstas: 32,
+    });
+  });
+
+  it("identifica também o contrato no card de visita realizada", () => {
+    const [card] = attachContractVisitProgress(
+      [{
+        id: "done-card",
+        cliente: "1929 TRATTORIA MODERNA",
+        previsao_tipo: "CONTRATO_REALIZADO",
+        contrato_id: "coifa-contract",
+      }],
+      [],
+      [{
+        id: "coifa-contract",
+        nome: "HIGIENIZAÇÃO COIFA 1929 TRATTORIA",
+        tipo_id: "coifa",
+        horas_mes_contratadas: 48,
+      }],
+      [],
+      [{ id: "coifa", nome: "Higienização de coifas" }],
+    );
+
+    expect(card).toMatchObject({
+      contrato_nome: "HIGIENIZAÇÃO COIFA 1929 TRATTORIA",
+      contrato_tipo_nome: "Higienização de coifas",
     });
   });
 

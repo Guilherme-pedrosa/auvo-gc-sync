@@ -259,6 +259,25 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scopedMigration).toContain("215148");
   });
 
+  it("contabiliza contratos pela matriz exata de questionário e tipo do contrato", () => {
+    const matrixMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818150000_contract_questionnaire_accounting_matrix.sql"),
+      "utf8",
+    );
+    const agendaPage = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+
+    expect(matrixMigration).toContain("215148");
+    expect(matrixMigration).toContain("224444");
+    expect(matrixMigration).toContain("contrato_tipos");
+    expect(matrixMigration).toContain("contrato.tipo_id");
+    expect(matrixMigration).not.toContain("p_task_type_id, '') = '180795'");
+    expect(agendaPage).toContain("Contrato seguido:");
+    expect(agendaPage).toContain("contrato_tipo_nome");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);

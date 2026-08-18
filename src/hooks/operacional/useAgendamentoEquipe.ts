@@ -77,6 +77,9 @@ export interface AgendaAgendamento {
   contrato_visitas_previstas?: number;
   contrato_horas_cumpridas?: number;
   contrato_horas_previstas?: number;
+  contrato_nome?: string | null;
+  contrato_tipo_id?: string | null;
+  contrato_tipo_nome?: string | null;
   previsao_continuidade?: boolean;
   previsao_tipo?: string | null;
   previsao_detalhes?: string | null;
@@ -326,41 +329,82 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
 async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendamento[]) {
   const cards = agendamentos.filter((item) => (
     item.previsao_tipo === "CONTRATO"
-    && item.contrato_visita_config_id
-    && item.contrato_visita_competencia
+    || item.previsao_tipo === "CONTRATO_REALIZADO"
   ));
   if (cards.length === 0) return agendamentos;
 
-  const configIds = [...new Set(cards.map((item) => item.contrato_visita_config_id as string))];
+  const configIds = [...new Set(cards
+    .map((item) => item.contrato_visita_config_id)
+    .filter((id): id is string => Boolean(id)))];
   const competencias = [...new Set(cards
     .map((item) => String(item.contrato_visita_competencia || "").slice(0, 7))
     .filter(Boolean))].sort();
 
-  const { data: configs, error: configsError } = await sb
-    .from("contratos_visitas_config")
-    .select("id,contrato_id,qtd_visitas")
-    .in("id", configIds);
-  if (configsError) throw configsError;
+  let configs: Array<{ id: string; contrato_id: string; qtd_visitas: number }> = [];
+  if (configIds.length > 0) {
+    const result = await sb
+      .from("contratos_visitas_config")
+      .select("id,contrato_id,qtd_visitas")
+      .in("id", configIds);
+    if (result.error) throw result.error;
+    configs = result.data ?? [];
+  }
 
-  const contractIds = [...new Set((configs ?? []).map((config) => config.contrato_id))];
-  const [contractsResult, executionsResult] = await Promise.all([
-    contractIds.length > 0
-      ? sb.from("contratos").select("id,horas_mes_contratadas").in("id", contractIds)
-      : Promise.resolve({ data: [], error: null }),
-    sb.from("contratos_visitas_execucoes")
+  const contractIds = [...new Set([
+    ...configs.map((config) => config.contrato_id),
+    ...cards.map((item) => item.contrato_id).filter((id): id is string => Boolean(id)),
+  ])];
+
+  let contracts: Array<{
+    id: string;
+    nome: string;
+    tipo_id: string | null;
+    horas_mes_contratadas: number | null;
+  }> = [];
+  if (contractIds.length > 0) {
+    const result = await sb
+      .from("contratos")
+      .select("id,nome,tipo_id,horas_mes_contratadas")
+      .in("id", contractIds);
+    if (result.error) throw result.error;
+    contracts = result.data ?? [];
+  }
+
+  const contractTypeIds = [...new Set(contracts
+    .map((contract) => contract.tipo_id)
+    .filter((id): id is string => Boolean(id)))];
+  let contractTypes: Array<{ id: string; nome: string }> = [];
+  if (contractTypeIds.length > 0) {
+    const result = await sb
+      .from("contrato_tipos")
+      .select("id,nome")
+      .in("id", contractTypeIds);
+    if (result.error) throw result.error;
+    contractTypes = result.data ?? [];
+  }
+
+  let executions: Array<{
+    id: string;
+    contrato_visita_config_id: string;
+    competencia: string;
+    horas_trabalhadas: number;
+  }> = [];
+  if (configIds.length > 0 && competencias.length > 0) {
+    const result = await sb.from("contratos_visitas_execucoes")
       .select("id,contrato_visita_config_id,competencia,horas_trabalhadas")
       .in("contrato_visita_config_id", configIds)
       .gte("competencia", `${competencias[0]}-01`)
-      .lte("competencia", `${competencias[competencias.length - 1]}-01`),
-  ]);
-  if (contractsResult.error) throw contractsResult.error;
-  if (executionsResult.error) throw executionsResult.error;
+      .lte("competencia", `${competencias[competencias.length - 1]}-01`);
+    if (result.error) throw result.error;
+    executions = result.data ?? [];
+  }
 
   return attachContractVisitProgress(
     agendamentos,
-    configs ?? [],
-    contractsResult.data ?? [],
-    executionsResult.data ?? [],
+    configs,
+    contracts,
+    executions,
+    contractTypes,
   );
 }
 

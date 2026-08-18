@@ -456,6 +456,14 @@ function Celula({
                     )}
                     {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
                   </span>
+                  {(visitaContratualPlanejada || visitaContratualRealizada) && (
+                    <span
+                      className="truncate text-[9px] font-extrabold normal-case"
+                      title={`Contrato seguido: ${a.contrato_nome || "não identificado"} · Tipo: ${a.contrato_tipo_nome || "não definido"}`}
+                    >
+                      Contrato seguido: {a.contrato_nome || "não identificado"} · Tipo: {a.contrato_tipo_nome || "não definido"}
+                    </span>
+                  )}
                   {clienteDivergente && a.vinculo_status !== "vinculado" && (
                     <span
                       className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
