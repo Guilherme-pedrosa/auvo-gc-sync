@@ -203,6 +203,16 @@ export default function VisitasContratuaisPage() {
     },
   });
 
+  const contractTypesQuery = useQuery({
+    queryKey: ["contractual-visits", "contract-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("contrato_tipos").select("id, nome").order("nome");
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+
   const forecastsQuery = useQuery({
     queryKey: ["contractual-visits", "forecasts", year],
     queryFn: async () => {
@@ -253,6 +263,10 @@ export default function VisitasContratuaisPage() {
   const contractById = useMemo(() => new Map(contracts.map((contract) => [contract.id, contract])), [contracts]);
   const technicianById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician])), [technicians]);
   const groupById = useMemo(() => new Map((groupsQuery.data || []).map((group) => [group.id, group.nome])), [groupsQuery.data]);
+  const contractTypeById = useMemo(
+    () => new Map((contractTypesQuery.data || []).map((type) => [type.id, type.nome])),
+    [contractTypesQuery.data],
+  );
   const forecastsByConfig = useMemo(() => {
     const map = new Map<string, ContractForecast[]>();
     for (const forecast of forecasts) {
@@ -460,6 +474,18 @@ export default function VisitasContratuaisPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const updateContractType = useMutation({
+    mutationFn: async ({ contratoId, tipoId }: { contratoId: string; tipoId: string | null }) => {
+      const { error } = await supabase.from("contratos").update({ tipo_id: tipoId } as never).eq("id", contratoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Tipo de contrato atualizado.");
+      void queryClient.invalidateQueries({ queryKey: ["contractual-visits", "contracts"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const initialPlanIds = useMemo(() => configs.filter((config) => {
     if (!config.ativo) return false;
     const contract = contractById.get(config.contrato_id);
@@ -630,6 +656,11 @@ export default function VisitasContratuaisPage() {
                         <TableRow key={contract.id} className="align-top">
                           <TableCell className="min-w-[230px]">
                             <p className="font-semibold">{contract.nome}</p>
+                            <p className="mt-0.5 text-[11px]">
+                              <Badge variant="outline" className={contract.tipo_id && contractTypeById.get(contract.tipo_id) ? "border-primary/40 bg-primary/10 text-primary" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                                {(contract.tipo_id && contractTypeById.get(contract.tipo_id)) || "Tipo não definido"}
+                              </Badge>
+                            </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">{contract.cliente_nome || (contract.grupo_id ? `Grupo: ${groupById.get(contract.grupo_id) || "não localizado"}` : "Sem cliente vinculado")}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">Vigência: {contract.vigencia_inicio ? dateLabel(contract.vigencia_inicio) : "sem início"} → {contract.vigencia_fim ? dateLabel(contract.vigencia_fim) : "sem fim"}</p>
                           </TableCell>
@@ -690,6 +721,23 @@ export default function VisitasContratuaisPage() {
           <DialogHeader><DialogTitle>{draft.id ? "Editar planejamento contratual" : "Configurar visitas contratuais"}</DialogTitle><DialogDescription>Ao salvar, o sistema preserva o histórico e recalcula todas as próximas visitas do ano na agenda dos técnicos.</DialogDescription></DialogHeader>
           <div className="grid gap-5 py-2">
             <div className="space-y-2"><Label>Contrato</Label><select value={draft.contrato_id} disabled={Boolean(draft.id)} onChange={(event) => setDraft((current) => ({ ...current, contrato_id: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"><option value="">Selecione o contrato</option>{contracts.filter((contract) => !configByContract.has(contract.id) || contract.id === draft.contrato_id).map((contract) => <option key={contract.id} value={contract.id}>{contract.nome}</option>)}</select></div>
+
+            <div className="space-y-2">
+              <Label>Tipo de contrato</Label>
+              <select
+                value={selectedContract?.tipo_id || ""}
+                disabled={!selectedContract || updateContractType.isPending}
+                onChange={(event) => {
+                  if (!selectedContract) return;
+                  updateContractType.mutate({ contratoId: selectedContract.id, tipoId: event.target.value || null });
+                }}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+              >
+                <option value="">Sem tipo definido</option>
+                {(contractTypesQuery.data || []).map((type) => <option key={type.id} value={type.id}>{type.nome}</option>)}
+              </select>
+              <p className="text-[11px] text-muted-foreground">Ex.: Higienização de coifas, Manutenção preventiva. Cadastre novos tipos em Configurações › Contratos.</p>
+            </div>
 
             {selectedContract && <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Horas contratadas</p><p className="text-lg font-bold">{selectedContract.horas_mes_contratadas ? `${hoursLabel(Number(selectedContract.horas_mes_contratadas))}/mês` : "Não cadastradas"}</p></div><div><p className="text-xs text-muted-foreground">Visitas previstas</p><p className="text-lg font-bold">{draft.qtd_visitas}/mês</p>{minimumVisits && <p className="text-[10px] text-muted-foreground">mínimo {minimumVisits} com jornada de até 8h</p>}</div><div><p className="text-xs text-muted-foreground">Carga calculada por visita</p><p className="text-lg font-bold">{calculatedDuration ? durationLabel(calculatedDuration) : minimumVisits && draft.qtd_visitas < minimumVisits ? `Mínimo ${minimumVisits} visitas` : "Revisar dados"}</p><p className="text-[10px] text-muted-foreground">horas ÷ visitas ÷ pessoas</p></div></div>}
 
