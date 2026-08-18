@@ -359,8 +359,7 @@ function Celula({
             && Number(a.contrato_visitas_cumpridas || 0) > 0;
           const visitaContratualAlinhada = visitaContratualPlanejada
             && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
-          const visitaContratualBloqueada = visitaContratualRealizada
-            || visitaContratualCumprida;
+          const visitaContratualBloqueada = visitaContratualRealizada;
           const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
           const horasContratuaisDisponiveis = Math.max(
             0,
@@ -572,7 +571,7 @@ function Celula({
                     </span>
                   )}
                 </div>
-                {a.previsao_continuidade && (
+                {(visitaContratualPlanejada || a.previsao_continuidade) && (
                   <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">
                     {a.origem === "CONTRATO" ? "(contrato)" : "(previsão)"}
                   </span>

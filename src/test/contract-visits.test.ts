@@ -361,6 +361,23 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("RETURN NULL");
   });
 
+  it("mantém editável o card verde mesmo quando a visita do mês já foi cumprida", () => {
+    const page = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+    const migration = readFileSync(
+      resolve(root, "supabase/migrations/20260818194500_allow_fulfilled_contract_forecast_changes.sql"),
+      "utf8",
+    );
+
+    expect(page).toContain("const visitaContratualBloqueada = visitaContratualRealizada;");
+    expect(page).toContain("(visitaContratualPlanejada || a.previsao_continuidade)");
+    expect(migration).not.toContain("Esta visita já foi cumprida e permanece protegida");
+    expect(migration).not.toContain("agenda.contrato_visita_execucao_id IS NULL");
+    expect(migration).toContain("A execução real fica em");
+  });
+
   it("não compara o id do cliente RH com o id do contrato ao filtrar visitas", () => {
     const page = readFileSync(
       resolve(root, "src/pages/agendamento/VisitasContratuaisPage.tsx"),
