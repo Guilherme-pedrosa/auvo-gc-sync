@@ -36,6 +36,7 @@ import {
   agendaVisualStatus,
   shouldHighlightPendingGcExecution,
 } from "@/lib/agendaTaskStatus";
+import { AgendaFilters } from "@/components/operacional/AgendaFilters";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
@@ -661,6 +662,9 @@ export default function AgendamentoEquipePage() {
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
+  const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
@@ -1030,12 +1034,31 @@ export default function AgendamentoEquipePage() {
   const tecnicos = useMemo(() => {
     const ativos = colaboradores.filter((c) => c.ativo);
     const t = ativos.filter(isTecnico);
-    return (t.length > 0 ? t : ativos).sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores]);
+    let filtrados = t.length > 0 ? t : ativos;
+
+    if (filtroTexto.trim()) {
+      const search = norm(filtroTexto);
+      filtrados = filtrados.filter((tec) => norm(tec.nome).includes(search));
+    }
+
+    return filtrados.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colaboradores, filtroTexto]);
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
+    const search = filtroTexto.trim() ? norm(filtroTexto) : "";
+
     for (const a of data?.agendamentos ?? []) {
+      // Filtro de Previsões / Visitas Contratuais
+      const isPrevisao = Boolean(a.previsao_continuidade && a.origem !== "CONTRATO");
+      const isVisita = Boolean(a.previsao_tipo === "CONTRATO" || a.previsao_tipo === "CONTRATO_REALIZADO" || a.origem === "CONTRATO");
+
+      if (isPrevisao && !mostrarPrevisoes) continue;
+      if (isVisita && !mostrarVisitasContratuais) continue;
+
+      // Filtro de Texto (Cliente)
+      if (search && !norm(a.cliente).includes(search)) continue;
+
       const k = `${a.colaborador_id}|${a.data}`;
       const arr = m.get(k) ?? [];
       arr.push(a);
@@ -1046,7 +1069,7 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data]);
+  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto]);
 
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
@@ -1248,20 +1271,33 @@ export default function AgendamentoEquipePage() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto p-3 md:p-6 space-y-4 md:space-y-8">
-        <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
-          <summary className="cursor-pointer font-semibold uppercase text-muted-foreground">Legenda</summary>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="hidden md:inline font-semibold text-muted-foreground uppercase">Legenda:</span>
-          <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
-          <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
-          <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
-          <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">
-            <Clock3 className="h-3 w-3" /> Horas reais: check-in/checkout do Auvo
-          </span>
-          <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
-          </div>
-        </details>
+      <div className="flex-1 overflow-auto p-3 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <AgendaFilters
+            filtroTexto={filtroTexto}
+            setFiltroTexto={setFiltroTexto}
+            tiposSelecionados={[]}
+            setTiposSelecionados={() => {}}
+            mostrarPrevisoes={mostrarPrevisoes}
+            setMostrarPrevisoes={setMostrarPrevisoes}
+            mostrarVisitasContratuais={mostrarVisitasContratuais}
+            setMostrarVisitasContratuais={setMostrarVisitasContratuais}
+          />
+
+          <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
+            <summary className="cursor-pointer font-semibold uppercase text-muted-foreground hover:text-foreground transition-colors">Legenda</summary>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="hidden md:inline font-semibold text-muted-foreground uppercase">Legenda:</span>
+              <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
+              <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
+              <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
+              <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">
+                <Clock3 className="h-3 w-3" /> Horas reais: check-in/checkout do Auvo
+              </span>
+              <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
+            </div>
+          </details>
+        </div>
         {carregando ? (
           <Skeleton className="h-96 w-full" />
         ) : (
