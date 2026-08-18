@@ -55,8 +55,8 @@ export type Database = {
           colaborador_id: string | null
           colaborador_nome: string
           contrato_id: string | null
-          contrato_visita_competencia: string | null
           contrato_visita_ajuste_manual: boolean
+          contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
           contrato_visita_execucao_id: string | null
           contrato_visita_horas_realizadas: number | null
@@ -93,8 +93,8 @@ export type Database = {
           colaborador_id?: string | null
           colaborador_nome: string
           contrato_id?: string | null
-          contrato_visita_competencia?: string | null
           contrato_visita_ajuste_manual?: boolean
+          contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
           contrato_visita_execucao_id?: string | null
           contrato_visita_horas_realizadas?: number | null
@@ -131,8 +131,8 @@ export type Database = {
           colaborador_id?: string | null
           colaborador_nome?: string
           contrato_id?: string | null
-          contrato_visita_competencia?: string | null
           contrato_visita_ajuste_manual?: boolean
+          contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
           contrato_visita_execucao_id?: string | null
           contrato_visita_horas_realizadas?: number | null
@@ -189,6 +189,38 @@ export type Database = {
             columns: ["veiculo_id"]
             isOneToOne: false
             referencedRelation: "agenda_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agenda_contrato_visita_exclusoes: {
+        Row: {
+          contrato_visita_competencia: string
+          contrato_visita_config_id: string
+          contrato_visita_numero: number
+          excluido_em: string
+          excluido_por: string | null
+        }
+        Insert: {
+          contrato_visita_competencia: string
+          contrato_visita_config_id: string
+          contrato_visita_numero: number
+          excluido_em?: string
+          excluido_por?: string | null
+        }
+        Update: {
+          contrato_visita_competencia?: string
+          contrato_visita_config_id?: string
+          contrato_visita_numero?: number
+          excluido_em?: string
+          excluido_por?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_contrato_visita_exclusoes_contrato_visita_config_id_fkey"
+            columns: ["contrato_visita_config_id"]
+            isOneToOne: false
+            referencedRelation: "contratos_visitas_config"
             referencedColumns: ["id"]
           },
         ]
@@ -3501,16 +3533,16 @@ export type Database = {
         Args: { p_contrato_nome: string }
         Returns: boolean
       }
+      excluir_previsao_visita_contratual: {
+        Args: { p_agendamento_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
-      }
-      excluir_previsao_visita_contratual: {
-        Args: { p_agendamento_id: string }
-        Returns: number
       }
       materializar_card_visita_contratual: {
         Args: { p_execucao_id: string }
@@ -3540,6 +3572,7 @@ export type Database = {
           colaborador_id: string | null
           colaborador_nome: string
           contrato_id: string | null
+          contrato_visita_ajuste_manual: boolean
           contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
           contrato_visita_execucao_id: string | null
