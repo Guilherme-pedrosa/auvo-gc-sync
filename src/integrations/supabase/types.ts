@@ -620,6 +620,27 @@ export type Database = {
         }
         Relationships: []
       }
+      contrato_tipos: {
+        Row: {
+          atualizado_em: string
+          criado_em: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       contratos: {
         Row: {
           ativo: boolean
@@ -634,6 +655,7 @@ export type Database = {
           premiacao_preventiva_hora: number
           taxa_comissao_peca: number
           taxa_comissao_servico: number
+          tipo_id: string | null
           valor_hora: number
           vigencia_fim: string | null
           vigencia_inicio: string | null
@@ -651,6 +673,7 @@ export type Database = {
           premiacao_preventiva_hora?: number
           taxa_comissao_peca?: number
           taxa_comissao_servico?: number
+          tipo_id?: string | null
           valor_hora?: number
           vigencia_fim?: string | null
           vigencia_inicio?: string | null
@@ -668,6 +691,7 @@ export type Database = {
           premiacao_preventiva_hora?: number
           taxa_comissao_peca?: number
           taxa_comissao_servico?: number
+          tipo_id?: string | null
           valor_hora?: number
           vigencia_fim?: string | null
           vigencia_inicio?: string | null
@@ -678,6 +702,13 @@ export type Database = {
             columns: ["grupo_id"]
             isOneToOne: false
             referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contratos_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "contrato_tipos"
             referencedColumns: ["id"]
           },
         ]

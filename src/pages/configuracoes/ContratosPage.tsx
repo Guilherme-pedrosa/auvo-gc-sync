@@ -16,11 +16,13 @@ import { reconcileFutureContractPlans } from "@/lib/contractVisitPlanning";
 
 type Grupo = { id: string; nome: string; criado_em: string };
 type Membro = { id: string; grupo_id: string; cliente_nome: string };
+type ContratoTipo = { id: string; nome: string };
 type Contrato = {
   id: string;
   nome: string;
   grupo_id: string | null;
   cliente_nome: string | null;
+  tipo_id: string | null;
   valor_hora: number;
   taxa_comissao_servico: number;
   taxa_comissao_peca: number;
@@ -37,6 +39,7 @@ export default function ContratosPage() {
   const [grupoDialog, setGrupoDialog] = useState<{ open: boolean; grupo?: Grupo }>({ open: false });
   const [contratoDialog, setContratoDialog] = useState<{ open: boolean; contrato?: Contrato }>({ open: false });
   const [membrosDialog, setMembrosDialog] = useState<{ open: boolean; grupo?: Grupo }>({ open: false });
+  const [tiposDialog, setTiposDialog] = useState(false);
 
   const { data: grupos = [], isLoading: loadingGrupos } = useQuery({
     queryKey: ["grupos_clientes"],
@@ -50,9 +53,21 @@ export default function ContratosPage() {
   const { data: contratos = [], isLoading: loadingContratos } = useQuery({
     queryKey: ["contratos"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("contratos").select("*").order("nome");
+      const { data, error } = await supabase.from("contratos").select("*, contrato_tipos(nome)").order("nome");
       if (error) throw error;
-      return data as Contrato[];
+      return data.map(c => ({
+        ...c,
+        tipo_nome: c.contrato_tipos?.nome
+      })) as (Contrato & { tipo_nome?: string })[];
+    },
+  });
+
+  const { data: tipos = [] } = useQuery({
+    queryKey: ["contrato_tipos"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("contrato_tipos").select("*").order("nome");
+      if (error) throw error;
+      return data as ContratoTipo[];
     },
   });
 
@@ -111,9 +126,14 @@ export default function ContratosPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Contratos</CardTitle>
-          <Button size="sm" onClick={() => setContratoDialog({ open: true })}>
-            <Plus className="h-4 w-4 mr-1" /> Novo contrato
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setTiposDialog(true)}>
+              Gerenciar Tipos
+            </Button>
+            <Button size="sm" onClick={() => setContratoDialog({ open: true })}>
+              <Plus className="h-4 w-4 mr-1" /> Novo contrato
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loadingContratos ? (
@@ -125,6 +145,7 @@ export default function ContratosPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Alvo</TableHead>
                   <TableHead className="text-right">R$/hora</TableHead>
                   <TableHead className="text-right">% Serv.</TableHead>
@@ -135,9 +156,12 @@ export default function ContratosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contratos.map((c) => (
+                {(contratos as any[]).map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.nome}</TableCell>
+                    <TableCell>
+                      {c.tipo_nome ? <Badge variant="outline">{c.tipo_nome}</Badge> : "—"}
+                    </TableCell>
                     <TableCell>
                       {c.grupo_id
                         ? `Grupo: ${grupoNomeById[c.grupo_id] || "—"}`
@@ -219,9 +243,68 @@ export default function ContratosPage() {
       </Card>
 
       <GrupoDialog key={`g-${grupoDialog.grupo?.id ?? "new"}-${grupoDialog.open}`} state={grupoDialog} onClose={() => setGrupoDialog({ open: false })} />
-      <ContratoDialog key={`c-${contratoDialog.contrato?.id ?? "new"}-${contratoDialog.open}`} state={contratoDialog} grupos={grupos} onClose={() => setContratoDialog({ open: false })} />
+      <ContratoDialog key={`c-${contratoDialog.contrato?.id ?? "new"}-${contratoDialog.open}`} state={contratoDialog} grupos={grupos} tipos={tipos} onClose={() => setContratoDialog({ open: false })} />
       <MembrosDialog state={membrosDialog} membros={membros} onClose={() => setMembrosDialog({ open: false })} />
+      <TiposContratoDialog open={tiposDialog} onClose={() => setTiposDialog(false)} />
     </div>
+  );
+}
+
+function TiposContratoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [novo, setNovo] = useState("");
+  const { data: tipos = [] } = useQuery({
+    queryKey: ["contrato_tipos"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("contrato_tipos").select("*").order("nome");
+      if (error) throw error;
+      return data as ContratoTipo[];
+    },
+    enabled: open,
+  });
+
+  const add = useMutation({
+    mutationFn: async (nome: string) => {
+      const { error } = await supabase.from("contrato_tipos").insert({ nome });
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["contrato_tipos"] }); setNovo(""); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("contrato_tipos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contrato_tipos"] }),
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Tipos de Contrato</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Novo tipo (ex: Higienização)" />
+            <Button onClick={() => novo.trim() && add.mutate(novo.trim())} disabled={add.isPending}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="max-h-60 overflow-auto border rounded divide-y">
+            {tipos.map((t) => (
+              <div key={t.id} className="flex items-center justify-between p-2">
+                <span className="text-sm">{t.nome}</span>
+                <Button size="icon" variant="ghost" onClick={() => { if (confirm("Excluir este tipo?")) remove.mutate(t.id); }}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -268,14 +351,15 @@ function GrupoDialog({ state, onClose }: { state: { open: boolean; grupo?: Grupo
 }
 
 function ContratoDialog({
-  state, grupos, onClose,
-}: { state: { open: boolean; contrato?: Contrato }; grupos: Grupo[]; onClose: () => void }) {
+  state, grupos, tipos, onClose,
+}: { state: { open: boolean; contrato?: Contrato }; grupos: Grupo[]; tipos: ContratoTipo[]; onClose: () => void }) {
   const qc = useQueryClient();
   const c = state.contrato;
   const [nome, setNome] = useState(c?.nome || "");
   const [tipo, setTipo] = useState<"grupo" | "cliente">(c?.cliente_nome ? "cliente" : "grupo");
   const [grupoId, setGrupoId] = useState(c?.grupo_id || "");
   const [clienteNome, setClienteNome] = useState(c?.cliente_nome || "");
+  const [tipoId, setTipoId] = useState(c?.tipo_id || "");
   const [valorHora, setValorHora] = useState(String(c?.valor_hora ?? ""));
   const [taxa, setTaxa] = useState(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
   const [taxaPeca, setTaxaPeca] = useState(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
@@ -309,6 +393,7 @@ function ContratoDialog({
         nome,
         grupo_id: tipo === "grupo" ? grupoId : null,
         cliente_nome: tipo === "cliente" ? clienteNome.trim() : null,
+        tipo_id: tipoId && tipoId !== "none" ? tipoId : null,
         valor_hora: parseFloat(valorHora.replace(",", ".")) || 0,
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
         taxa_comissao_peca: (parseFloat(taxaPeca.replace(",", ".")) || 0) / 100,
@@ -352,9 +437,10 @@ function ContratoDialog({
       else {
         setNome(c?.nome || "");
         setTipo(c?.cliente_nome ? "cliente" : "grupo");
-        setGrupoId(c?.grupo_id || "");
-        setClienteNome(c?.cliente_nome || "");
-        setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
+         setGrupoId(c?.grupo_id || "");
+         setClienteNome(c?.cliente_nome || "");
+         setTipoId(c?.tipo_id || "");
+         setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
         setTaxaPeca(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
         setPrevHora(String(c?.premiacao_preventiva_hora ?? ""));
         setHorasMes(String(c?.horas_mes_contratadas ?? ""));
@@ -366,6 +452,18 @@ function ContratoDialog({
         <DialogHeader><DialogTitle>{c ? "Editar contrato" : "Novo contrato"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Nome do contrato</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} /></div>
+          <div>
+            <Label>Tipo de contrato</Label>
+            <Select value={tipoId} onValueChange={setTipoId}>
+              <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Sem tipo —</SelectItem>
+                {tipos.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label>Aplicar a</Label>
             <Select value={tipo} onValueChange={(v) => setTipo(v as "grupo" | "cliente")}>
@@ -396,7 +494,7 @@ function ContratoDialog({
                 placeholder="Digite ou selecione um cliente"
               />
               <datalist id="contrato-clientes-list">
-                {clientesDisponiveis.map((cn) => <option key={cn} value={cn} />)}
+                {clientesDisponiveis.map((cn: string) => <option key={cn} value={cn} />)}
               </datalist>
             </div>
           )}
@@ -489,7 +587,7 @@ function MembrosDialog({
               onKeyDown={(e) => { if (e.key === "Enter" && novo.trim()) add.mutate(novo.trim()); }}
             />
             <datalist id="clientes-list">
-              {clientesDisponiveis.map((c) => <option key={c} value={c} />)}
+              {clientesDisponiveis.map((c: string) => <option key={c} value={c} />)}
             </datalist>
             <Button onClick={() => novo.trim() && add.mutate(novo.trim())} disabled={add.isPending}>
               <Plus className="h-4 w-4" />
