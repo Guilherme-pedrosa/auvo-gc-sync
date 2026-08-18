@@ -494,7 +494,7 @@ function ContratoDialog({
                 placeholder="Digite ou selecione um cliente"
               />
               <datalist id="contrato-clientes-list">
-                {clientesDisponiveis.map((cn) => <option key={cn} value={cn} />)}
+                {clientesDisponiveis.map((cn: string) => <option key={cn} value={cn} />)}
               </datalist>
             </div>
           )}
