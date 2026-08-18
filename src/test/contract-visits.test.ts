@@ -13,6 +13,7 @@ import {
   rotatingVisitTeams,
   summarizeContractVisitMonth,
 } from "@/lib/contractVisits";
+import { contractMonthlyHoursAreFulfilled } from "@/lib/agendaContractVisits";
 
 describe("planejamento anual de visitas contratuais", () => {
   const root = resolve(__dirname, "../..");
@@ -325,9 +326,30 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).not.toContain("SET data = v_exec.data_realizada");
     expect(migration).toContain("OLD.previsao_tipo = 'CONTRATO_REALIZADO'");
     expect(migration).toContain("RETURN OLD");
-    expect(agendaPage).toContain("JÁ CUMPRIDO NO MÊS:");
+    expect(agendaPage).toContain("PROGRESSO NO MÊS");
+    expect(agendaPage).toContain("CARGA MENSAL CUMPRIDA");
     expect(agendaPage).toContain("disponíveis");
-    expect(agendaPage).toContain("bg-emerald-100 text-emerald-950");
+    expect(agendaPage).toContain("bg-emerald-50 text-emerald-950");
+    expect(agendaPage).not.toContain("bg-emerald-100 text-emerald-950 border-emerald-600 ring-1");
+  });
+
+  it("só deixa a previsão contratual verde quando todas as horas mensais foram cumpridas", () => {
+    expect(contractMonthlyHoursAreFulfilled({
+      contrato_horas_cumpridas: 17.9,
+      contrato_horas_previstas: 32,
+    })).toBe(false);
+    expect(contractMonthlyHoursAreFulfilled({
+      contrato_horas_cumpridas: 32,
+      contrato_horas_previstas: 32,
+    })).toBe(true);
+    expect(contractMonthlyHoursAreFulfilled({
+      contrato_horas_cumpridas: 34.5,
+      contrato_horas_previstas: 32,
+    })).toBe(true);
+    expect(contractMonthlyHoursAreFulfilled({
+      contrato_horas_cumpridas: 0,
+      contrato_horas_previstas: 0,
+    })).toBe(false);
   });
 
   it("impede dois cards do mesmo contrato, visita e técnico", () => {

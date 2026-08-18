@@ -69,7 +69,10 @@ import {
   summarizeAgendaOsPlannedVsActual,
 } from "@/lib/agendaPlannedVsActual";
 import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
-import { sortAgendaItemsWithContractPlanFirst } from "@/lib/agendaContractVisits";
+import {
+  contractMonthlyHoursAreFulfilled,
+  sortAgendaItemsWithContractPlanFirst,
+} from "@/lib/agendaContractVisits";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -156,8 +159,8 @@ const getStatusColor = (a: AgendaAgendamento) => {
     return "bg-violet-100 text-violet-900 border-violet-500 dark:bg-violet-950/60 dark:text-violet-200 dark:border-violet-700 font-bold";
   }
   if (a.previsao_tipo === "CONTRATO") {
-    if (Number(a.contrato_visitas_cumpridas || 0) > 0) {
-      return "bg-emerald-100 text-emerald-950 border-emerald-600 ring-1 ring-emerald-400 dark:bg-emerald-950/70 dark:text-emerald-100 dark:border-emerald-500 font-bold";
+    if (contractMonthlyHoursAreFulfilled(a)) {
+      return "bg-emerald-50 text-emerald-950 border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-100 dark:border-emerald-600 font-bold";
     }
     return "bg-sky-100 text-sky-950 border-sky-500 dark:bg-sky-950/60 dark:text-sky-100 dark:border-sky-600 font-bold";
   }
@@ -357,6 +360,8 @@ function Celula({
             && Boolean(a.contrato_visita_execucao_id || a.contrato_visita_realizada_em);
           const visitaContratualComExecucaoNoMes = visitaContratualPlanejada
             && Number(a.contrato_visitas_cumpridas || 0) > 0;
+          const cargaContratualMensalCumprida = visitaContratualPlanejada
+            && contractMonthlyHoursAreFulfilled(a);
           const visitaContratualAlinhada = visitaContratualPlanejada
             && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada;
@@ -483,10 +488,19 @@ function Celula({
                     </span>
                   )}
                   {visitaContratualComExecucaoNoMes && (
-                    <span className="mt-1 flex items-center gap-1 rounded border border-emerald-600 bg-emerald-50 px-1.5 py-1 text-[10px] font-black normal-case text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950 dark:text-emerald-50">
-                      <CircleCheckBig className="h-3 w-3 shrink-0" />
+                    <span
+                      className={cn(
+                        "mt-1 flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] font-black normal-case",
+                        cargaContratualMensalCumprida
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-50"
+                          : "border-sky-300 bg-white/70 text-sky-950 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100",
+                      )}
+                    >
+                      {cargaContratualMensalCumprida
+                        ? <CircleCheckBig className="h-3 w-3 shrink-0" />
+                        : <Clock3 className="h-3 w-3 shrink-0" />}
                       <span>
-                        JÁ CUMPRIDO NO MÊS: {formatContractHours(a.contrato_horas_cumpridas)} · {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas ?? 0} visita(s)
+                        {cargaContratualMensalCumprida ? "CARGA MENSAL CUMPRIDA" : "PROGRESSO NO MÊS"}: {formatContractHours(a.contrato_horas_cumpridas)} · {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas ?? 0} visita(s)
                         {ultimaRealizadaLabel ? ` · última em ${ultimaRealizadaLabel}` : ""} · saldo: {formatContractHours(horasContratuaisDisponiveis)} disponíveis
                       </span>
                     </span>

@@ -49,6 +49,20 @@ export type ContractVisitAgendaItem = {
   contrato_horas_previstas?: number;
 };
 
+/**
+ * O verde do card representa carga mensal integralmente cumprida.
+ * Ter alguma visita ou algumas horas executadas significa apenas progresso.
+ */
+export function contractMonthlyHoursAreFulfilled(input: {
+  contrato_horas_cumpridas?: number | null;
+  contrato_horas_previstas?: number | null;
+}): boolean {
+  const plannedHours = Math.max(0, Number(input.contrato_horas_previstas) || 0);
+  const completedHours = Math.max(0, Number(input.contrato_horas_cumpridas) || 0);
+
+  return plannedHours > 0 && completedHours + 0.01 >= plannedHours;
+}
+
 const competenceKey = (value: string | null | undefined) => String(value || "").slice(0, 7);
 
 /**
