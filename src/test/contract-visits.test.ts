@@ -361,6 +361,19 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("RETURN NULL");
   });
 
+  it("não compara o id do cliente RH com o id do contrato ao filtrar visitas", () => {
+    const page = readFileSync(
+      resolve(root, "src/pages/agendamento/VisitasContratuaisPage.tsx"),
+      "utf8",
+    );
+
+    expect(page).not.toContain("useRhClientesVinculados");
+    expect(page).not.toContain("vinculadosIds.has(c.id)");
+    expect(page).toContain('data.filter(c => c.id === filtroCliente)');
+    expect(page).toContain('data.filter(c => c.contrato_id === filtroCliente)');
+    expect(page).toContain('...(contractsQuery.data || []).map(c => ({ value: c.id, label: c.nome }))');
+  });
+
   it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {
     const sequenceMigration = readFileSync(
       resolve(root, "supabase/migrations/20260818160000_fix_contract_visit_sequence_and_hypermarcas_link.sql"),

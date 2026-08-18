@@ -30,9 +30,6 @@ import {
   type ContractVisitMonthSummary,
 } from "@/lib/contractVisits";
 import {
-  useRhClientesVinculados,
-} from "@/hooks/rh/useRh";
-import {
   planningYearsFromDates,
   reconcileContractVisitYear,
   todayISO,
@@ -185,7 +182,6 @@ export default function VisitasContratuaisPage() {
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
-  const rhClientesVinculadosQuery = useRhClientesVinculados();
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -280,49 +276,29 @@ export default function VisitasContratuaisPage() {
 
   const contracts = useMemo(() => {
     const data = contractsQuery.data || [];
-    const vinculadosIds = new Set((rhClientesVinculadosQuery.data || []).map(c => c.id));
-    
-    // Filtra contratos apenas de clientes vinculados no RH
-    const filteredByVinculo = data.filter(c => vinculadosIds.has(c.id));
-    
-    if (filtroCliente === "todos") return filteredByVinculo;
-    return filteredByVinculo.filter(c => c.id === filtroCliente);
-  }, [contractsQuery.data, rhClientesVinculadosQuery.data, filtroCliente]);
+    if (filtroCliente === "todos") return data;
+    return data.filter(c => c.id === filtroCliente);
+  }, [contractsQuery.data, filtroCliente]);
 
   const configs = useMemo(() => {
     const data = configsQuery.data || [];
-    const vinculadosIds = new Set((rhClientesVinculadosQuery.data || []).map(c => c.id));
-    
-    // Filtra configurações apenas de clientes vinculados no RH
-    const filteredByVinculo = data.filter(config => vinculadosIds.has(config.contrato_id));
-    
-    if (filtroCliente === "todos") return filteredByVinculo;
-    return filteredByVinculo.filter(c => c.contrato_id === filtroCliente);
-  }, [configsQuery.data, rhClientesVinculadosQuery.data, filtroCliente]);
+    if (filtroCliente === "todos") return data;
+    return data.filter(c => c.contrato_id === filtroCliente);
+  }, [configsQuery.data, filtroCliente]);
 
   const technicians = techniciansQuery.data || [];
 
   const forecasts = useMemo(() => {
     const data = forecastsQuery.data || [];
-    const vinculadosIds = new Set((rhClientesVinculadosQuery.data || []).map(c => c.id));
-    
-    // Filtra previsões apenas de clientes vinculados no RH
-    const filteredByVinculo = data.filter(f => vinculadosIds.has(f.contrato_id || ""));
-    
-    if (filtroCliente === "todos") return filteredByVinculo;
-    return filteredByVinculo.filter(f => f.contrato_id === filtroCliente);
-  }, [forecastsQuery.data, rhClientesVinculadosQuery.data, filtroCliente]);
+    if (filtroCliente === "todos") return data;
+    return data.filter(f => f.contrato_id === filtroCliente);
+  }, [forecastsQuery.data, filtroCliente]);
 
   const executions = useMemo(() => {
     const data = executionsQuery.data || [];
-    const vinculadosIds = new Set((rhClientesVinculadosQuery.data || []).map(c => c.id));
-    
-    // Filtra execuções apenas de clientes vinculados no RH
-    const filteredByVinculo = data.filter(e => vinculadosIds.has(e.contrato_id));
-    
-    if (filtroCliente === "todos") return filteredByVinculo;
-    return filteredByVinculo.filter(e => e.contrato_id === filtroCliente);
-  }, [executionsQuery.data, rhClientesVinculadosQuery.data, filtroCliente]);
+    if (filtroCliente === "todos") return data;
+    return data.filter(e => e.contrato_id === filtroCliente);
+  }, [executionsQuery.data, filtroCliente]);
   const configByContract = useMemo(() => new Map(configs.map((config) => [config.contrato_id, config])), [configs]);
   const contractById = useMemo(() => new Map(contracts.map((contract) => [contract.id, contract])), [contracts]);
   const technicianById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician])), [technicians]);
@@ -677,7 +653,7 @@ export default function VisitasContratuaisPage() {
             <SearchableSelect
               options={[
                 { value: "todos", label: "Todos os Clientes" },
-                ...(rhClientesVinculadosQuery.data || []).map(c => ({ value: c.id, label: c.nome }))
+                ...(contractsQuery.data || []).map(c => ({ value: c.id, label: c.nome }))
               ]}
               value={filtroCliente}
               onValueChange={(val) => setFiltroCliente(val || "todos")}
