@@ -486,19 +486,6 @@ export default function VisitasContratuaisPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const legacyDeleteConfig = useMutation({
-    mutationFn: async (configId: string) => {
-      const { error } = await supabase.from("contratos_visitas_config").delete().eq("id", configId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Configuração removida.");
-      void queryClient.invalidateQueries({ queryKey: ["contractual-visits"] });
-      void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   const initialPlanIds = useMemo(() => configs.filter((config) => {
     if (!config.ativo) return false;
     const contract = contractById.get(config.contrato_id);
