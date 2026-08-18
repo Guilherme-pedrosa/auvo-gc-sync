@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock3,
   Edit,
   ExternalLink,
@@ -184,6 +186,16 @@ export default function VisitasContratuaisPage() {
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) next.delete(monthKey);
+      else next.add(monthKey);
+      return next;
+    });
+  };
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -325,6 +337,17 @@ export default function VisitasContratuaisPage() {
       const rows = map.get(execution.contrato_visita_config_id) || [];
       rows.push(execution);
       map.set(execution.contrato_visita_config_id, rows);
+    }
+    return map;
+  }, [executions]);
+
+  const executionsByMonth = useMemo(() => {
+    const map = new Map<string, ContractExecution[]>();
+    for (const execution of executions) {
+      const monthKey = execution.data_realizada.slice(0, 7);
+      const rows = map.get(monthKey) || [];
+      rows.push(execution);
+      map.set(monthKey, rows);
     }
     return map;
   }, [executions]);
@@ -661,20 +684,84 @@ export default function VisitasContratuaisPage() {
             ) : executions.length === 0 ? (
               <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhuma visita real reconhecida em {year}.</div>
             ) : (
-              <div className="max-h-[360px] overflow-auto rounded-lg border">
+              <div className="max-h-[500px] overflow-auto rounded-lg border">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Data real</TableHead><TableHead>Contrato / cliente</TableHead><TableHead>Visita</TableHead><TableHead>Técnicos</TableHead><TableHead>Horas reais</TableHead><TableHead>Tarefas Auvo</TableHead></TableRow></TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead>Mês / Data</TableHead>
+                      <TableHead>Contrato / cliente</TableHead>
+                      <TableHead>Visita</TableHead>
+                      <TableHead>Técnicos</TableHead>
+                      <TableHead>Horas reais</TableHead>
+                      <TableHead>Tarefas Auvo</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
-                    {executions.slice(0, 100).map((execution) => (
-                      <TableRow key={execution.id}>
-                        <TableCell className="whitespace-nowrap font-medium">{dateLabel(execution.data_realizada)}</TableCell>
-                        <TableCell className="min-w-[280px]"><p className="font-semibold">{contractById.get(execution.contrato_id)?.nome || "Contrato"}</p><p className="text-xs text-muted-foreground">{execution.cliente}</p></TableCell>
-                        <TableCell className="whitespace-nowrap">{execution.visita_numero}ª realizada</TableCell>
-                        <TableCell className="min-w-[200px] text-xs">{execution.tecnicos.join(" · ") || "Não identificado"}</TableCell>
-                        <TableCell className="whitespace-nowrap font-bold text-emerald-700">{hoursLabel(Number(execution.horas_trabalhadas || 0))}</TableCell>
-                        <TableCell className="min-w-[240px]"><div className="flex flex-wrap gap-1">{execution.tarefa_ids.map((taskId) => <a key={taskId} href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`} target="_blank" rel="noreferrer" className="rounded border bg-muted px-2 py-1 font-mono text-xs text-primary hover:underline">#{taskId}</a>)}</div></TableCell>
-                      </TableRow>
-                    ))}
+                    {(() => {
+                      const monthKeys = Array.from(executionsByMonth.keys()).sort((a, b) => b.localeCompare(a));
+                      return monthKeys.map((monthKey) => {
+                        const monthExecutions = executionsByMonth.get(monthKey) || [];
+                        const isExpanded = expandedMonths.has(monthKey);
+                        const totalHours = monthExecutions.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
+                        const [yearPart, monthPart] = monthKey.split("-");
+                        const monthLabel = `${MONTHS[Number(monthPart) - 1]} / ${yearPart}`;
+
+                        return (
+                          <React.Fragment key={monthKey}>
+                            <TableRow 
+                              className="cursor-pointer bg-muted/20 font-semibold hover:bg-muted/40"
+                              onClick={() => toggleMonth(monthKey)}
+                            >
+                              <TableCell>
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </TableCell>
+                              <TableCell colSpan={4} className="py-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm uppercase tracking-wider text-muted-foreground">{monthLabel}</span>
+                                  <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                                    {monthExecutions.length} visita(s)
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-bold text-emerald-700">
+                                {hoursLabel(totalHours)}
+                              </TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                            {isExpanded && monthExecutions.map((execution) => (
+                              <TableRow key={execution.id} className="bg-background">
+                                <TableCell></TableCell>
+                                <TableCell className="whitespace-nowrap text-xs font-medium">{dateLabel(execution.data_realizada)}</TableCell>
+                                <TableCell className="min-w-[280px]">
+                                  <p className="font-semibold">{contractById.get(execution.contrato_id)?.nome || "Contrato"}</p>
+                                  <p className="text-[11px] text-muted-foreground">{execution.cliente}</p>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-xs">{execution.visita_numero}ª realizada</TableCell>
+                                <TableCell className="min-w-[200px] text-[11px]">{execution.tecnicos.join(" · ") || "Não identificado"}</TableCell>
+                                <TableCell className="whitespace-nowrap text-xs font-bold text-emerald-700">{hoursLabel(Number(execution.horas_trabalhadas || 0))}</TableCell>
+                                <TableCell className="min-w-[240px]">
+                                  <div className="flex flex-wrap gap-1">
+                                    {execution.tarefa_ids.map((taskId) => (
+                                      <a 
+                                        key={taskId} 
+                                        href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`} 
+                                        target="_blank" 
+                                        rel="noreferrer" 
+                                        className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary hover:underline"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        #{taskId}
+                                      </a>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
                   </TableBody>
                 </Table>
               </div>
