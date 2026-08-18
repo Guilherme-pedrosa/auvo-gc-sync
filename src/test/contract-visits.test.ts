@@ -278,6 +278,19 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(agendaPage).toContain("contrato_tipo_nome");
   });
 
+  it("não recalcula visitas em toda atualização técnica da sincronização", () => {
+    const performanceMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818153000_optimize_contract_visit_sync.sql"),
+      "utf8",
+    );
+
+    expect(performanceMigration).toContain("idx_rh_clientes_nome_vinculado_normalizado");
+    expect(performanceMigration).toContain("OLD.questionario_id IS NOT DISTINCT FROM NEW.questionario_id");
+    expect(performanceMigration).toContain("OLD.questionario_respostas IS NOT DISTINCT FROM NEW.questionario_respostas");
+    expect(performanceMigration).toContain("OLD.cliente IS DISTINCT FROM NEW.cliente");
+    expect(performanceMigration).not.toMatch(/UPDATE OF[^;]*atualizado_em/);
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);
