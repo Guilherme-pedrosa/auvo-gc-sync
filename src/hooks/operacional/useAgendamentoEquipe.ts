@@ -235,51 +235,44 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     }
   }
 
-  // A agenda normalmente contém a Tarefa Execução (atributo GC 73344), enquanto
-  // auvo_task_id identifica a Tarefa OS (73343). Relaciona as duas antes de renderizar.
-  let offset = 0;
-  const pageSize = 1000;
-  while (true) {
-    const { data, error } = await sb
+  // Reduzimos a varredura para os IDs que realmente precisamos, evitando timeouts
+  if (taskIds.length > 0) {
+    const { data: vinculosRelacionados, error: errorVinculos } = await sb
       .from("tarefas_central")
       .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
-      .not("gc_os_codigo", "is", null)
-      .not("gc_os_tarefa_exec", "is", null)
-      .range(offset, offset + pageSize - 1);
-    if (error) throw error;
+      .in("gc_os_tarefa_exec", taskIds)
+      .not("gc_os_codigo", "is", null);
+      
+    if (!errorVinculos && vinculosRelacionados) {
+      for (const row of vinculosRelacionados) {
+        const idsExecucao = String(row.gc_os_tarefa_exec || "")
+          .split("/")
+          .map((id) => id.trim())
+          .filter((id) => /^\d+$/.test(id) && taskIds.includes(id));
+          
+        for (const taskId of idsExecucao) {
+          const atual = documentosPorTarefa.get(taskId);
+          if (atual?.os) continue;
 
-    for (const row of data ?? []) {
-      const idsExecucao = String(row.gc_os_tarefa_exec || "")
-        .split("/")
-        .map((id) => id.trim())
-        .filter((id) => /^\d+$/.test(id) && taskIds.includes(id));
-      for (const taskId of idsExecucao) {
-        // O vínculo direto com 73343 tem precedência; 73344 só preenche o que falta.
-        const atual = documentosPorTarefa.get(taskId);
-        if (atual?.os) continue;
-
-        documentosPorTarefa.set(taskId, {
-          os: (row as any).gc_os_codigo || null,
-          os_id: (row as any).gc_os_id || null,
-          orcamento: (row as any).gc_orcamento_codigo || null,
-          orcamento_id: (row as any).gc_orcamento_id || null,
-
-          situacao: (row as any).gc_os_situacao || null,
-          cliente_gc: (row as any).gc_os_cliente || null,
-          status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
-          check_in: estadoPorTarefa.get(taskId)?.check_in || null,
-          check_out: estadoPorTarefa.get(taskId)?.check_out || null,
-          tipo_id: atual?.tipo_id || null,
-          tipo_descricao: atual?.tipo_descricao || null,
-          tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || (row as any).auvo_task_id || null,
-          tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
-          vinculo_status: atual?.vinculo_status ?? null,
-        });
+          documentosPorTarefa.set(taskId, {
+            os: (row as any).gc_os_codigo || null,
+            os_id: (row as any).gc_os_id || null,
+            orcamento: (row as any).gc_orcamento_codigo || null,
+            orcamento_id: (row as any).gc_orcamento_id || null,
+            situacao: (row as any).gc_os_situacao || null,
+            cliente_gc: (row as any).gc_os_cliente || null,
+            status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
+            check_in: estadoPorTarefa.get(taskId)?.check_in || null,
+            check_out: estadoPorTarefa.get(taskId)?.check_out || null,
+            tipo_id: atual?.tipo_id || null,
+            tipo_descricao: atual?.tipo_descricao || null,
+            tarefa_os: atual?.tarefa_os || (row as any).gc_os_tarefa_os || (row as any).auvo_task_id || null,
+            tarefa_execucao: atual?.tarefa_execucao || (row as any).gc_os_tarefa_exec || null,
+            vinculo_status: atual?.vinculo_status ?? null,
+          });
+        }
       }
     }
-
-    if ((data ?? []).length < pageSize) break;
-    offset += pageSize;
   }
 
   return agendamentos.map((item) => {
