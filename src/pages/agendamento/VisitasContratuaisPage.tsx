@@ -52,6 +52,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { RegraVisitaTextoIA, type RegraInterpretada } from "@/components/agendamento/RegraVisitaTextoIA";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Filter } from "lucide-react";
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
 type VisitConfig = Database["public"]["Tables"]["contratos_visitas_config"]["Row"];
@@ -160,6 +162,7 @@ export default function VisitasContratuaisPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
+  const [filtroCliente, setFiltroCliente] = useState("todos");
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -263,11 +266,31 @@ export default function VisitasContratuaisPage() {
     gcTime: 10 * 60 * 1000,
   });
 
-  const contracts = contractsQuery.data || [];
-  const configs = configsQuery.data || [];
+  const contracts = useMemo(() => {
+    const data = contractsQuery.data || [];
+    if (filtroCliente === "todos") return data;
+    return data.filter(c => c.id === filtroCliente);
+  }, [contractsQuery.data, filtroCliente]);
+
+  const configs = useMemo(() => {
+    const data = configsQuery.data || [];
+    if (filtroCliente === "todos") return data;
+    return data.filter(c => c.contrato_id === filtroCliente);
+  }, [configsQuery.data, filtroCliente]);
+
   const technicians = techniciansQuery.data || [];
-  const forecasts = forecastsQuery.data || [];
-  const executions = executionsQuery.data || [];
+
+  const forecasts = useMemo(() => {
+    const data = forecastsQuery.data || [];
+    if (filtroCliente === "todos") return data;
+    return data.filter(f => f.contrato_id === filtroCliente);
+  }, [forecastsQuery.data, filtroCliente]);
+
+  const executions = useMemo(() => {
+    const data = executionsQuery.data || [];
+    if (filtroCliente === "todos") return data;
+    return data.filter(e => e.contrato_id === filtroCliente);
+  }, [executionsQuery.data, filtroCliente]);
   const configByContract = useMemo(() => new Map(configs.map((config) => [config.contrato_id, config])), [configs]);
   const contractById = useMemo(() => new Map(contracts.map((contract) => [contract.id, contract])), [contracts]);
   const technicianById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician])), [technicians]);
@@ -575,6 +598,20 @@ export default function VisitasContratuaisPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Select value={filtroCliente} onValueChange={setFiltroCliente}>
+              <SelectTrigger className="w-full sm:w-64">
+                <Filter className="mr-2 h-4 w-4 opacity-50" />
+                <SelectValue placeholder="Filtrar por Cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os Clientes</SelectItem>
+                {(contractsQuery.data || []).map((cliente) => (
+                  <SelectItem key={cliente.id} value={cliente.id}>
+                    {cliente.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" onClick={() => navigate("/operacional/agendamento-equipe")}><ExternalLink className="mr-2 h-4 w-4" />Abrir Agendamento Equipe</Button>
             <Button variant="outline" size="icon" onClick={() => setYear((value) => value - 1)}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="flex h-10 min-w-28 items-center justify-center rounded-md border bg-background px-4 text-sm font-semibold">{year}</div>
