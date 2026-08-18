@@ -323,6 +323,8 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("Visita já realizada neste mês em %s");
     expect(migration).toContain("SET atualizado_em = now()");
     expect(migration).not.toContain("SET data = v_exec.data_realizada");
+    expect(migration).toContain("OLD.previsao_tipo = 'CONTRATO_REALIZADO'");
+    expect(migration).toContain("RETURN OLD");
     expect(agendaPage).toContain("Visita já realizada neste mês");
     expect(agendaPage).toContain("disponíveis");
   });
