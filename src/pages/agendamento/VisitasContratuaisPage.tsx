@@ -340,6 +340,17 @@ export default function VisitasContratuaisPage() {
     }
     return map;
   }, [executions]);
+
+  const executionsByMonth = useMemo(() => {
+    const map = new Map<string, ContractExecution[]>();
+    for (const execution of executions) {
+      const monthKey = execution.data_realizada.slice(0, 7);
+      const rows = map.get(monthKey) || [];
+      rows.push(execution);
+      map.set(monthKey, rows);
+    }
+    return map;
+  }, [executions]);
   const stackedConfigIds = useMemo(() => {
     const visitsByWeek = new Map<string, Set<number>>();
     for (const forecast of forecasts) {
