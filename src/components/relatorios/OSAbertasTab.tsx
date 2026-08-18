@@ -417,6 +417,31 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const filteredItems = useMemo(() => {
     let items = data.filter((t) => !movedOsIds.has(t.gc_os_id) && !removedOsIds.has(String(t.gc_os_id || "")));
 
+    // Deduplica linhas espelho da MESMA tarefa + MESMA OS. O sync grava mirror_keys
+    // distintas (com e sem orçamento vinculado), o que fazia a mesma tarefa aparecer
+    // 2, 3 ou 4 vezes no Controle OS. Mantemos a linha mais completa (com orçamento
+    // e atualização mais recente). Tarefas compartilhadas por OS diferentes seguem
+    // separadas porque a chave inclui o gc_os_id.
+    const richness = (row: any) =>
+      (row?.gc_orcamento_id ? 4 : 0)
+      + (row?.gc_os_valor_total ? 2 : 0)
+      + (row?.gc_os_tarefa_exec ? 1 : 0);
+    const bestByTaskOs = new Map<string, any>();
+    for (const it of items) {
+      const key = `${String(it.auvo_task_id || "")}::${String(it.gc_os_id || "")}`;
+      const current = bestByTaskOs.get(key);
+      if (!current) {
+        bestByTaskOs.set(key, it);
+        continue;
+      }
+      const better = richness(it) !== richness(current)
+        ? (richness(it) > richness(current) ? it : current)
+        : (String(it.atualizado_em || "") > String(current.atualizado_em || "") ? it : current);
+      bestByTaskOs.set(key, better);
+    }
+    items = items.filter((it) =>
+      bestByTaskOs.get(`${String(it.auvo_task_id || "")}::${String(it.gc_os_id || "")}`) === it);
+
     // Deduplica por gc_os_id: se houver linha "real" (Auvo) e "shell pendente" para a mesma OS,
     // descarta a shell pendente. A shell GC-only (sem 73343) é preservada porque é a única fonte.
     const byOsId = new Map<string, any[]>();
