@@ -758,7 +758,7 @@ export default function VisitasContratuaisPage() {
                                 </TableCell>
                               </TableRow>
                             ))}
-                          </useMemo>
+                          </React.Fragment>
                         );
                       });
                     })()}
