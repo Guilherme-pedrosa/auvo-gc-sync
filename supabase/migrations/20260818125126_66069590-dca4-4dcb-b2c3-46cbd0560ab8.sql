@@ -1,0 +1,1 @@
+ALTER TABLE public.contratos_visitas_config ADD COLUMN IF NOT EXISTS visitas_consecutivas boolean NOT NULL DEFAULT false;
