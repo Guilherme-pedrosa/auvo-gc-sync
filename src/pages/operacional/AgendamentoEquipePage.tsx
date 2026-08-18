@@ -974,7 +974,12 @@ export default function AgendamentoEquipePage() {
     const item = dragItem.current;
     if (!item) return;
 
-    if (item.data === date && item.colaborador_id === colabId) return;
+    // Se for previsão, ignoramos a trava de mesma célula para permitir que a UI force o refresh/reposicionamento se necessário
+    // mas na prática, se for a mesma data e colab, não fazemos nada no banco.
+    if (item.data === date && item.colaborador_id === colabId) {
+      dragItem.current = null;
+      return;
+    }
 
     // Se for uma visita contratual, perguntamos se deseja alterar todas as futuras
     const isVisita = Boolean(
@@ -1048,8 +1053,10 @@ export default function AgendamentoEquipePage() {
           }
         }
 
+        // Se for PREVISAO, atualizamos o registro original (id: item.id)
+        // Se item.id não existir (não deveria ocorrer em drag&drop de item existente), ele cria um novo.
         await saveAgendamento.mutateAsync({
-          id: item.id,
+          id: item.id || undefined, 
           data: date,
           colaborador_id: colabId,
           colaborador_nome: colab.nome,
@@ -1096,7 +1103,7 @@ export default function AgendamentoEquipePage() {
 
     for (const a of data?.agendamentos ?? []) {
       // Filtro de Previsões / Visitas Contratuais
-      const isPrevisao = Boolean(a.previsao_continuidade && a.origem !== "CONTRATO");
+      const isPrevisao = Boolean(a.previsao_continuidade || a.status === "PREVISAO");
       const isVisita = Boolean(a.previsao_tipo === "CONTRATO" || a.previsao_tipo === "CONTRATO_REALIZADO" || a.origem === "CONTRATO");
 
       if (isPrevisao && !mostrarPrevisoes) continue;
