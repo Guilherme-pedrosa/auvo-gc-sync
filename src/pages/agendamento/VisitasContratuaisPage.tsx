@@ -54,6 +54,7 @@ import { RegraVisitaTextoIA, type RegraInterpretada } from "@/components/agendam
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
 type VisitConfig = Database["public"]["Tables"]["contratos_visitas_config"]["Row"];
@@ -182,7 +183,7 @@ export default function VisitasContratuaisPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
-  const [filtroCliente, setFiltroCliente] = useState("todos");
+  const [filtroCliente, setFiltroCliente] = useState<string>("todos");
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
