@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,10 +37,17 @@ type Contrato = {
 
 export default function ContratosPage() {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [grupoDialog, setGrupoDialog] = useState<{ open: boolean; grupo?: Grupo }>({ open: false });
   const [contratoDialog, setContratoDialog] = useState<{ open: boolean; contrato?: Contrato }>({ open: false });
   const [membrosDialog, setMembrosDialog] = useState<{ open: boolean; grupo?: Grupo }>({ open: false });
   const [tiposDialog, setTiposDialog] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("tipos") === "true") {
+      setTiposDialog(true);
+    }
+  }, [searchParams]);
 
   const { data: grupos = [], isLoading: loadingGrupos } = useQuery({
     queryKey: ["grupos_clientes"],
