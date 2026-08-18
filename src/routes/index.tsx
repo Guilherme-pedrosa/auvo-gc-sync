@@ -1,7 +1,5 @@
 export default function Index() {
 
-  return (
-    <div className="p-8 space-y-8 max-w-4xl mx-auto">
       <header className="space-y-2 border-b pb-6">
         <h1 className="text-3xl font-bold text-blue-700 tracking-tight">Lógica de Validação: Auvo ↔ GestãoClick</h1>
         <p className="text-slate-500 italic">
