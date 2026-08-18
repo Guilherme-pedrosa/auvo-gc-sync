@@ -342,6 +342,25 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("duplicate.position > 1");
   });
 
+  it("permite mover e excluir previsões ainda não cumpridas sem a sincronização recriá-las", () => {
+    const page = readFileSync(
+      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
+      "utf8",
+    );
+    const migration = readFileSync(
+      resolve(root, "supabase/migrations/20260818193000_allow_manual_contract_forecast_changes.sql"),
+      "utf8",
+    );
+
+    expect(page).toContain("const visitaContratualBloqueada = visitaContratualRealizada");
+    expect(page).not.toMatch(/visitaContratualBloqueada = visitaContratualRealizada\s*\|\| visitaContratualAlinhada/);
+    expect(page).toContain('rpc("mover_previsao_visita_contratual"');
+    expect(migration).toContain("contrato_visita_ajuste_manual");
+    expect(migration).toContain("agenda_contrato_visita_exclusoes");
+    expect(migration).toContain("excluir_previsao_visita_contratual");
+    expect(migration).toContain("RETURN NULL");
+  });
+
   it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {
     const sequenceMigration = readFileSync(
       resolve(root, "supabase/migrations/20260818160000_fix_contract_visit_sequence_and_hypermarcas_link.sql"),

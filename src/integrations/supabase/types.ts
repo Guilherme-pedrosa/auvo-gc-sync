@@ -56,6 +56,7 @@ export type Database = {
           colaborador_nome: string
           contrato_id: string | null
           contrato_visita_competencia: string | null
+          contrato_visita_ajuste_manual: boolean
           contrato_visita_config_id: string | null
           contrato_visita_execucao_id: string | null
           contrato_visita_horas_realizadas: number | null
@@ -93,6 +94,7 @@ export type Database = {
           colaborador_nome: string
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
+          contrato_visita_ajuste_manual?: boolean
           contrato_visita_config_id?: string | null
           contrato_visita_execucao_id?: string | null
           contrato_visita_horas_realizadas?: number | null
@@ -130,6 +132,7 @@ export type Database = {
           colaborador_nome?: string
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
+          contrato_visita_ajuste_manual?: boolean
           contrato_visita_config_id?: string | null
           contrato_visita_execucao_id?: string | null
           contrato_visita_horas_realizadas?: number | null
@@ -3505,8 +3508,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      excluir_previsao_visita_contratual: {
+        Args: { p_agendamento_id: string }
+        Returns: number
+      }
       materializar_card_visita_contratual: {
         Args: { p_execucao_id: string }
+        Returns: number
+      }
+      mover_previsao_visita_contratual: {
+        Args: {
+          p_agendamento_id: string
+          p_colaborador_id: string
+          p_colaborador_nome: string
+          p_data: string
+        }
         Returns: number
       }
       normalizar_cliente_visita: { Args: { p_nome: string }; Returns: string }

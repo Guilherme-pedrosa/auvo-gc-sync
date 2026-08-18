@@ -74,6 +74,7 @@ export interface AgendaAgendamento {
   contrato_visita_tarefa_ids?: string[] | null;
   contrato_visita_tecnicos?: string[] | null;
   contrato_visita_tarefas_detalhes?: unknown;
+  contrato_visita_ajuste_manual?: boolean;
   contrato_visitas_cumpridas?: number;
   contrato_visitas_previstas?: number;
   contrato_horas_cumpridas?: number;
@@ -464,8 +465,18 @@ export function useSaveAgendamento() {
 export function useDeleteAgendamento() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await sb.from("agenda_agendamentos").delete().eq("id", id);
+    mutationFn: async (target: string | AgendaAgendamento) => {
+      const id = typeof target === "string" ? target : target.id;
+      const isContractForecast = typeof target !== "string"
+        && target.origem === "CONTRATO"
+        && target.previsao_tipo === "CONTRATO"
+        && Boolean(target.contrato_visita_config_id)
+        && Boolean(target.contrato_visita_competencia)
+        && Boolean(target.contrato_visita_numero);
+
+      const { error } = isContractForecast
+        ? await sb.rpc("excluir_previsao_visita_contratual", { p_agendamento_id: id })
+        : await sb.from("agenda_agendamentos").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

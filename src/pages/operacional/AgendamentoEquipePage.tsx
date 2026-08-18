@@ -360,7 +360,6 @@ function Celula({
           const visitaContratualAlinhada = visitaContratualPlanejada
             && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada
-            || visitaContratualAlinhada
             || visitaContratualCumprida;
           const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
           const horasContratuaisDisponiveis = Math.max(
@@ -443,7 +442,7 @@ function Celula({
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
                   visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-violet-500 shadow-sm",
-                  visitaContratualAlinhada && "cursor-default active:cursor-default border-2 border-sky-500 shadow-sm",
+                  visitaContratualAlinhada && "border-2 border-sky-500 shadow-sm",
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   colorir && !statusColor && corCliente(a.cliente),
@@ -1043,29 +1042,41 @@ export default function AgendamentoEquipePage() {
           .from("agenda_agendamentos")
           .select("*")
           .eq("contrato_visita_config_id", item.contrato_visita_config_id)
+          .eq("previsao_tipo", "CONTRATO")
+          .is("contrato_visita_execucao_id", null)
           .gte("data", item.data)
           .order("data", { ascending: true });
 
         if (fetchErr) throw fetchErr;
 
         if (futuras && futuras.length > 0) {
-          const updates = futuras.map(f => ({
-            ...f,
-            colaborador_id: colabId,
-            colaborador_nome: colab.nome,
-            // Apenas a primeira (a que foi arrastada) muda de data se necessário
-            data: f.id === item.id ? date : f.data
-          }));
+          const futurasDoTecnico = futuras.filter((f) => (
+            item.colaborador_id
+              ? f.colaborador_id === item.colaborador_id
+              : f.colaborador_nome === item.colaborador_nome
+          ));
 
-          const { error: bulkErr } = await supabase
-            .from("agenda_agendamentos")
-            .upsert(updates as any);
-
-          if (bulkErr) throw bulkErr;
+          for (const futura of futurasDoTecnico) {
+            const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+              p_agendamento_id: futura.id,
+              p_data: futura.id === item.id ? date : futura.data,
+              p_colaborador_id: colabId,
+              p_colaborador_nome: colab.nome,
+            });
+            if (moveError) throw moveError;
+          }
         }
       } else {
         // Movimentação individual (Lógica original)
-        if (item.auvo_task_id && item.origem === "AUVO") {
+        if (item.origem === "CONTRATO" && item.previsao_tipo === "CONTRATO") {
+          const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+            p_agendamento_id: item.id,
+            p_data: date,
+            p_colaborador_id: colabId,
+            p_colaborador_nome: colab.nome,
+          });
+          if (moveError) throw moveError;
+        } else if (item.auvo_task_id && item.origem === "AUVO") {
           const patches = [
             { op: "replace", path: "taskDate", value: `${date}T${item.hora_inicio.slice(0, 5)}:00` },
           ];
@@ -1085,25 +1096,27 @@ export default function AgendamentoEquipePage() {
 
         // Se for PREVISAO, atualizamos o registro original (id: item.id)
         // Se item.id não existir (não deveria ocorrer em drag&drop de item existente), ele cria um novo.
-        await saveAgendamento.mutateAsync({
-          id: item.id || undefined, 
-          data: date,
-          colaborador_id: colabId,
-          colaborador_nome: colab.nome,
-          hora_inicio: item.hora_inicio,
-          hora_fim: item.hora_fim,
-          duracao_planejada_minutos: item.duracao_planejada_minutos,
-          veiculo_id: item.veiculo_id,
-          cliente: item.cliente,
-          descricao: item.descricao,
-          status: item.status,
-          auvo_task_id: item.auvo_task_id,
-          origem: item.origem,
-          gc_os_codigo: item.gc_os_codigo,
-          gc_orcamento_codigo: item.gc_orcamento_codigo,
-          previsao_continuidade: item.previsao_continuidade,
-          previsao_detalhes: item.previsao_detalhes,
-        });
+        if (item.origem !== "CONTRATO" || item.previsao_tipo !== "CONTRATO") {
+          await saveAgendamento.mutateAsync({
+            id: item.id || undefined,
+            data: date,
+            colaborador_id: colabId,
+            colaborador_nome: colab.nome,
+            hora_inicio: item.hora_inicio,
+            hora_fim: item.hora_fim,
+            duracao_planejada_minutos: item.duracao_planejada_minutos,
+            veiculo_id: item.veiculo_id,
+            cliente: item.cliente,
+            descricao: item.descricao,
+            status: item.status,
+            auvo_task_id: item.auvo_task_id,
+            origem: item.origem,
+            gc_os_codigo: item.gc_os_codigo,
+            gc_orcamento_codigo: item.gc_orcamento_codigo,
+            previsao_continuidade: item.previsao_continuidade,
+            previsao_detalhes: item.previsao_detalhes,
+          });
+        }
       }
 
       toast.success(updateFuture ? "Responsável atualizado em todas as visitas futuras!" : (ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!"), { id: toastId });

@@ -281,6 +281,16 @@ export default function AgendamentoEquipeDialog({
       }
 
       // 2. Salva localmente
+      if (agendamento?.origem === "CONTRATO" && agendamento.previsao_tipo === "CONTRATO") {
+        const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+          p_agendamento_id: agendamento.id,
+          p_data: data,
+          p_colaborador_id: colaboradorId,
+          p_colaborador_nome: nome,
+        });
+        if (moveError) throw moveError;
+      }
+
       await save.mutateAsync({
         id: agendamento?.id,
         data,
@@ -578,7 +588,7 @@ export default function AgendamentoEquipeDialog({
               variant="destructive"
               className="gap-2"
               onClick={async () => {
-                await del.mutateAsync(agendamento.id);
+                await del.mutateAsync(agendamento);
                 onOpenChange(false);
               }}
             >
