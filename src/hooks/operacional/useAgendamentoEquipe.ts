@@ -7,6 +7,7 @@ import {
   buildClientLinkIndex,
   resolveClientLinkStatus,
 } from "@/lib/clientLinkStatus";
+import { attachContractVisitProgress } from "@/lib/agendaContractVisits";
 
 /**
  * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
@@ -72,6 +73,10 @@ export interface AgendaAgendamento {
   contrato_visita_tarefa_ids?: string[] | null;
   contrato_visita_tecnicos?: string[] | null;
   contrato_visita_tarefas_detalhes?: unknown;
+  contrato_visitas_cumpridas?: number;
+  contrato_visitas_previstas?: number;
+  contrato_horas_cumpridas?: number;
+  contrato_horas_previstas?: number;
   previsao_continuidade?: boolean;
   previsao_tipo?: string | null;
   previsao_detalhes?: string | null;
@@ -318,6 +323,47 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   });
 }
 
+async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendamento[]) {
+  const cards = agendamentos.filter((item) => (
+    item.previsao_tipo === "CONTRATO"
+    && item.contrato_visita_config_id
+    && item.contrato_visita_competencia
+  ));
+  if (cards.length === 0) return agendamentos;
+
+  const configIds = [...new Set(cards.map((item) => item.contrato_visita_config_id as string))];
+  const competencias = [...new Set(cards
+    .map((item) => String(item.contrato_visita_competencia || "").slice(0, 7))
+    .filter(Boolean))].sort();
+
+  const { data: configs, error: configsError } = await sb
+    .from("contratos_visitas_config")
+    .select("id,contrato_id,qtd_visitas")
+    .in("id", configIds);
+  if (configsError) throw configsError;
+
+  const contractIds = [...new Set((configs ?? []).map((config) => config.contrato_id))];
+  const [contractsResult, executionsResult] = await Promise.all([
+    contractIds.length > 0
+      ? sb.from("contratos").select("id,horas_mes_contratadas").in("id", contractIds)
+      : Promise.resolve({ data: [], error: null }),
+    sb.from("contratos_visitas_execucoes")
+      .select("id,contrato_visita_config_id,competencia,horas_trabalhadas")
+      .in("contrato_visita_config_id", configIds)
+      .gte("competencia", `${competencias[0]}-01`)
+      .lte("competencia", `${competencias[competencias.length - 1]}-01`),
+  ]);
+  if (contractsResult.error) throw contractsResult.error;
+  if (executionsResult.error) throw executionsResult.error;
+
+  return attachContractVisitProgress(
+    agendamentos,
+    configs ?? [],
+    contractsResult.data ?? [],
+    executionsResult.data ?? [],
+  );
+}
+
 export function useAgendaVeiculos() {
   return useQuery({
     queryKey: ["agenda_veiculos"],
@@ -345,7 +391,8 @@ export function useAgendamentos(dataISO: string) {
         .eq("data", dataISO)
         .order("hora_inicio");
       if (error) throw error;
-      return preencherDocumentosGc((data ?? []) as AgendaAgendamento[]);
+      const preenchidos = await preencherDocumentosGc((data ?? []) as AgendaAgendamento[]);
+      return preencherProgressoVisitasContratuais(preenchidos);
     },
   });
 }
@@ -416,7 +463,9 @@ export function useAgendaSemana(dias: string[]) {
       if (ag.error) throw ag.error;
       if (vd.error) throw vd.error;
       return {
-        agendamentos: await preencherDocumentosGc((ag.data ?? []) as AgendaAgendamento[]),
+        agendamentos: await preencherProgressoVisitasContratuais(
+          await preencherDocumentosGc((ag.data ?? []) as AgendaAgendamento[]),
+        ),
         veiculoDias: (vd.data ?? []) as AgendaVeiculoDia[],
       };
     },

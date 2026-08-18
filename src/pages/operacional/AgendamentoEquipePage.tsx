@@ -68,6 +68,7 @@ import {
   summarizeAgendaOsPlannedVsActual,
 } from "@/lib/agendaPlannedVsActual";
 import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
+import { sortAgendaItemsWithContractPlanFirst } from "@/lib/agendaContractVisits";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -78,6 +79,9 @@ const norm = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+const formatContractHours = (hours: number | null | undefined) =>
+  `${Number(hours || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h`;
 
 const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
   const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
@@ -507,6 +511,15 @@ function Celula({
                         </span>
                       ) : null}
                     </>
+                  )}
+                  {visitaContratualPlanejada && a.contrato_visitas_previstas != null && (
+                    <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case text-sky-900 dark:text-sky-100">
+                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                      Cumprido: {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas} visitas
+                      {a.contrato_horas_previstas != null
+                        ? ` · ${formatContractHours(a.contrato_horas_cumpridas)}/${formatContractHours(a.contrato_horas_previstas)}`
+                        : ""}
+                    </span>
                   )}
                   {a.previsao_detalhes && !visitaContratualRealizada && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
@@ -990,7 +1003,8 @@ export default function AgendamentoEquipePage() {
       m.set(k, arr);
     }
     for (const arr of m.values()) {
-      arr.sort((x, y) => (x.hora_inicio ?? "").localeCompare(y.hora_inicio ?? "") || x.cliente.localeCompare(y.cliente));
+      const ordenados = sortAgendaItemsWithContractPlanFirst(arr);
+      arr.splice(0, arr.length, ...ordenados);
     }
     return m;
   }, [data]);

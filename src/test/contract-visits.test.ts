@@ -243,6 +243,19 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
   });
 
+  it("separa contratos comuns de contratos de limpeza de coifa usando RH Clientes", () => {
+    const scopedMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818033000_scope_contract_visits_by_client_and_activity.sql"),
+      "utf8",
+    );
+
+    expect(scopedMigration).toContain("clientes_rh_relacionados");
+    expect(scopedMigration).toContain("atividade_e_limpeza_coifa");
+    expect(scopedMigration).toContain("contrato_e_limpeza_coifa");
+    expect(scopedMigration).toContain("public.rh_clientes");
+    expect(scopedMigration).toContain("= public.contrato_e_limpeza_coifa(c.nome)");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);
