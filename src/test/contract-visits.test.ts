@@ -291,6 +291,36 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(performanceMigration).not.toMatch(/UPDATE OF[^;]*atualizado_em/);
   });
 
+  it("não bloqueia a tela recalculando o ano contratual em uma única consulta", () => {
+    const page = readFileSync(
+      resolve(root, "src/pages/agendamento/VisitasContratuaisPage.tsx"),
+      "utf8",
+    );
+    const periodMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818154500_optimize_contract_period_reconciliation.sql"),
+      "utf8",
+    );
+
+    expect(page).toContain("reconcileContractVisitsInMonthlyBatches");
+    expect(page).not.toContain("Apenas reconcilia se for o ano atual");
+    expect(periodMigration).toContain("task_clients AS MATERIALIZED");
+    expect(periodMigration).toContain("contract_clients AS MATERIALIZED");
+    expect(periodMigration).not.toContain("clientes_rh_relacionados(c.cliente_nome, task.cliente)");
+  });
+
+  it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {
+    const sequenceMigration = readFileSync(
+      resolve(root, "supabase/migrations/20260818160000_fix_contract_visit_sequence_and_hypermarcas_link.sql"),
+      "utf8",
+    );
+
+    expect(sequenceMigration).toContain("trg_normalizar_numero_nova_visita_contratual");
+    expect(sequenceMigration).toContain("v_primeiro_numero_livre");
+    expect(sequenceMigration).toContain("SODEXO DO BRASIL COMERCIAL S.A. HYPER MARCAS");
+    expect(sequenceMigration).toContain("public.reconciliar_dia_visita_contratual_agendada");
+    expect(sequenceMigration).not.toContain("LIKE '%hyper%'");
+  });
+
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {
     expect(isFieldTechnician({ cargo: "Técnico de campo" })).toBe(true);
     expect(isFieldTechnician({ funcao: "Auxiliar técnico" })).toBe(true);

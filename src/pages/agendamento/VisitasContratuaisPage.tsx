@@ -95,6 +95,26 @@ function monthCompetence(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 }
 
+async function reconcileContractVisitsInMonthlyBatches(startDate: string, endDate: string) {
+  let cursor = startDate;
+
+  while (cursor <= endDate) {
+    const [cursorYear, cursorMonth] = cursor.split("-").map(Number);
+    const monthLastDay = new Date(Date.UTC(cursorYear, cursorMonth, 0)).getUTCDate();
+    const monthEnd = `${cursorYear}-${String(cursorMonth).padStart(2, "0")}-${String(monthLastDay).padStart(2, "0")}`;
+    const batchEnd = monthEnd < endDate ? monthEnd : endDate;
+    const { error } = await supabase.rpc("reconciliar_visitas_contratuais_periodo", {
+      p_inicio: cursor,
+      p_fim: batchEnd,
+    });
+    if (error) throw error;
+
+    const nextMonth = cursorMonth === 12 ? 1 : cursorMonth + 1;
+    const nextYear = cursorMonth === 12 ? cursorYear + 1 : cursorYear;
+    cursor = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+  }
+}
+
 function dateLabel(value: string): string {
   const [year, month, day] = value.slice(0, 10).split("-");
   return `${day}/${month}/${year}`;
@@ -242,17 +262,6 @@ export default function VisitasContratuaisPage() {
     queryKey: ["contractual-visits", "executions", year],
     queryFn: async () => {
       const start = `${year}-01-01`;
-      const end = year === currentYear ? todayISO() : `${year}-12-31`;
-      
-      // Apenas reconcilia se for o ano atual e não houver reconciliação recente
-      if (year === currentYear) {
-        const { error: reconciliationError } = await supabase.rpc(
-          "reconciliar_visitas_contratuais_periodo",
-          { p_inicio: start, p_fim: end },
-        );
-        if (reconciliationError) console.error("Reconciliation error:", reconciliationError);
-      }
-      
       const { data, error } = await supabase
         .from("contratos_visitas_execucoes")
         .select("*")
@@ -366,11 +375,10 @@ export default function VisitasContratuaisPage() {
       const selected = configs.filter((config) => config.ativo && (!configIds || configIds.includes(config.id)));
       if (!selected.length) throw new Error("Nenhuma configuração ativa para planejar.");
       if (year <= currentYear) {
-        const { error: reconciliationError } = await supabase.rpc(
-          "reconciliar_visitas_contratuais_periodo",
-          { p_inicio: `${year}-01-01`, p_fim: year === currentYear ? todayISO() : `${year}-12-31` },
+        await reconcileContractVisitsInMonthlyBatches(
+          `${year}-01-01`,
+          year === currentYear ? todayISO() : `${year}-12-31`,
         );
-        if (reconciliationError) throw reconciliationError;
       }
       const { data: authData } = await supabase.auth.getUser();
       let inserted = 0;
