@@ -70,6 +70,8 @@ type VisitConfigDraft = {
   tecnico_ids: string[];
   dias_semana: number[];
   semanas_mes: number[];
+  meses_ativos: number[];
+  regra_texto: string;
   observacao: string;
   ativo: boolean;
 };
@@ -120,6 +122,8 @@ function emptyDraft(contractId = ""): VisitConfigDraft {
     tecnico_ids: [],
     dias_semana: [1, 2, 3, 4, 5],
     semanas_mes: [1, 2, 3, 4, 5],
+    meses_ativos: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    regra_texto: "",
     observacao: "",
     ativo: true,
   };
@@ -135,6 +139,10 @@ function configDraft(config: VisitConfig): VisitConfigDraft {
     tecnico_ids: config.tecnico_ids || [],
     dias_semana: config.dias_semana || [1, 2, 3, 4, 5],
     semanas_mes: config.semanas_mes || [1, 2, 3, 4, 5],
+    meses_ativos: (config as { meses_ativos?: number[] | null }).meses_ativos?.length
+      ? ((config as { meses_ativos?: number[] | null }).meses_ativos as number[])
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    regra_texto: (config as { regra_texto?: string | null }).regra_texto || "",
     observacao: config.observacao || "",
     ativo: config.ativo,
   };
