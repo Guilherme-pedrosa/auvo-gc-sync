@@ -1034,12 +1034,31 @@ export default function AgendamentoEquipePage() {
   const tecnicos = useMemo(() => {
     const ativos = colaboradores.filter((c) => c.ativo);
     const t = ativos.filter(isTecnico);
-    return (t.length > 0 ? t : ativos).sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores]);
+    let filtrados = t.length > 0 ? t : ativos;
+
+    if (filtroTexto.trim()) {
+      const search = norm(filtroTexto);
+      filtrados = filtrados.filter((tec) => norm(tec.nome).includes(search));
+    }
+
+    return filtrados.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colaboradores, filtroTexto]);
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
+    const search = filtroTexto.trim() ? norm(filtroTexto) : "";
+
     for (const a of data?.agendamentos ?? []) {
+      // Filtro de Previsões / Visitas Contratuais
+      const isPrevisao = Boolean(a.previsao_continuidade && a.origem !== "CONTRATO");
+      const isVisita = Boolean(a.previsao_tipo === "CONTRATO" || a.previsao_tipo === "CONTRATO_REALIZADO" || a.origem === "CONTRATO");
+
+      if (isPrevisao && !mostrarPrevisoes) continue;
+      if (isVisita && !mostrarVisitasContratuais) continue;
+
+      // Filtro de Texto (Cliente)
+      if (search && !norm(a.cliente).includes(search)) continue;
+
       const k = `${a.colaborador_id}|${a.data}`;
       const arr = m.get(k) ?? [];
       arr.push(a);
@@ -1050,7 +1069,7 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data]);
+  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto]);
 
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
