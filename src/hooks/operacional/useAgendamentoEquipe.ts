@@ -405,7 +405,7 @@ export function useSaveAgendamento() {
       // pois o Auvo permite tarefas sobrepostas.
       
       if (payload.id) {
-        const { error } = await sb.from("agenda_agendamentos").update(payload).eq("id", payload.id);
+        const { error } = await sb.from("agenda_agendamentos").update(payload as never).eq("id", payload.id);
         if (error) throw error;
       } else {
         const { error } = await sb.from("agenda_agendamentos").insert(payload as never);

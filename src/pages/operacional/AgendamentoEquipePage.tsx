@@ -721,20 +721,16 @@ export default function AgendamentoEquipePage() {
     return request;
   };
 
-  const refetch = async () => {
-    setIsSyncing(true);
-    const toastId = toast.loading("Atualizando tarefas do Auvo...");
-    try {
-      // O mesmo clique também atualiza os clientes, mas esse trabalho não segura
-      // a agenda nem o botão de sincronização.
-      void sincronizarClientesEmSegundoPlano();
-
+  // A sincronização é dividida em janelas: a primeira cobre os próximos dias
+  // (o que o usuário realmente enxerga) e volta rápido; o restante do horizonte
+  // é processado em segundo plano, sem travar a tela.
+  const sincronizarJanela = async (startDate: string, endDate: string) => {
       // Uma única leitura do RH; o retorno é usado nesta sincronização para
       // evitar trabalhar com o estado anterior do React Query.
       const [colaboradoresResult, agendaResult] = await Promise.all([
         refetchColaboradores(),
         supabase.functions.invoke("auvo-agenda", {
-          body: { startDate: diasFuturos[0], endDate: diasFuturos[diasFuturos.length - 1], fast: true },
+          body: { startDate, endDate, fast: true },
         }),
       ]);
       if (colaboradoresResult.error) throw colaboradoresResult.error;
@@ -825,8 +821,8 @@ export default function AgendamentoEquipePage() {
         ? await supabase
           .from("agenda_agendamentos")
           .select("id,auvo_task_id,data,origem,gc_os_codigo,gc_orcamento_codigo,previsao_tipo,conversao_status")
-          .gte("data", diasFuturos[0])
-          .lte("data", diasFuturos[diasFuturos.length - 1])
+          .gte("data", startDate)
+          .lte("data", endDate)
           .not("auvo_task_id", "is", null)
         : { data: [], error: null };
       if (reconciliationReadError) throw reconciliationReadError;
@@ -859,8 +855,8 @@ export default function AgendamentoEquipePage() {
         returnedTaskIds,
         {
           syncComplete,
-          startDate: diasFuturos[0],
-          endDate: diasFuturos[diasFuturos.length - 1],
+          startDate,
+          endDate,
         },
       );
       const deleteIds = [...new Set([...replacedManualIds, ...removedAuvoIds])];
@@ -897,6 +893,23 @@ export default function AgendamentoEquipePage() {
         if (upsertError) throw upsertError;
       }
 
+      return { linhas: linhas.length, tarefas: tarefas.length, removedAuvoIds, semTecnico, syncComplete };
+  };
+
+  const DIAS_JANELA_RAPIDA = 21;
+
+  const refetch = async () => {
+    setIsSyncing(true);
+    const toastId = toast.loading("Atualizando tarefas do Auvo...");
+    try {
+      // O mesmo clique também atualiza os clientes, mas esse trabalho não segura
+      // a agenda nem o botão de sincronização.
+      void sincronizarClientesEmSegundoPlano();
+
+      const fimRapido = diasFuturos[Math.min(DIAS_JANELA_RAPIDA, diasFuturos.length) - 1];
+      const { linhas, tarefas, removedAuvoIds, semTecnico, syncComplete } =
+        await sincronizarJanela(diasFuturos[0], fimRapido);
+
       await refetchLocal();
       const syncDetails: string[] = [];
       if (removedAuvoIds.length > 0) {
@@ -906,10 +919,28 @@ export default function AgendamentoEquipePage() {
       if (!syncComplete) {
         syncDetails.push("Limpeza de tarefas ausentes adiada porque a resposta do Auvo foi parcial.");
       }
-      toast.success(`Escala atualizada: ${linhas.length} agendamentos (${tarefas.length} tarefas)`, {
+      toast.success(`Escala atualizada: ${linhas} agendamentos (${tarefas} tarefas)`, {
         id: toastId,
-        description: syncDetails.length > 0 ? syncDetails.join(" ") : undefined,
+        description: [
+          `Próximos ${DIAS_JANELA_RAPIDA} dias atualizados. O restante do período continua em segundo plano.`,
+          ...syncDetails,
+        ].join(" "),
       });
+
+      // Restante do horizonte, sem bloquear a tela nem o botão.
+      const inicioRestante = diasFuturos[DIAS_JANELA_RAPIDA];
+      if (inicioRestante) {
+        void (async () => {
+          try {
+            await sincronizarJanela(inicioRestante, diasFuturos[diasFuturos.length - 1]);
+            await refetchLocal();
+            toast.message("Períodos futuros também atualizados.");
+          } catch (err) {
+            console.error("[agendamento-equipe] falha na janela futura:", err);
+            toast.warning("Os próximos dias foram atualizados, mas o período mais distante falhou.");
+          }
+        })();
+      }
     } catch (err) {
       console.error("[agendamento-equipe] erro na sincronização:", err);
       toast.error("Não foi possível atualizar a escala", {
