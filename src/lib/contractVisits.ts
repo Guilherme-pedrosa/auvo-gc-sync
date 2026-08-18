@@ -264,24 +264,6 @@ export function consecutiveVisitDates(
     .filter((date): date is string => Boolean(date));
 }
 
-function unusedRotatingVisitTeams(
-  technicianIds: string[],
-  techniciansPerVisit: number,
-  visits: number,
-): string[][] {
-  const unique = [...new Set(technicianIds.map((id) => String(id).trim()).filter(Boolean))];
-  if (!Number.isInteger(techniciansPerVisit) || techniciansPerVisit < 1) {
-    throw new Error("QUANTIDADE_TECNICOS_INVALIDA");
-  }
-  if (unique.length < techniciansPerVisit) throw new Error("TECNICOS_SELECIONADOS_INSUFICIENTES");
-
-  return Array.from({ length: visits }, (_, visitIndex) =>
-    Array.from({ length: techniciansPerVisit }, (_, teamIndex) =>
-      unique[(visitIndex * techniciansPerVisit + teamIndex) % unique.length],
-    ),
-  );
-}
-
 export function buildContractVisitForecasts(input: ContractVisitConfigInput): ContractVisitForecast[] {
   if (!Number.isInteger(input.qtdVisitas) || input.qtdVisitas < 1 || input.qtdVisitas > 31) {
     throw new Error("QUANTIDADE_VISITAS_INVALIDA");
