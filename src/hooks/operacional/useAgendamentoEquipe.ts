@@ -18,7 +18,8 @@ import { attachContractVisitProgress } from "@/lib/agendaContractVisits";
 async function carregarIndiceVinculos() {
   const rows: any[] = [];
   const pageSize = 1000;
-  for (let from = 0; from < 20000; from += pageSize) {
+  // Aumentamos o limite para 50.000 para cobrir bases maiores e evitar truncagem
+  for (let from = 0; from < 50000; from += pageSize) {
     const { data, error } = await sb
       .from("rh_clientes")
       .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
