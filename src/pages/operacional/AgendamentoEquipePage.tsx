@@ -660,6 +660,8 @@ export default function AgendamentoEquipePage() {
   const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
+  const [dialogBulkUpdateOpen, setDialogBulkUpdateOpen] = useState(false);
+  const [bulkUpdateContext, setBulkUpdateContext] = useState<{ item: AgendaAgendamento, newDate: string, newColabId: string } | null>(null);
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
