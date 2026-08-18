@@ -708,7 +708,7 @@ export default function VisitasContratuaisPage() {
                         const monthLabel = `${MONTHS[Number(monthPart) - 1]} / ${yearPart}`;
 
                         return (
-                          <useMemo key={monthKey}>
+                          <React.Fragment key={monthKey}>
                             <TableRow 
                               className="cursor-pointer bg-muted/20 font-semibold hover:bg-muted/40"
                               onClick={() => toggleMonth(monthKey)}
