@@ -11,6 +11,7 @@ export type ContractVisitConfigInput = {
   vigenciaFim?: string | null;
   naoAntesDe?: string | null;
   visitasRealizadas?: number[];
+  visitasConsecutivas?: boolean;
 };
 
 export type ContractVisitForecast = {
@@ -233,6 +234,54 @@ export function rotatingVisitTeams(
   );
 }
 
+export function consecutiveVisitDates(
+  eligibleDates: string[],
+  selectedWeeks: number[],
+  totalVisits: number,
+  visitNumbers: number[] = Array.from({ length: totalVisits }, (_, index) => index + 1),
+): string[] {
+  if (!eligibleDates.length) return [];
+  const weeks = [...new Set(selectedWeeks)]
+    .filter((week) => Number.isInteger(week) && week >= 1 && week <= 5)
+    .sort((left, right) => left - right);
+  const datesByWeek = new Map<number, string[]>();
+  for (const date of eligibleDates) {
+    const week = weekOfMonthFromISO(date);
+    const dates = datesByWeek.get(week) || [];
+    dates.push(date);
+    datesByWeek.set(week, dates);
+  }
+  const preferred = weeks.filter((week) => (datesByWeek.get(week) || []).length >= totalVisits);
+  const anyWeek = [...datesByWeek.keys()]
+    .sort((left, right) => left - right)
+    .filter((week) => (datesByWeek.get(week) || []).length >= totalVisits);
+  const chosenWeek = preferred[0] ?? anyWeek[0] ?? null;
+  const block = chosenWeek !== null
+    ? datesByWeek.get(chosenWeek)!.slice(0, totalVisits)
+    : eligibleDates.slice(0, totalVisits);
+  return visitNumbers
+    .map((visitNumber) => block[visitNumber - 1])
+    .filter((date): date is string => Boolean(date));
+}
+
+function unusedRotatingVisitTeams(
+  technicianIds: string[],
+  techniciansPerVisit: number,
+  visits: number,
+): string[][] {
+  const unique = [...new Set(technicianIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (!Number.isInteger(techniciansPerVisit) || techniciansPerVisit < 1) {
+    throw new Error("QUANTIDADE_TECNICOS_INVALIDA");
+  }
+  if (unique.length < techniciansPerVisit) throw new Error("TECNICOS_SELECIONADOS_INSUFICIENTES");
+
+  return Array.from({ length: visits }, (_, visitIndex) =>
+    Array.from({ length: techniciansPerVisit }, (_, teamIndex) =>
+      unique[(visitIndex * techniciansPerVisit + teamIndex) % unique.length],
+    ),
+  );
+}
+
 export function buildContractVisitForecasts(input: ContractVisitConfigInput): ContractVisitForecast[] {
   if (!Number.isInteger(input.qtdVisitas) || input.qtdVisitas < 1 || input.qtdVisitas > 31) {
     throw new Error("QUANTIDADE_VISITAS_INVALIDA");
@@ -251,19 +300,17 @@ export function buildContractVisitForecasts(input: ContractVisitConfigInput): Co
     input.qtdVisitas,
     input.qtdTecnicos,
   );
-  const dates = interleavedVisitDates(
-    eligibleContractVisitDates(
-      input.competencia,
-      input.diasSemana,
-      input.vigenciaInicio,
-      input.vigenciaFim,
-      [1, 2, 3, 4, 5, 6],
-      input.naoAntesDe,
-    ),
-    input.semanasMes || [1, 2, 3, 4, 5],
-    input.qtdVisitas,
-    missingNumbers,
+  const eligible = eligibleContractVisitDates(
+    input.competencia,
+    input.diasSemana,
+    input.vigenciaInicio,
+    input.vigenciaFim,
+    [1, 2, 3, 4, 5, 6],
+    input.naoAntesDe,
   );
+  const dates = input.visitasConsecutivas
+    ? consecutiveVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, missingNumbers)
+    : interleavedVisitDates(eligible, input.semanasMes || [1, 2, 3, 4, 5], input.qtdVisitas, missingNumbers);
   const teams = rotatingVisitTeams(input.tecnicoIds, input.qtdTecnicos, input.qtdVisitas);
   const start = input.horaInicio.slice(0, 5);
   const end = addMinutesToClock(start, durationMinutes);
