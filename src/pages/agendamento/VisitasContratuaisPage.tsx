@@ -722,6 +722,23 @@ export default function VisitasContratuaisPage() {
           <div className="grid gap-5 py-2">
             <div className="space-y-2"><Label>Contrato</Label><select value={draft.contrato_id} disabled={Boolean(draft.id)} onChange={(event) => setDraft((current) => ({ ...current, contrato_id: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"><option value="">Selecione o contrato</option>{contracts.filter((contract) => !configByContract.has(contract.id) || contract.id === draft.contrato_id).map((contract) => <option key={contract.id} value={contract.id}>{contract.nome}</option>)}</select></div>
 
+            <div className="space-y-2">
+              <Label>Tipo de contrato</Label>
+              <select
+                value={selectedContract?.tipo_id || ""}
+                disabled={!selectedContract || updateContractType.isPending}
+                onChange={(event) => {
+                  if (!selectedContract) return;
+                  updateContractType.mutate({ contratoId: selectedContract.id, tipoId: event.target.value || null });
+                }}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+              >
+                <option value="">Sem tipo definido</option>
+                {(contractTypesQuery.data || []).map((type) => <option key={type.id} value={type.id}>{type.nome}</option>)}
+              </select>
+              <p className="text-[11px] text-muted-foreground">Ex.: Higienização de coifas, Manutenção preventiva. Cadastre novos tipos em Configurações › Contratos.</p>
+            </div>
+
             {selectedContract && <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Horas contratadas</p><p className="text-lg font-bold">{selectedContract.horas_mes_contratadas ? `${hoursLabel(Number(selectedContract.horas_mes_contratadas))}/mês` : "Não cadastradas"}</p></div><div><p className="text-xs text-muted-foreground">Visitas previstas</p><p className="text-lg font-bold">{draft.qtd_visitas}/mês</p>{minimumVisits && <p className="text-[10px] text-muted-foreground">mínimo {minimumVisits} com jornada de até 8h</p>}</div><div><p className="text-xs text-muted-foreground">Carga calculada por visita</p><p className="text-lg font-bold">{calculatedDuration ? durationLabel(calculatedDuration) : minimumVisits && draft.qtd_visitas < minimumVisits ? `Mínimo ${minimumVisits} visitas` : "Revisar dados"}</p><p className="text-[10px] text-muted-foreground">horas ÷ visitas ÷ pessoas</p></div></div>}
 
             <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Visitas por mês</Label><Input type="number" min={1} max={31} value={draft.qtd_visitas} onChange={(event) => setDraft((current) => ({ ...current, qtd_visitas: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Pessoas por visita</Label><Input type="number" min={1} max={10} value={draft.qtd_tecnicos} onChange={(event) => setDraft((current) => ({ ...current, qtd_tecnicos: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Horário preferencial</Label><Input type="time" value={draft.hora_inicio} onChange={(event) => setDraft((current) => ({ ...current, hora_inicio: event.target.value }))} /></div></div>
