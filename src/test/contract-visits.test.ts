@@ -254,6 +254,9 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scopedMigration).toContain("contrato_e_limpeza_coifa");
     expect(scopedMigration).toContain("public.rh_clientes");
     expect(scopedMigration).toContain("= public.contrato_e_limpeza_coifa(c.nome)");
+    expect(scopedMigration).toContain("\\[WEDO:180795:");
+    expect(scopedMigration).toContain("p_questionario_id");
+    expect(scopedMigration).toContain("215148");
   });
 
   it("usa a mesma regra de técnicos e auxiliares do Agendamento Equipe", () => {

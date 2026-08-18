@@ -38,7 +38,9 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.atividade_e_limpeza_coifa(
   p_task_type_id text,
-  p_descricao text
+  p_descricao text,
+  p_questionario_id text,
+  p_questionario_respostas jsonb
 )
 RETURNS boolean
 LANGUAGE sql
@@ -47,9 +49,36 @@ PARALLEL SAFE
 SET search_path = public
 AS $$
   SELECT
+    regexp_replace(COALESCE(p_questionario_id, ''), '\D', '', 'g') = '215148'
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        CASE WHEN jsonb_typeof(p_questionario_respostas) = 'array'
+          THEN p_questionario_respostas ELSE '[]'::jsonb END
+      ) resposta
+      WHERE regexp_replace(COALESCE(resposta->>'questionnaireId', ''), '\D', '', 'g') = '215148'
+    )
+    OR
     regexp_replace(COALESCE(p_task_type_id, ''), '\D', '', 'g') = '180795'
+    OR COALESCE(p_descricao, '') ~* '\[WEDO:180795:'
     OR public.normalizar_cliente_visita(p_descricao) LIKE '%higienizacao-de-coifa%'
+    OR public.normalizar_cliente_visita(p_descricao) LIKE '%higieniza%ao-de-coifa%'
     OR public.normalizar_cliente_visita(p_descricao) LIKE '%limpeza-de-coifa%';
+$$;
+
+CREATE OR REPLACE FUNCTION public.atividade_e_limpeza_coifa(
+  p_task_type_id text,
+  p_descricao text
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = public
+AS $$
+  SELECT public.atividade_e_limpeza_coifa(
+    p_task_type_id, p_descricao, NULL, NULL
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.contrato_e_limpeza_coifa(p_contrato_nome text)
@@ -64,10 +93,12 @@ $$;
 
 REVOKE ALL ON FUNCTION public.cliente_rh_chave(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.clientes_rh_relacionados(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.atividade_e_limpeza_coifa(text, text, text, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.atividade_e_limpeza_coifa(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.contrato_e_limpeza_coifa(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.cliente_rh_chave(text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.clientes_rh_relacionados(text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.atividade_e_limpeza_coifa(text, text, text, jsonb) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.atividade_e_limpeza_coifa(text, text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.contrato_e_limpeza_coifa(text) TO authenticated, service_role;
 
@@ -197,7 +228,10 @@ BEGIN
         AND EXISTS (
           SELECT 1
           FROM realizadas tarefa
-          WHERE public.atividade_e_limpeza_coifa(tarefa.task_type_id, tarefa.descricao)
+          WHERE public.atividade_e_limpeza_coifa(
+            tarefa.task_type_id, tarefa.descricao,
+            tarefa.questionario_id, tarefa.questionario_respostas
+          )
             = public.contrato_e_limpeza_coifa(c.nome)
         )
     )
@@ -242,7 +276,9 @@ BEGIN
           OR public.normalizar_cliente_visita(status_auvo) LIKE '%conclu%'
         )
         AND public.normalizar_cliente_visita(status_auvo) NOT LIKE '%pendente-vinculo%'
-        AND public.atividade_e_limpeza_coifa(task_type_id, descricao) = v_candidate.contrato_coifa
+        AND public.atividade_e_limpeza_coifa(
+          task_type_id, descricao, questionario_id, questionario_respostas
+        ) = v_candidate.contrato_coifa
     )
     SELECT
       max(cliente),
@@ -426,7 +462,9 @@ BEGIN
       AND public.normalizar_cliente_visita(status_auvo) NOT LIKE '%exclu%'
       AND public.normalizar_cliente_visita(status_auvo) NOT LIKE '%pendente-vinculo%'
       AND NULLIF(trim(tecnico), '') IS NOT NULL
-      AND public.atividade_e_limpeza_coifa(task_type_id, descricao) = v_contrato_coifa
+      AND public.atividade_e_limpeza_coifa(
+        task_type_id, descricao, questionario_id, questionario_respostas
+      ) = v_contrato_coifa
   )
   SELECT
     COALESCE(array_agg(auvo_task_id ORDER BY hora_inicio NULLS LAST, auvo_task_id), '{}'),
@@ -678,7 +716,10 @@ BEGIN
         AND EXISTS (
           SELECT 1
           FROM validas tarefa
-          WHERE public.atividade_e_limpeza_coifa(tarefa.task_type_id, tarefa.descricao)
+          WHERE public.atividade_e_limpeza_coifa(
+            tarefa.task_type_id, tarefa.descricao,
+            tarefa.questionario_id, tarefa.questionario_respostas
+          )
             = public.contrato_e_limpeza_coifa(c.nome)
         )
     )
