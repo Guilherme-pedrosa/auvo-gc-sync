@@ -1120,13 +1120,14 @@ export default function AgendamentoEquipePage() {
         }
       }
 
-      // Filtro de Texto (Cliente ou Técnico) - Busca ampla por substring
+      // Filtro de Texto (Cliente, Técnico, Descrição ou OS) - Busca ampla por substring
       if (search) {
         const matchesCliente = norm(a.cliente).includes(search);
         const matchesTecnico = norm(a.colaborador_nome).includes(search);
         const matchesDescricao = norm(a.descricao || "").includes(search);
         const matchesOs = norm(a.gc_os_codigo || "").includes(search);
         
+        // Se houver busca textual, o item só aparece se bater em um dos campos
         if (!matchesCliente && !matchesTecnico && !matchesDescricao && !matchesOs) continue;
       }
 
