@@ -1053,8 +1053,10 @@ export default function AgendamentoEquipePage() {
           }
         }
 
+        // Se for PREVISAO, atualizamos o registro original (id: item.id)
+        // Se item.id não existir (não deveria ocorrer em drag&drop de item existente), ele cria um novo.
         await saveAgendamento.mutateAsync({
-          id: item.id,
+          id: item.id || undefined, 
           data: date,
           colaborador_id: colabId,
           colaborador_nome: colab.nome,
