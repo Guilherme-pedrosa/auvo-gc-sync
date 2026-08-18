@@ -367,6 +367,7 @@ export default function VisitasContratuaisPage() {
       if (value.tecnico_ids.length < value.qtd_tecnicos) throw new Error(`Selecione pelo menos ${value.qtd_tecnicos} técnico(s).`);
       if (!value.dias_semana.length) throw new Error("Selecione pelo menos um dia da semana.");
       if (!value.semanas_mes.length) throw new Error("Selecione pelo menos uma semana do mês.");
+      if (!value.meses_ativos.length) throw new Error("Selecione pelo menos um mês com visita.");
       if (value.semanas_mes.length < value.qtd_visitas) {
         throw new Error("Selecione ao menos uma semana diferente para cada visita mensal.");
       }
@@ -398,6 +399,8 @@ export default function VisitasContratuaisPage() {
         tecnico_ids: value.tecnico_ids,
         dias_semana: value.dias_semana,
         semanas_mes: value.semanas_mes,
+        meses_ativos: value.meses_ativos,
+        regra_texto: value.regra_texto.trim() || null,
         observacao: value.observacao.trim() || null,
         ativo: value.ativo,
         planejamento_pendente: true,
