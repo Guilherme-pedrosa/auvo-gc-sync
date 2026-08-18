@@ -30,6 +30,9 @@ import {
   type ContractVisitMonthSummary,
 } from "@/lib/contractVisits";
 import {
+  useRhClientesVinculados,
+} from "@/hooks/rh/useRh";
+import {
   planningYearsFromDates,
   reconcileContractVisitYear,
   todayISO,
@@ -182,6 +185,7 @@ export default function VisitasContratuaisPage() {
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
+  const rhClientesVinculadosQuery = useRhClientesVinculados();
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
@@ -653,7 +657,7 @@ export default function VisitasContratuaisPage() {
             <SearchableSelect
               options={[
                 { value: "todos", label: "Todos os Clientes" },
-                ...(contractsQuery.data || []).map(c => ({ value: c.id, label: c.nome }))
+                ...(rhClientesVinculadosQuery.data || []).map(c => ({ value: c.id, label: c.nome }))
               ]}
               value={filtroCliente}
               onValueChange={(val) => setFiltroCliente(val || "todos")}

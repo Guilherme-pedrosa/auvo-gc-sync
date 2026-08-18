@@ -159,6 +159,20 @@ export function useRhClientes(search = "", vinculoStatus = "all") {
     },
   });
 }
+export function useRhClientesVinculados() {
+  return useQuery({
+    queryKey: ["rh_clientes", "vinculados"],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_clientes")
+        .select("*")
+        .eq("vinculo_status", "vinculado")
+        .order("nome");
+      if (error) throw error;
+      return (data ?? []) as RhCliente[];
+    },
+  });
+}
 export function useAuvoClientesCache() {
   return useQuery({
     queryKey: ["auvo_clientes_cache", "rh_clientes"],

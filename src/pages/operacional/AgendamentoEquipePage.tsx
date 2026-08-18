@@ -369,9 +369,7 @@ function Celula({
           const dataRealizadaLabel = a.contrato_visita_realizada_em
             ? format(parseISO(a.contrato_visita_realizada_em.slice(0, 10)), "dd/MM/yyyy")
             : null;
-          const ultimaRealizadaLabel = a.contrato_visita_ultima_realizada_em
-            ? format(parseISO(a.contrato_visita_ultima_realizada_em.slice(0, 10)), "dd/MM/yyyy")
-            : dataRealizadaLabel;
+          const ultimaRealizadaLabel = dataRealizadaLabel;
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
