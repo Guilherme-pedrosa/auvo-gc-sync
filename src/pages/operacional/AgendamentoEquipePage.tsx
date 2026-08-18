@@ -1655,6 +1655,67 @@ export default function AgendamentoEquipePage() {
         </DialogContent>
       </Dialog>
 
+      {/* Diálogo de Atualização em Massa para Visitas Contratuais */}
+      <Dialog open={dialogBulkUpdateOpen} onOpenChange={setDialogBulkUpdateOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Mover Visita Contratual</DialogTitle>
+            <DialogDescription>
+              Você está movendo uma visita contratual. Deseja alterar o responsável apenas desta visita ou de todas as visitas futuras deste contrato a partir deste ponto?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 py-4">
+            <Button
+              className="w-full justify-start gap-3 h-auto py-3 px-4"
+              variant="outline"
+              onClick={() => {
+                if (bulkUpdateContext) {
+                  executeMove(bulkUpdateContext.item, bulkUpdateContext.newDate, bulkUpdateContext.newColabId, false);
+                }
+                setDialogBulkUpdateOpen(false);
+                setBulkUpdateContext(null);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                <CalendarClock className="h-5 w-5 text-slate-600" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold">Mudar apenas esta</div>
+                <div className="text-[10px] text-muted-foreground font-normal">Altera apenas a visita selecionada</div>
+              </div>
+            </Button>
+
+            <Button
+              className="w-full justify-start gap-3 h-auto py-3 px-4 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50"
+              variant="outline"
+              onClick={() => {
+                if (bulkUpdateContext) {
+                  executeMove(bulkUpdateContext.item, bulkUpdateContext.newDate, bulkUpdateContext.newColabId, true);
+                }
+                setDialogBulkUpdateOpen(false);
+                setBulkUpdateContext(null);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold">Mudar todas as futuras</div>
+                <div className="text-[10px] text-muted-foreground font-normal">Altera o responsável desta e de todas as próximas visitas deste contrato</div>
+              </div>
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={() => {
+              setDialogBulkUpdateOpen(false);
+              setBulkUpdateContext(null);
+            }}>
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AgendamentoEquipeDialog
         open={dialogOpen || dialogEditOpen}
         onOpenChange={(open) => {
