@@ -3,16 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface AgendaFiltersProps {
   filtroTexto: string;
@@ -38,13 +32,14 @@ export function AgendaFilters({
   const { data: clientes = [] } = useQuery({
     queryKey: ["agenda-filters-clientes"],
     queryFn: async () => {
+      // Buscamos contratos mas focamos nos nomes dos clientes vinculados
       const { data, error } = await supabase
         .from("contratos")
         .select("id, nome")
         .eq("ativo", true)
         .order("nome");
       if (error) throw error;
-      return data || [];
+      return (data || []).map(c => ({ value: c.id, label: c.nome }));
     },
   });
 
@@ -71,21 +66,16 @@ export function AgendaFilters({
           )}
         </div>
 
-        <div className="w-full sm:w-64">
-          <Select value={clienteId} onValueChange={setClienteId}>
-            <SelectTrigger className="w-full">
-              <Filter className="mr-2 h-4 w-4 opacity-50" />
-              <SelectValue placeholder="Filtrar por Cliente" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Clientes</SelectItem>
-              {clientes.map((cliente) => (
-                <SelectItem key={cliente.id} value={cliente.id}>
-                  {cliente.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="w-full sm:w-80">
+          <SearchableSelect
+            options={clientes}
+            value={clienteId === "todos" ? "" : clienteId}
+            onValueChange={(val) => setClienteId(val || "todos")}
+            placeholder="Filtrar por Cliente (Lista Completa)"
+            searchPlaceholder="Buscar cliente..."
+            icon={<Filter className="h-4 w-4 opacity-50" />}
+            className="w-full"
+          />
         </div>
       </div>
 
@@ -117,3 +107,4 @@ export function AgendaFilters({
     </div>
   );
 }
+

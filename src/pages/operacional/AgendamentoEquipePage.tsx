@@ -1116,11 +1116,14 @@ export default function AgendamentoEquipePage() {
         }
       }
 
-      // Filtro de Texto (Cliente ou Técnico)
+      // Filtro de Texto (Cliente ou Técnico) - Busca ampla por substring
       if (search) {
         const matchesCliente = norm(a.cliente).includes(search);
         const matchesTecnico = norm(a.colaborador_nome).includes(search);
-        if (!matchesCliente && !matchesTecnico) continue;
+        const matchesDescricao = norm(a.descricao || "").includes(search);
+        const matchesOs = norm(a.gc_os_codigo || "").includes(search);
+        
+        if (!matchesCliente && !matchesTecnico && !matchesDescricao && !matchesOs) continue;
       }
 
       const k = `${a.colaborador_id}|${a.data}`;
