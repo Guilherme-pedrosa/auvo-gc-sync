@@ -393,7 +393,7 @@ function ContratoDialog({
         nome,
         grupo_id: tipo === "grupo" ? grupoId : null,
         cliente_nome: tipo === "cliente" ? clienteNome.trim() : null,
-        tipo_id: tipoId || null,
+        tipo_id: tipoId && tipoId !== "none" ? tipoId : null,
         valor_hora: parseFloat(valorHora.replace(",", ".")) || 0,
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
         taxa_comissao_peca: (parseFloat(taxaPeca.replace(",", ".")) || 0) / 100,
