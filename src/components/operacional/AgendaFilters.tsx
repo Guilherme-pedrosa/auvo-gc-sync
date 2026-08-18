@@ -96,7 +96,7 @@ export function AgendaFilters({
 
         <div className="w-full sm:w-80">
           <SearchableSelect
-            options={clientes}
+            options={options}
             value={clienteId === "todos" ? "" : clienteId}
             onValueChange={(val) => setClienteId(val || "todos")}
             placeholder="Filtrar por Cliente (Lista Completa)"
