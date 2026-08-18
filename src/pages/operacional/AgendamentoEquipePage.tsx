@@ -1102,11 +1102,9 @@ export default function AgendamentoEquipePage() {
       if (isPrevisao && !mostrarPrevisoes) continue;
       if (isVisita && !mostrarVisitasContratuais) continue;
 
-      // Filtro de Cliente (ID específico se selecionado)
+      // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
       if (clienteId !== "todos") {
-        const contratoParaAgendamento = data?.agendamentos?.find(item => item.id === a.id);
-        // Assumindo que o contrato_id está presente nos metadados ou resolvemos pelo cliente
-        // No banco, agenda_agendamentos tem contrato_id para visitas contratuais
+        // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
         if (a.contrato_id && a.contrato_id !== clienteId) continue;
         
         // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
