@@ -32,20 +32,20 @@ describe("cards de visitas contratuais na agenda", () => {
     });
   });
 
-  it("coloca o planejado antes das tarefas do mesmo cliente", () => {
+  it("coloca o card contratual planejado ou realizado antes das tarefas do mesmo cliente", () => {
     const sorted = sortAgendaItemsWithContractPlanFirst([
       { id: "savoy-task-1", cliente: "SODEXO SAVOY", hora_inicio: "08:00" },
       { id: "nip-task", cliente: "NIP NAPOLI", hora_inicio: "08:30" },
       { id: "savoy-plan", cliente: "SODEXO SAVOY", hora_inicio: "09:00", previsao_tipo: "CONTRATO" },
       { id: "savoy-task-2", cliente: "SODEXO SAVOY", hora_inicio: "10:00" },
-      { id: "nip-plan", cliente: "NIP NAPOLI", hora_inicio: "09:30", previsao_tipo: "CONTRATO" },
+      { id: "nip-done", cliente: "NIP NAPOLI", hora_inicio: "09:30", previsao_tipo: "CONTRATO_REALIZADO" },
     ]);
 
     expect(sorted.map((item) => item.id)).toEqual([
       "savoy-plan",
       "savoy-task-1",
       "savoy-task-2",
-      "nip-plan",
+      "nip-done",
       "nip-task",
     ]);
   });

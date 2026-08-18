@@ -78,7 +78,8 @@ export function attachContractVisitProgress<T extends ContractVisitAgendaItem>(
 
 /**
  * Mantém a ordem cronológica entre clientes, mas abre cada bloco de cliente
- * com o card da visita contratual antes das tarefas que justificam a visita.
+ * com o card da visita contratual, planejada ou realizada, antes das tarefas
+ * que justificam a visita.
  */
 export function sortAgendaItemsWithContractPlanFirst<T extends ContractVisitAgendaItem>(items: T[]): T[] {
   const groups = new Map<string, Array<{ item: T; index: number }>>();
@@ -97,10 +98,14 @@ export function sortAgendaItemsWithContractPlanFirst<T extends ContractVisitAgen
       return compareByTimeAndIndex(leftFirst, rightFirst);
     })
     .flatMap((group) => group.sort((left, right) => {
-      const leftPlan = left.item.previsao_tipo === "CONTRATO" ? 0 : 1;
-      const rightPlan = right.item.previsao_tipo === "CONTRATO" ? 0 : 1;
+      const leftPlan = isContractVisitCard(left.item) ? 0 : 1;
+      const rightPlan = isContractVisitCard(right.item) ? 0 : 1;
       return leftPlan - rightPlan || compareByTimeAndIndex(left, right);
     }).map(({ item }) => item));
+}
+
+function isContractVisitCard(item: ContractVisitAgendaItem) {
+  return item.previsao_tipo === "CONTRATO" || item.previsao_tipo === "CONTRATO_REALIZADO";
 }
 
 function compareByTimeAndIndex<T extends ContractVisitAgendaItem>(
