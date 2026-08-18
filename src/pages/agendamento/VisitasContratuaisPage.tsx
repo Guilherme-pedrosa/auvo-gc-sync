@@ -203,6 +203,16 @@ export default function VisitasContratuaisPage() {
     },
   });
 
+  const contractTypesQuery = useQuery({
+    queryKey: ["contractual-visits", "contract-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("contrato_tipos").select("id, nome").order("nome");
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+
   const forecastsQuery = useQuery({
     queryKey: ["contractual-visits", "forecasts", year],
     queryFn: async () => {
@@ -253,6 +263,10 @@ export default function VisitasContratuaisPage() {
   const contractById = useMemo(() => new Map(contracts.map((contract) => [contract.id, contract])), [contracts]);
   const technicianById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician])), [technicians]);
   const groupById = useMemo(() => new Map((groupsQuery.data || []).map((group) => [group.id, group.nome])), [groupsQuery.data]);
+  const contractTypeById = useMemo(
+    () => new Map((contractTypesQuery.data || []).map((type) => [type.id, type.nome])),
+    [contractTypesQuery.data],
+  );
   const forecastsByConfig = useMemo(() => {
     const map = new Map<string, ContractForecast[]>();
     for (const forecast of forecasts) {
