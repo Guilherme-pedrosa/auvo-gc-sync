@@ -1,7 +1,4 @@
 export default function Index() {
-  // onde está a página para eu cadastrar mais tipos de contrato???? que eu te pedi!!
-  // canceling statement due to statement timeout
-  // o que é isso? Isso é um erro do banco de dados quando uma consulta demora mais do que o permitido (timeout). Provavelmente alguma sincronização pesada ou filtro muito amplo.
 
   return (
     <div className="p-8 space-y-8 max-w-4xl mx-auto">
