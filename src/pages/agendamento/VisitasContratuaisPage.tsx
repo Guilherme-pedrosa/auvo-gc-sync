@@ -186,6 +186,16 @@ export default function VisitasContratuaisPage() {
   const [draft, setDraft] = useState<VisitConfigDraft>(emptyDraft());
   const automaticPlanKey = useRef("");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) next.delete(monthKey);
+      else next.add(monthKey);
+      return next;
+    });
+  };
 
   const contractsQuery = useQuery({
     queryKey: ["contractual-visits", "contracts"],
