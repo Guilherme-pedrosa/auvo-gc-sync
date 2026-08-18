@@ -282,10 +282,15 @@ export function buildContractYearForecasts(
   input: Omit<ContractVisitConfigInput, "competencia" | "visitasRealizadas"> & {
     ano: number;
     visitasRealizadasPorMes?: Record<string, number[]>;
+    mesesAtivos?: number[] | null;
   },
 ): ContractVisitForecast[] {
   const result: ContractVisitForecast[] = [];
+  const activeMonths = (input.mesesAtivos && input.mesesAtivos.length)
+    ? new Set(input.mesesAtivos)
+    : null;
   for (let month = 1; month <= 12; month += 1) {
+    if (activeMonths && !activeMonths.has(month)) continue;
     const competencia = `${input.ano}-${pad(month)}`;
     if (!contractMonthIsActive(competencia, input.vigenciaInicio, input.vigenciaFim)) continue;
     const monthEnd = localISO(monthBounds(competencia).end);

@@ -724,11 +724,13 @@ export type Database = {
           duracao_minutos: number
           hora_inicio: string
           id: string
+          meses_ativos: number[]
           observacao: string | null
           planejamento_atualizado_em: string | null
           planejamento_pendente: boolean
           qtd_tecnicos: number
           qtd_visitas: number
+          regra_texto: string | null
           semanas_mes: number[]
           tecnico_ids: string[] | null
         }
@@ -742,11 +744,13 @@ export type Database = {
           duracao_minutos?: number
           hora_inicio?: string
           id?: string
+          meses_ativos?: number[]
           observacao?: string | null
           planejamento_atualizado_em?: string | null
           planejamento_pendente?: boolean
           qtd_tecnicos?: number
           qtd_visitas?: number
+          regra_texto?: string | null
           semanas_mes?: number[]
           tecnico_ids?: string[] | null
         }
@@ -760,11 +764,13 @@ export type Database = {
           duracao_minutos?: number
           hora_inicio?: string
           id?: string
+          meses_ativos?: number[]
           observacao?: string | null
           planejamento_atualizado_em?: string | null
           planejamento_pendente?: boolean
           qtd_tecnicos?: number
           qtd_visitas?: number
+          regra_texto?: string | null
           semanas_mes?: number[]
           tecnico_ids?: string[] | null
         }

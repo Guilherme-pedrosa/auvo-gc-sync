@@ -25,6 +25,8 @@ export type ContractPlanningConfig = {
   tecnico_ids: string[];
   dias_semana: number[];
   semanas_mes?: number[] | null;
+  meses_ativos?: number[] | null;
+  regra_texto?: string | null;
   observacao: string | null;
   ativo: boolean;
   planejamento_pendente?: boolean;
@@ -140,6 +142,7 @@ export async function reconcileContractVisitYear(input: {
         tecnicoIds: validTechnicianIds,
         diasSemana: config.dias_semana,
         semanasMes: config.semanas_mes || [1, 2, 3, 4, 5],
+        mesesAtivos: config.meses_ativos && config.meses_ativos.length ? config.meses_ativos : null,
         vigenciaInicio: contract.vigencia_inicio,
         vigenciaFim: contract.vigencia_fim,
         naoAntesDe: cutoff,
