@@ -165,6 +165,7 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as Contract[];
     },
+    staleTime: 5 * 60 * 1000,
   });
 
   const configsQuery = useQuery({
@@ -174,6 +175,7 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as VisitConfig[];
     },
+    staleTime: 5 * 60 * 1000,
   });
 
   const techniciansQuery = useQuery({
@@ -189,6 +191,7 @@ export default function VisitasContratuaisPage() {
       const field = rows.filter(isFieldTechnician);
       return field.length ? field : rows;
     },
+    staleTime: 30 * 60 * 1000,
   });
 
   const groupsQuery = useQuery({
@@ -214,6 +217,7 @@ export default function VisitasContratuaisPage() {
       if (error) throw error;
       return data as ContractForecast[];
     },
+    staleTime: 2 * 60 * 1000,
   });
 
   const executionsQuery = useQuery({
@@ -470,8 +474,14 @@ export default function VisitasContratuaisPage() {
     if (!initialPlanIds.length || year < currentYear) return;
     const key = `${year}:${initialPlanIds.sort().join(",")}`;
     if (automaticPlanKey.current === key) return;
-    automaticPlanKey.current = key;
-    planYear.mutate(initialPlanIds);
+    
+    // Pequeno atraso para não engasgar a renderização inicial se já houver dados no cache
+    const timer = setTimeout(() => {
+      automaticPlanKey.current = key;
+      planYear.mutate(initialPlanIds);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
   }, [configsQuery.isLoading, forecastsQuery.isLoading, executionsQuery.isLoading, techniciansQuery.isLoading, initialPlanIds, planYear, year, currentYear]);
 
   const loading = contractsQuery.isLoading || configsQuery.isLoading || techniciansQuery.isLoading || forecastsQuery.isLoading || executionsQuery.isLoading;
