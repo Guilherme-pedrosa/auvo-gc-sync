@@ -1,4 +1,5 @@
 import { Search, X, Users, Calendar, Filter } from "lucide-react";
+import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
