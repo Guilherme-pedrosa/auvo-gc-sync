@@ -156,7 +156,8 @@ export function SearchableSelect(props: SearchableSelectProps) {
 
   // Single select (original behavior)
   const { value, onValueChange } = props as SingleSelectProps;
-  const selectedLabel = options.find((o) => o.value === value)?.label || placeholder;
+  const selectedOption = options.find((o) => o.value === value);
+  const selectedLabel = selectedOption?.label || placeholder;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -167,9 +168,18 @@ export function SearchableSelect(props: SearchableSelectProps) {
           aria-expanded={open}
           className={cn("justify-between font-normal", className)}
         >
-          <span className="flex items-center gap-1 truncate">
+          <span className="flex items-center gap-1 truncate w-full">
             {icon}
-            <span className="truncate">{selectedLabel}</span>
+            <span className="truncate flex-1 text-left">{selectedLabel}</span>
+            {value && (
+              <X
+                className="h-3.5 w-3.5 opacity-50 hover:opacity-100 cursor-pointer shrink-0 ml-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onValueChange("");
+                }}
+              />
+            )}
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
