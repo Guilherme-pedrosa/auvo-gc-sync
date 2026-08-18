@@ -3426,6 +3426,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      atividade_e_limpeza_coifa:
+        | {
+            Args: { p_descricao: string; p_task_type_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_descricao: string
+              p_questionario_id: string
+              p_questionario_respostas: Json
+              p_task_type_id: string
+            }
+            Returns: boolean
+          }
       claim_realtime_tracking_gc_refresh: {
         Args: {
           p_cache_key: string
@@ -3435,12 +3449,25 @@ export type Database = {
         }
         Returns: boolean
       }
+      cliente_rh_chave: { Args: { p_cliente: string }; Returns: string }
+      clientes_rh_relacionados: {
+        Args: { p_cliente_a: string; p_cliente_b: string }
+        Returns: boolean
+      }
+      contrato_e_limpeza_coifa: {
+        Args: { p_contrato_nome: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      materializar_card_visita_contratual: {
+        Args: { p_execucao_id: string }
+        Returns: number
       }
       normalizar_cliente_visita: { Args: { p_nome: string }; Returns: string }
       promover_previsao_orcamento: {
@@ -3459,7 +3486,13 @@ export type Database = {
           contrato_id: string | null
           contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
+          contrato_visita_execucao_id: string | null
+          contrato_visita_horas_realizadas: number | null
           contrato_visita_numero: number | null
+          contrato_visita_realizada_em: string | null
+          contrato_visita_tarefa_ids: string[]
+          contrato_visita_tarefas_detalhes: Json
+          contrato_visita_tecnicos: string[]
           conversao_erro: string | null
           conversao_status: string | null
           conversao_tentada_em: string | null
@@ -3488,9 +3521,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      reconciliar_config_visita_contratual_agendada: {
+        Args: { p_cliente: string; p_config_id: string; p_data: string }
+        Returns: number
+      }
       reconciliar_dia_visita_contratual: {
         Args: { p_cliente: string; p_data: string }
         Returns: string
+      }
+      reconciliar_dia_visita_contratual_agendada: {
+        Args: { p_cliente: string; p_data: string }
+        Returns: number
       }
       reconciliar_previsoes_visitas_contratuais: {
         Args: {
