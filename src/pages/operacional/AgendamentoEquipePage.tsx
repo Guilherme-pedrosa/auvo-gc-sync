@@ -1101,7 +1101,7 @@ export default function AgendamentoEquipePage() {
 
     for (const a of data?.agendamentos ?? []) {
       // Filtro de Previsões / Visitas Contratuais
-      const isPrevisao = Boolean(a.previsao_continuidade && a.origem !== "CONTRATO");
+      const isPrevisao = Boolean(a.previsao_continuidade || a.status === "PREVISAO");
       const isVisita = Boolean(a.previsao_tipo === "CONTRATO" || a.previsao_tipo === "CONTRATO_REALIZADO" || a.origem === "CONTRATO");
 
       if (isPrevisao && !mostrarPrevisoes) continue;
