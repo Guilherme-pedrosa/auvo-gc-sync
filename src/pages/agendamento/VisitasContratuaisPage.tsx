@@ -474,6 +474,31 @@ export default function VisitasContratuaisPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const updateContractType = useMutation({
+    mutationFn: async ({ contratoId, tipoId }: { contratoId: string; tipoId: string | null }) => {
+      const { error } = await supabase.from("contratos").update({ tipo_id: tipoId } as never).eq("id", contratoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Tipo de contrato atualizado.");
+      void queryClient.invalidateQueries({ queryKey: ["contractual-visits", "contracts"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const legacyDeleteConfig = useMutation({
+    mutationFn: async (configId: string) => {
+      const { error } = await supabase.from("contratos_visitas_config").delete().eq("id", configId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Configuração removida.");
+      void queryClient.invalidateQueries({ queryKey: ["contractual-visits"] });
+      void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const initialPlanIds = useMemo(() => configs.filter((config) => {
     if (!config.ativo) return false;
     const contract = contractById.get(config.contrato_id);
