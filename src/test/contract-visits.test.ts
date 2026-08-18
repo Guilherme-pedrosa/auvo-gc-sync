@@ -330,6 +330,18 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(agendaPage).toContain("bg-emerald-100 text-emerald-950");
   });
 
+  it("impede dois cards do mesmo contrato, visita e técnico", () => {
+    const migration = readFileSync(
+      resolve(root, "supabase/migrations/20260818190000_deduplicate_contract_visit_slots.sql"),
+      "utf8",
+    );
+
+    expect(migration).toContain("DROP TRIGGER IF EXISTS trg_proteger_card_visita_contratual_realizada");
+    expect(migration).toContain("agenda_contrato_slot_tecnico_unique");
+    expect(migration).toContain("agenda.descricao ILIKE '%tarefas Auvo%'");
+    expect(migration).toContain("duplicate.position > 1");
+  });
+
   it("amarra a Hypermarcas pelo RH e consome a primeira visita livre", () => {
     const sequenceMigration = readFileSync(
       resolve(root, "supabase/migrations/20260818160000_fix_contract_visit_sequence_and_hypermarcas_link.sql"),
