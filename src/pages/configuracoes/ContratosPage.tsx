@@ -587,7 +587,7 @@ function MembrosDialog({
               onKeyDown={(e) => { if (e.key === "Enter" && novo.trim()) add.mutate(novo.trim()); }}
             />
             <datalist id="clientes-list">
-              {clientesDisponiveis.map((c) => <option key={c} value={c} />)}
+              {clientesDisponiveis.map((c: string) => <option key={c} value={c} />)}
             </datalist>
             <Button onClick={() => novo.trim() && add.mutate(novo.trim())} disabled={add.isPending}>
               <Plus className="h-4 w-4" />
