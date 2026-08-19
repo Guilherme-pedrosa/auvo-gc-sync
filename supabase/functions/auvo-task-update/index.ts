@@ -577,8 +577,10 @@ function sanitizeCentralRow(row: any) {
   // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
+    // Identidade = tarefa + OS. O orçamento não entra na chave (muda com o
+    // ciclo e criava linhas duplicadas para a mesma tarefa).
     mirror_key: String(row?.mirror_key || "").trim()
-      || `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
+      || `${taskId}::os:${String(row?.gc_os_id || "")}::orc:`,
     atualizado_em: new Date().toISOString(),
   };
 
