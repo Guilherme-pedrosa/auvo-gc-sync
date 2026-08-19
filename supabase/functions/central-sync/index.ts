@@ -3617,8 +3617,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     }
 
     // Upsert in batches of 100
+    // A identidade de uma linha é SEMPRE tarefa + OS. O orçamento NÃO entra na
+    // chave: ele muda ao longo do ciclo (vincula/desvincula) e, quando fazia
+    // parte da mirror_key, cada mudança criava uma nova linha em vez de
+    // atualizar a existente — origem das tarefas duplicadas no Controle OS.
     for (const row of rows) {
-      row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:${String(row.gc_orcamento_id || "")}`;
+      row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:`;
     }
 
     let upserted = 0;
