@@ -36,6 +36,8 @@ describe("desempenho do Agendamento Equipe", () => {
 
   it("persiste as tarefas do modo rapido no espelho central", () => {
     expect(auvoAgenda).toContain("const centralRows = enriched.map");
+    expect(auvoAgenda).toContain("const CENTRAL_WRITE_BATCH_SIZE = 8");
+    expect(auvoAgenda).toContain("index += CENTRAL_WRITE_BATCH_SIZE");
     expect(auvoAgenda).toContain('onConflict: "mirror_key"');
     expect(auvoAgenda).toContain("persisted_tasks: persistedTasks");
   });

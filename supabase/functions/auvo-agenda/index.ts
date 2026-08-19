@@ -762,8 +762,14 @@ Deno.serve(async (req) => {
         return row;
       });
 
-      for (let index = 0; index < centralRows.length; index += 500) {
-        const batch = centralRows.slice(index, index + 500);
+      // tarefas_central possui gatilhos de reconciliação de visitas contratuais.
+      // Um único upsert grande acumula o custo desses gatilhos na mesma instrução
+      // e pode atingir o statement_timeout mesmo com poucas dezenas de tarefas.
+      // Lotes pequenos mantêm cada instrução abaixo do limite sem remover nem
+      // contornar as regras de reconciliação do banco.
+      const CENTRAL_WRITE_BATCH_SIZE = 8;
+      for (let index = 0; index < centralRows.length; index += CENTRAL_WRITE_BATCH_SIZE) {
+        const batch = centralRows.slice(index, index + CENTRAL_WRITE_BATCH_SIZE);
         const { error: persistError } = await backend
           .from("tarefas_central")
           .upsert(batch, {
