@@ -233,7 +233,7 @@ function subtractDisplacement(hours: number, displacementHours: number): number 
 //   2) (checkOut − checkIn) − Σ pausas (timeControl)
 //   3) task.durationDecimal (último recurso — pode incluir pausas em alguns retornos)
 function computeAuvoWorkedHours(task: any): number {
-  // Fonte 1: duration HH:MM:SS
+  // Fonte 1: duration HH:MM:SS (Auvo's officially calculated "Work Time")
   const durStr = String(task?.duration || task?.Duration || "").trim();
   const m = durStr.match(/^-?(\d+):-?(\d{1,2})(?::-?(\d{1,2}))?$/);
   if (m) {
@@ -241,9 +241,11 @@ function computeAuvoWorkedHours(task: any): number {
     const mi = parseInt(m[2], 10);
     const s = m[3] ? parseInt(m[3], 10) : 0;
     const total = h + mi / 60 + s / 3600;
-    if (total > 0) return Math.round(total * 10000) / 10000;
+    // Discard durations that are clearly just a few seconds or invalid
+    if (total > 0.0001) return Math.round(total * 10000) / 10000;
   }
-  // Fonte 2: checkIn/checkOut menos pausas
+
+  // Fonte 2: checkIn/checkOut menos pausas (Manual calculation)
   const checkIn = task?.checkInDate || task?.CheckInDate || task?.checkinDate || null;
   const checkOut = task?.checkOutDate || task?.CheckOutDate || task?.checkoutDate || null;
   if (checkIn && checkOut) {
@@ -261,11 +263,12 @@ function computeAuvoWorkedHours(task: any): number {
         }
       }
       const totalSec = Math.max(0, Math.floor((outMs - inMs) / 1000) - pauseSec);
-      return Math.round((totalSec / 3600) * 10000) / 10000;
+      if (totalSec > 0) return Math.round((totalSec / 3600) * 10000) / 10000;
     }
   }
-  // Fonte 3: durationDecimal (fallback)
-  const dec = parseFloat(String(task?.durationDecimal || "0").replace(",", "."));
+
+  // Fonte 3: durationDecimal (fallback, may include pauses depending on API context)
+  const dec = parseFloat(String(task?.durationDecimal || task?.DurationDecimal || "0").replace(",", "."));
   return Number.isFinite(dec) && dec !== 0 ? Math.round(Math.abs(dec) * 10000) / 10000 : 0;
 }
 

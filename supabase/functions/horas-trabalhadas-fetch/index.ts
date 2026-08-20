@@ -249,7 +249,9 @@ function mapAuvoTask(t: any) {
       parseInt(dMatch[1], 10) * 3600 +
       parseInt(dMatch[2], 10) * 60 +
       parseInt(dMatch[3], 10);
-  } else if (checkIn) {
+  }
+  
+  if (workedSeconds < 1 && checkIn) {
     // Calcula manualmente a partir dos eventos de monitoramento.
     const tc: any[] = Array.isArray(t?.timeControl) ? t.timeControl : [];
     let pauseSec = 0;

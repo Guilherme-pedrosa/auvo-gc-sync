@@ -30,7 +30,7 @@ export function auvoCheckOutDate(task: unknown): string | null {
 export function computeAuvoWorkedHours(task: unknown): number {
   const record = asRecord(task);
   const officialMinutes = parseAuvoDurationMinutes(record.duration ?? record.Duration);
-  if (officialMinutes > 0) {
+  if (officialMinutes > 0.01) {
     return Math.round((officialMinutes / 60) * 10_000) / 10_000;
   }
 
