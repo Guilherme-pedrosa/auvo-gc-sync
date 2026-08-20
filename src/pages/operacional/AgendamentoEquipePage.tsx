@@ -1520,6 +1520,7 @@ export default function AgendamentoEquipePage() {
                               tagsPorAgendamento={tagsPorAgendamento}
                               tagsSelecionadas={tagsSelecionadas}
                               apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
+                               chegadas={chegadas}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
