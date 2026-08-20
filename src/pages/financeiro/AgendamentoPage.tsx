@@ -516,13 +516,20 @@ export default function AgendamentoPage() {
             </div>
           )}
           {i.previsao_data && (
-            <div className="flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] text-emerald-800">
-              <CalendarClock className="h-3 w-3" />
+            <div className={cn(
+              "flex items-center gap-2 rounded border p-1.5 text-[10px]",
+              execucaoAtrasadaPelaPeca 
+                ? "border-destructive/40 bg-destructive/10 text-destructive animate-pulse" 
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            )}>
+              {execucaoAtrasadaPelaPeca ? <AlertTriangle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
               <span>
                 <strong>Previsão:</strong> {formatDiaBR(i.previsao_data)} {i.previsao_tecnico ? `com ${i.previsao_tecnico}` : ""}
+                {execucaoAtrasadaPelaPeca && " · Peças chegam DEPOIS desta data!"}
               </span>
             </div>
           )}
+
           <div className="mt-auto flex items-center gap-1 pt-2">
             <Button 
               size="sm" 
