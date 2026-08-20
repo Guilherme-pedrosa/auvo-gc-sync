@@ -2,7 +2,7 @@ import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useEffect, useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar as CalendarIcon, CalendarClock } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -44,6 +44,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useQuery } from "@tanstack/react-query";
 import AgendaTagsEditor from "@/components/operacional/AgendaTagsEditor";
 import { areNamesDivergent } from "@/lib/clientMatching";
+import { formatDiaBR } from "@/lib/agendamento";
+import {
+  chegadaDoAgendamento,
+  fetchPrevisoesChegada,
+  PREVISAO_CHEGADA_QUERY_KEY,
+} from "@/lib/previsaoChegada";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -83,6 +89,22 @@ export default function AgendamentoEquipeDialog({
   const [questionnaireId, setQuestionnaireId] = useState("");
   const [previsaoDetalhes, setPrevisaoDetalhes] = useState("");
   const [gcDocEndpoint, setGcDocEndpoint] = useState<string | null>(null);
+
+  const ehPrevisaoOrcamento = Boolean(
+    agendamento?.previsao_continuidade
+    && (agendamento.gc_orcamento_codigo || agendamento.gc_os_codigo),
+  );
+  const { data: chegadas = [], isLoading: chegadaLoading, isError: chegadaError, refetch: refetchChegada } = useQuery({
+    queryKey: PREVISAO_CHEGADA_QUERY_KEY,
+    queryFn: fetchPrevisoesChegada,
+    enabled: open && ehPrevisaoOrcamento,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  });
+  const chegadaAtual = agendamento ? chegadaDoAgendamento(agendamento, chegadas) : null;
+  const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
+  const previsaoAntesDaChegada = Boolean(data && dataChegadaAtual && data < dataChegadaAtual);
 
 
   const { data: questionnaires = [] } = useQuery({
@@ -461,7 +483,46 @@ export default function AgendamentoEquipeDialog({
           )}
 
           {agendamento?.previsao_continuidade && (
-            <div className="space-y-2 p-3 bg-primary/5 rounded-md border border-primary/20">
+            <div className="space-y-3 p-3 bg-primary/5 rounded-md border border-primary/20">
+              {ehPrevisaoOrcamento && (
+                <div className={cn(
+                  "space-y-2 rounded-md border p-3",
+                  previsaoAntesDaChegada
+                    ? "border-destructive bg-destructive/10 text-destructive"
+                    : "border-border bg-background text-foreground",
+                )}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs font-bold">
+                      {previsaoAntesDaChegada ? <AlertTriangle className="h-4 w-4" /> : <CalendarClock className="h-4 w-4 text-primary" />}
+                      Controle da previsão
+                    </span>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => refetchChegada()} disabled={chegadaLoading}>
+                      {chegadaLoading ? "Atualizando..." : "Atualizar chegada"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="block text-muted-foreground">Execução prevista</span>
+                      <strong>{formatDiaBR(data)}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-muted-foreground">Chegada atual das peças</span>
+                      <strong>{chegadaLoading ? "Consultando..." : formatDiaBR(dataChegadaAtual)}</strong>
+                    </div>
+                  </div>
+                  {previsaoAntesDaChegada && (
+                    <p className="text-[11px] font-bold">
+                      A chegada mudou para depois da execução prevista. Reagende a previsão para {formatDiaBR(dataChegadaAtual)} ou uma data posterior.
+                    </p>
+                  )}
+                  {!chegadaLoading && !dataChegadaAtual && !chegadaError && (
+                    <p className="text-[10px] text-muted-foreground">A fonte de compras não informou uma data de chegada vigente.</p>
+                  )}
+                  {chegadaError && (
+                    <p className="text-[10px] text-destructive">Não foi possível conferir a data atual. Tente atualizar novamente.</p>
+                  )}
+                </div>
+              )}
               <Label htmlFor="prev_det" className="text-xs font-bold text-primary">Detalhes da Previsão</Label>
               <Textarea
                 id="prev_det"
