@@ -2024,7 +2024,7 @@ export default function BudgetKanbanPage() {
       <div className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+            <Button variant="ghost" size="icon" aria-label="Voltar para o início" onClick={() => navigate("/")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -2337,10 +2337,10 @@ export default function BudgetKanbanPage() {
                                   onKeyDown={(e) => e.key === "Enter" && saveColumnRename()}
                                   autoFocus
                                 />
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={saveColumnRename}>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Salvar nome da coluna" onClick={saveColumnRename}>
                                   <Check className="h-3 w-3" />
                                 </Button>
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingColumnId(null)}>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Cancelar edição da coluna" onClick={() => setEditingColumnId(null)}>
                                   <X className="h-3 w-3" />
                                 </Button>
                               </div>
@@ -2353,14 +2353,14 @@ export default function BudgetKanbanPage() {
                                 <div className="flex items-center gap-1">
                                   <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
                                   <Button
-                                    size="icon" variant="ghost" className="h-6 w-6"
+                                    size="icon" variant="ghost" className="h-6 w-6" aria-label={`Renomear coluna ${column.title}`}
                                     onClick={(e) => { e.stopPropagation(); setEditingColumnId(column.id); setEditingColumnTitle(column.title); }}
                                   >
                                     <Edit2 className="h-3 w-3" />
                                   </Button>
                                   {column.id !== "a_fazer" && column.id !== "os_realizada" && column.id !== "resolvido_sem_orcamento" && column.id !== "falta_preenchimento" && !column.id.startsWith("orc_") && (
                                     <Button
-                                      size="icon" variant="ghost" className="h-6 w-6 text-destructive"
+                                      size="icon" variant="ghost" className="h-6 w-6 text-destructive" aria-label={`Excluir coluna ${column.title}`}
                                       onClick={(e) => { e.stopPropagation(); deleteColumn(column.id); }}
                                     >
                                       <Trash2 className="h-3 w-3" />
