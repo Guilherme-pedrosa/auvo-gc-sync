@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, CHEGADAS_QUERY_POLICY, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates,
+  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates, isForecastDelayedByParts,
+
   type ChegadaItem, type ChegadaStatus,
   type PrevisaoAgendamento,
 } from "@/lib/agendamento";
