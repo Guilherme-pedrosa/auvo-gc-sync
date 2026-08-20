@@ -364,7 +364,10 @@ function Celula({
         {itens.map((a) => {
           const chegadaAtual = a.previsao_continuidade ? chegadaDoAgendamento(a, chegadas) : null;
           const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
-          const previsaoAntesDaChegada = Boolean(dataChegadaAtual && a.data < dataChegadaAtual);
+          const dataPrevista = a.data;
+          const previsaoAtrasada = Boolean(dataChegadaAtual && dataPrevista < dataChegadaAtual);
+          const previsaoNoMesmoDia = Boolean(dataChegadaAtual && dataPrevista === dataChegadaAtual);
+          const previsaoAntesDaChegada = previsaoAtrasada;
           const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
           const visitaContratualCumprida = visitaContratualPlanejada
@@ -459,6 +462,7 @@ function Celula({
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   previsaoAntesDaChegada && "border-2 border-destructive bg-destructive/10 text-destructive ring-2 ring-destructive/30",
+                  previsaoNoMesmoDia && !previsaoAntesDaChegada && "border-2 border-amber-500 bg-amber-50 text-amber-700 ring-2 ring-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.4)]",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
                   clienteDivergente && "border-2 border-destructive ring-1 ring-destructive/50",
@@ -592,7 +596,9 @@ function Celula({
                       "mt-0.5 flex items-center gap-1 rounded-sm px-1 py-0.5 text-[9px] font-bold normal-case",
                       previsaoAntesDaChegada
                         ? "bg-destructive text-destructive-foreground"
-                        : "bg-background/70 text-foreground",
+                        : previsaoNoMesmoDia
+                          ? "bg-amber-500 text-amber-950"
+                          : "bg-background/70 text-foreground",
                     )}>
                       {previsaoAntesDaChegada && <AlertTriangle className="h-2.5 w-2.5 shrink-0" />}
                       Prevista: {formatDiaBR(a.data)} · Chegada atual: {formatDiaBR(dataChegadaAtual)}
