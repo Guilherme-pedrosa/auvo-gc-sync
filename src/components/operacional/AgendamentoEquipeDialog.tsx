@@ -37,7 +37,7 @@ import {
   useDeleteAgendamento,
   type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle, History } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -342,6 +342,32 @@ export default function AgendamentoEquipeDialog({
     }
   };
 
+  const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
+    queryKey: ["agenda_agendamentos_logs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agenda_agendamentos")
+        .select(`
+          id, 
+          atualizado_em, 
+          colaborador_nome, 
+          cliente, 
+          gc_orcamento_codigo, 
+          gc_os_codigo, 
+          data,
+          criado_por
+        `)
+        .eq("previsao_continuidade", true)
+        .order("atualizado_em", { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: open, // Carrega logs quando o modal abre
+  });
+
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col p-0">
@@ -645,6 +671,60 @@ export default function AgendamentoEquipeDialog({
             </div>
           )}
         </div>
+
+        {agendamento?.previsao_continuidade && (
+          <div className="border-t bg-muted/20 px-6 py-4">
+            <h4 className="mb-2 flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase">
+              <History className="h-3 w-3" /> Histórico Recente de Previsões
+            </h4>
+            <div className="max-h-[150px] overflow-y-auto rounded border bg-background">
+              {isLoadingLogs ? (
+                <div className="p-4 text-center text-[10px] text-muted-foreground italic">
+                  Carregando histórico...
+                </div>
+              ) : logs.length === 0 ? (
+                <div className="p-4 text-center text-[10px] text-muted-foreground italic">
+                  Nenhuma alteração recente registrada.
+                </div>
+              ) : (
+                <table className="w-full text-left text-[9px]">
+                  <thead className="sticky top-0 bg-muted/50 text-muted-foreground">
+                    <tr className="border-b">
+                      <th className="px-2 py-1 font-medium">Data/Hora</th>
+                      <th className="px-2 py-1 font-medium">Usuário</th>
+                      <th className="px-2 py-1 font-medium">Técnico</th>
+                      <th className="px-2 py-1 font-medium">Previsto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {logs.map((log: any) => (
+                      <tr key={log.id} className={cn(
+                        "hover:bg-muted/30 transition-colors",
+                        log.id === agendamento.id && "bg-primary/5 font-bold"
+                      )}>
+                        <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">
+                          {new Date(log.atualizado_em).toLocaleString('pt-BR', { 
+                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+                          })}
+                        </td>
+                        <td className="px-2 py-1 truncate max-w-[60px]">
+                          {log.criado_por ? log.criado_por.slice(0, 8) : 'Sistema'}
+                        </td>
+                        <td className="px-2 py-1 text-primary truncate max-w-[80px]">
+                          {log.colaborador_nome}
+                        </td>
+                        <td className="px-2 py-1">
+                          {log.data ? formatDiaBR(log.data) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
 
 
         <DialogFooter className="gap-2 sm:justify-between">
