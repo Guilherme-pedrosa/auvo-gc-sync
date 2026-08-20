@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -135,6 +136,7 @@ function isPedidoCompra(i: ChegadaItem): boolean {
 }
 
 export default function AgendamentoPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const hoje = todayISO();
   const [ano, setAno] = useState(() => new Date().getFullYear());
@@ -517,16 +519,34 @@ export default function AgendamentoPage() {
           )}
           {i.previsao_data && (
             <div className={cn(
-              "flex items-center gap-2 rounded border p-1.5 text-[10px]",
-              execucaoAtrasadaPelaPeca 
-                ? "border-destructive/40 bg-destructive/10 text-destructive animate-pulse" 
-                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              "flex flex-col gap-1.5 rounded border p-2 text-[10px]",
+              execucaoAtrasadaPelaPeca ? "border-destructive bg-destructive/10 shadow-sm" : "border-emerald-200 bg-emerald-50"
             )}>
-              {execucaoAtrasadaPelaPeca ? <AlertTriangle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
-              <span>
-                <strong>Previsão:</strong> {formatDiaBR(i.previsao_data)} {i.previsao_tecnico ? `com ${i.previsao_tecnico}` : ""}
-                {execucaoAtrasadaPelaPeca && " · Peças chegam DEPOIS desta data!"}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className={cn("font-bold uppercase tracking-wider", execucaoAtrasadaPelaPeca ? "text-destructive" : "text-emerald-900")}>
+                  {execucaoAtrasadaPelaPeca ? "🚨 Execução Atrasada por Peças" : "📅 Previsão de Execução"}
+                </span>
+                {i.previsao_hora && <span className="text-muted-foreground font-medium">{i.previsao_hora}</span>}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <CalendarClock className={cn("h-3.5 w-3.5 shrink-0", execucaoAtrasadaPelaPeca ? "text-destructive" : "text-emerald-700")} />
+                <span className={cn("text-xs font-semibold", execucaoAtrasadaPelaPeca ? "text-destructive underline decoration-2 underline-offset-2" : "text-emerald-800")}>
+                  {formatDiaBR(i.previsao_data)}
+                </span>
+                {i.previsao_tecnico && (
+                  <span className="text-muted-foreground truncate border-l border-border/50 pl-2">
+                    {i.previsao_tecnico}
+                  </span>
+                )}
+              </div>
+
+              {execucaoAtrasadaPelaPeca && (
+                <div className="mt-1 flex items-center gap-1.5 rounded-sm bg-destructive/20 p-1 font-bold text-destructive animate-pulse">
+                  <AlertTriangle className="h-3 w-3" />
+                  <p>Peças chegam DEPOIS desta data!</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -544,20 +564,33 @@ export default function AgendamentoPage() {
               {i.previsao_data ? "Alterar previsão" : "Criar previsão"}
             </Button>
             
-            {i.auvo_task_id && (
-              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Relatório PDF (Auvo)">
-                <a href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${i.auvo_task_id}`} target="_blank" rel="noreferrer">
-                  <FileText className="h-3 w-3" />
-                </a>
+            {i.os_codigo && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => navigate(`/financeiro/kanban-os?search=${i.os_codigo}`)}
+                title={`Ver OS ${i.os_codigo}`}
+              >
+                <FileText className="h-3 w-3 text-blue-600" />
               </Button>
             )}
 
+            {i.auvo_task_id && (
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Relatório PDF (Auvo)">
+                <a href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${i.auvo_task_id}`} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+            
             {i.documento_link && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
                 <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </Button>
+
             )}
 
             {ehPedido && i.gc_link && i.compra_codigo && (
