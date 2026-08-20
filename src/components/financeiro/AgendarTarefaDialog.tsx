@@ -154,6 +154,8 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       const payload = {
         data: dateISO,
         hora_inicio: hora,
@@ -175,6 +177,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         previsao_detalhes: previsaoDetalhes.trim() || null,
         origem: "MANUAL",
         atualizado_em: new Date().toISOString(),
+        criado_por: user?.id || null,
       };
 
       let previsaoId = alvo.previsao_id || null;

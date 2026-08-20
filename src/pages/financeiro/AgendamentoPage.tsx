@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, FileText, Filter, Loader2,
-  Package, PackageSearch, RefreshCw, Search,
+  Package, PackageSearch, RefreshCw, Search, ChevronUp, History,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -155,11 +155,37 @@ export default function AgendamentoPage() {
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
+  const [logExpanded, setLogExpanded] = useState(false);
 
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["compras-chegadas"],
     queryFn: fetchChegadas,
     ...CHEGADAS_QUERY_POLICY,
+  });
+
+  const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
+    queryKey: ["agenda_agendamentos_logs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agenda_agendamentos")
+        .select(`
+          id, 
+          atualizado_em, 
+          colaborador_nome, 
+          cliente, 
+          gc_orcamento_codigo, 
+          gc_os_codigo, 
+          data,
+          criado_por
+        `)
+        .eq("previsao_continuidade", true)
+        .order("atualizado_em", { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: logExpanded,
   });
 
   const handleAtualizar = useCallback(async () => {
