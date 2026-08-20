@@ -852,7 +852,12 @@ export default function AgendamentoEquipePage() {
   // A sincronização é dividida em janelas: a primeira cobre os próximos dias
   // (o que o usuário realmente enxerga) e volta rápido; o restante do horizonte
   // é processado em segundo plano, sem travar a tela.
-  const sincronizarJanela = async (startDate: string, endDate: string) => {
+  const sincronizarJanela = async (
+    startDate: string,
+    endDate: string,
+    opcoes?: { permitirRemocao?: boolean },
+  ) => {
+      const permitirRemocao = opcoes?.permitirRemocao !== false;
       // Uma única leitura do RH; o retorno é usado nesta sincronização para
       // evitar trabalhar com o estado anterior do React Query.
       const [colaboradoresResult, agendaResult] = await Promise.all([
@@ -945,7 +950,7 @@ export default function AgendamentoEquipePage() {
 
       // Ausência só é conclusiva quando a edge function terminou todas as
       // páginas do período. Uma resposta parcial nunca autoriza exclusão local.
-      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete
+      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete && permitirRemocao
         ? await supabase
           .from("agenda_agendamentos")
           .select("id,auvo_task_id,data,origem,gc_os_codigo,gc_orcamento_codigo,previsao_tipo,conversao_status")
@@ -967,7 +972,7 @@ export default function AgendamentoEquipePage() {
 
       const protectedForecast = (row: any) =>
         row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
-      const previousRows = data?.agendamentos ?? [];
+      const previousRows = permitirRemocao ? (data?.agendamentos ?? []) : [];
       const replacedManualIds = previousRows
         .filter((row: any) => {
           if (protectedForecast(row)) return false;
