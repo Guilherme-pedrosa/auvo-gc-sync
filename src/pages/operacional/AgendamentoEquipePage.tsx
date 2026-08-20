@@ -1030,6 +1030,9 @@ export default function AgendamentoEquipePage() {
   };
 
   const DIAS_JANELA_RAPIDA = 21;
+  // Dias passados reprocessados junto com a escala: sem isso, tarefas concluídas
+  // ontem (check-out, status, horas) nunca voltavam a ser lidas do Auvo.
+  const DIAS_JANELA_PASSADA = 14;
 
   const refetch = async () => {
     setIsSyncing(true);
@@ -1062,18 +1065,25 @@ export default function AgendamentoEquipePage() {
 
       // Restante do horizonte, sem bloquear a tela nem o botão.
       const inicioRestante = diasFuturos[DIAS_JANELA_RAPIDA];
-      if (inicioRestante) {
-        void (async () => {
-          try {
+      void (async () => {
+        try {
+          if (inicioRestante) {
             await sincronizarJanela(inicioRestante, diasFuturos[diasFuturos.length - 1]);
-            await refetchLocal();
-            toast.message("Períodos futuros também atualizados.");
-          } catch (err) {
-            console.error("[agendamento-equipe] falha na janela futura:", err);
-            toast.warning("Os próximos dias foram atualizados, mas o período mais distante falhou.");
           }
-        })();
-      }
+          // Passado recente: só atualiza (nunca remove), para trazer check-out,
+          // status e horas das tarefas já executadas.
+          const inicioPassado = diasAnteriores[diasAnteriores.length - DIAS_JANELA_PASSADA];
+          const fimPassado = diasAnteriores[diasAnteriores.length - 1];
+          if (inicioPassado && fimPassado) {
+            await sincronizarJanela(inicioPassado, fimPassado, { permitirRemocao: false });
+          }
+          await refetchLocal();
+          toast.message("Períodos futuros e passado recente também atualizados.");
+        } catch (err) {
+          console.error("[agendamento-equipe] falha na janela em segundo plano:", err);
+          toast.warning("Os próximos dias foram atualizados, mas o restante do período falhou.");
+        }
+      })();
     } catch (err) {
       console.error("[agendamento-equipe] erro na sincronização:", err);
       toast.error("Não foi possível atualizar a escala", {
