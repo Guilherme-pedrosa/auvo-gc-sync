@@ -852,7 +852,12 @@ export default function AgendamentoEquipePage() {
   // A sincronização é dividida em janelas: a primeira cobre os próximos dias
   // (o que o usuário realmente enxerga) e volta rápido; o restante do horizonte
   // é processado em segundo plano, sem travar a tela.
-  const sincronizarJanela = async (startDate: string, endDate: string) => {
+  const sincronizarJanela = async (
+    startDate: string,
+    endDate: string,
+    opcoes?: { permitirRemocao?: boolean },
+  ) => {
+      const permitirRemocao = opcoes?.permitirRemocao !== false;
       // Uma única leitura do RH; o retorno é usado nesta sincronização para
       // evitar trabalhar com o estado anterior do React Query.
       const [colaboradoresResult, agendaResult] = await Promise.all([
@@ -945,7 +950,7 @@ export default function AgendamentoEquipePage() {
 
       // Ausência só é conclusiva quando a edge function terminou todas as
       // páginas do período. Uma resposta parcial nunca autoriza exclusão local.
-      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete
+      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete && permitirRemocao
         ? await supabase
           .from("agenda_agendamentos")
           .select("id,auvo_task_id,data,origem,gc_os_codigo,gc_orcamento_codigo,previsao_tipo,conversao_status")
@@ -967,7 +972,7 @@ export default function AgendamentoEquipePage() {
 
       const protectedForecast = (row: any) =>
         row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
-      const previousRows = data?.agendamentos ?? [];
+      const previousRows = permitirRemocao ? (data?.agendamentos ?? []) : [];
       const replacedManualIds = previousRows
         .filter((row: any) => {
           if (protectedForecast(row)) return false;
@@ -1025,6 +1030,9 @@ export default function AgendamentoEquipePage() {
   };
 
   const DIAS_JANELA_RAPIDA = 21;
+  // Dias passados reprocessados junto com a escala: sem isso, tarefas concluídas
+  // ontem (check-out, status, horas) nunca voltavam a ser lidas do Auvo.
+  const DIAS_JANELA_PASSADA = 14;
 
   const refetch = async () => {
     setIsSyncing(true);
@@ -1057,18 +1065,25 @@ export default function AgendamentoEquipePage() {
 
       // Restante do horizonte, sem bloquear a tela nem o botão.
       const inicioRestante = diasFuturos[DIAS_JANELA_RAPIDA];
-      if (inicioRestante) {
-        void (async () => {
-          try {
+      void (async () => {
+        try {
+          if (inicioRestante) {
             await sincronizarJanela(inicioRestante, diasFuturos[diasFuturos.length - 1]);
-            await refetchLocal();
-            toast.message("Períodos futuros também atualizados.");
-          } catch (err) {
-            console.error("[agendamento-equipe] falha na janela futura:", err);
-            toast.warning("Os próximos dias foram atualizados, mas o período mais distante falhou.");
           }
-        })();
-      }
+          // Passado recente: só atualiza (nunca remove), para trazer check-out,
+          // status e horas das tarefas já executadas.
+          const inicioPassado = diasAnteriores[diasAnteriores.length - DIAS_JANELA_PASSADA];
+          const fimPassado = diasAnteriores[diasAnteriores.length - 1];
+          if (inicioPassado && fimPassado) {
+            await sincronizarJanela(inicioPassado, fimPassado, { permitirRemocao: false });
+          }
+          await refetchLocal();
+          toast.message("Períodos futuros e passado recente também atualizados.");
+        } catch (err) {
+          console.error("[agendamento-equipe] falha na janela em segundo plano:", err);
+          toast.warning("Os próximos dias foram atualizados, mas o restante do período falhou.");
+        }
+      })();
     } catch (err) {
       console.error("[agendamento-equipe] erro na sincronização:", err);
       toast.error("Não foi possível atualizar a escala", {
