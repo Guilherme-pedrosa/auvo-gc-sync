@@ -343,9 +343,7 @@ export default function AgendamentoPage() {
     const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
 
     // Alerta de atraso de peças em relação à execução
-    const dataChegadaIso = i.data_chegada?.slice(0, 10);
-    const dataPrevisaoIso = i.previsao_data?.slice(0, 10);
-    const execucaoAtrasadaPelaPeca = dataChegadaIso && dataPrevisaoIso && dataChegadaIso > dataPrevisaoIso;
+    const execucaoAtrasadaPelaPeca = isForecastDelayedByParts(i);
 
     if (compacto) {
       return (
@@ -362,6 +360,7 @@ export default function AgendamentoPage() {
         </button>
       );
     }
+
 
     return (
       <div key={chave} className="flex flex-col rounded-md border border-border bg-card p-2.5">
@@ -780,11 +779,7 @@ export default function AgendamentoPage() {
                       const doMes = Number(dia.slice(5, 7)) - 1 === mes;
                       const lista = porDia.get(dia) ?? [];
                       const temAtraso = lista.some((i) => getChegadaStatus(i.data_chegada) === "atrasada");
-                      const temConflitoPrevisao = lista.some(i => {
-                        const chegada = i.data_chegada?.slice(0, 10);
-                        const previsao = i.previsao_data?.slice(0, 10);
-                        return chegada && previsao && chegada > previsao;
-                      });
+                      const temConflitoPrevisao = lista.some(isForecastDelayedByParts);
                       const total = lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0);
                       return (
                         <button
@@ -803,6 +798,7 @@ export default function AgendamentoPage() {
                             temConflitoPrevisao && "border-destructive bg-destructive/5"
                           )}
                         >
+
                           <div className="mb-1 flex items-center justify-between">
                             <span className={cn(
                               "text-[11px] font-semibold",
