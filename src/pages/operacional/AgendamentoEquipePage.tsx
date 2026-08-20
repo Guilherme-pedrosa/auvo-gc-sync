@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, CircleCheckBig, Tags as TagsIcon, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, CircleCheckBig, Tags as TagsIcon, X, History, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
 import {
   useAgendaVeiculos,
   useAgendaSemana,
@@ -255,7 +257,9 @@ function Celula({
   chegadas = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
+
   const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
+
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
   const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
   const comparativoOs = summarizeAgendaOsPlannedVsActual(itens);
@@ -739,6 +743,33 @@ export default function AgendamentoEquipePage() {
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
+  const [logExpanded, setLogExpanded] = useState(false);
+
+  const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
+    queryKey: ["agenda_agendamentos_logs_equipe"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agenda_agendamentos")
+        .select(`
+          id, 
+          atualizado_em, 
+          colaborador_nome, 
+          cliente, 
+          gc_orcamento_codigo, 
+          gc_os_codigo, 
+          data,
+          criado_por
+        `)
+        .eq("previsao_continuidade", true)
+        .order("atualizado_em", { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: logExpanded,
+  });
+
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
   useEffect(() => {
@@ -1845,7 +1876,81 @@ export default function AgendamentoEquipePage() {
         </DialogContent>
       </Dialog>
 
+      {/* Rodapé de Logs */}
+      <div className={cn(
+        "fixed bottom-0 left-0 right-0 z-50 flex flex-col border-t bg-card shadow-2xl transition-all duration-300 ease-in-out",
+        logExpanded ? "h-[300px]" : "h-9"
+      )}>
+        <button 
+          onClick={() => setLogExpanded(!logExpanded)}
+          className="flex h-9 w-full items-center justify-between bg-muted/30 px-4 py-2 hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <History className="h-3.5 w-3.5" />
+            <span>LOG DE PREVISÕES (ÚLTIMAS ALTERAÇÕES)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {isLoadingLogs && logExpanded && <Loader2 className="h-3 w-3 animate-spin" />}
+            <ChevronUp className={cn("h-4 w-4 transition-transform", logExpanded && "rotate-180")} />
+          </div>
+        </button>
+
+        <ScrollArea className="flex-1 px-4 py-2">
+          {logs.length === 0 ? (
+            <div className="flex h-full items-center justify-center p-8 text-xs text-muted-foreground">
+              {isLoadingLogs ? "Carregando logs..." : "Nenhum agendamento recente encontrado."}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <table className="w-full text-left text-[11px]">
+                <thead className="sticky top-0 bg-card text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="pb-2 font-medium">Horário</th>
+                    <th className="pb-2 font-medium">Usuário/ID</th>
+                    <th className="pb-2 font-medium">Documento</th>
+                    <th className="pb-2 font-medium">Cliente</th>
+                    <th className="pb-2 font-medium">Técnico Escalado</th>
+                    <th className="pb-2 font-medium">Data Prevista</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {logs.map((log: any) => (
+                    <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="py-2 whitespace-nowrap text-muted-foreground">
+                        {new Date(log.atualizado_em).toLocaleString('pt-BR', { 
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+                        })}
+                      </td>
+                      <td className="py-2 font-medium">
+                        {log.criado_por ? (
+                          <span title={log.criado_por}>{log.criado_por.slice(0, 8)}...</span>
+                        ) : (
+                          <span className="text-muted-foreground italic text-[9px]">Sistema</span>
+                        )}
+                      </td>
+                      <td className="py-2">
+                        {log.gc_orcamento_codigo ? `OR ${log.gc_orcamento_codigo}` : `OS ${log.gc_os_codigo || '-'}`}
+                      </td>
+                      <td className="py-2 truncate max-w-[150px]" title={log.cliente}>
+                        {log.cliente}
+                      </td>
+                      <td className="py-2 font-medium text-primary">
+                        {log.colaborador_nome}
+                      </td>
+                      <td className="py-2">
+                        {log.data ? formatDiaBR(log.data) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+
       <AgendamentoEquipeDialog
+
         open={dialogOpen || dialogEditOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
