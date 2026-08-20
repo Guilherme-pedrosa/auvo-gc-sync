@@ -779,7 +779,12 @@ export default function AgendamentoPage() {
                       const doMes = Number(dia.slice(5, 7)) - 1 === mes;
                       const lista = porDia.get(dia) ?? [];
                       const temAtraso = lista.some((i) => getChegadaStatus(i.data_chegada) === "atrasada");
-                      const total = lista.reduce((s, i) => s + i.valor_total, 0);
+                      const temConflitoPrevisao = lista.some(i => {
+                        const chegada = i.data_chegada?.slice(0, 10);
+                        const previsao = i.previsao_data?.slice(0, 10);
+                        return chegada && previsao && chegada > previsao;
+                      });
+                      const total = lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0);
                       return (
                         <button
                           key={dia}
@@ -794,14 +799,20 @@ export default function AgendamentoPage() {
                             doMes ? "bg-background" : "bg-muted/30 opacity-60",
                             diaSelecionado === dia ? "border-primary ring-1 ring-primary" : "border-border",
                             temAtraso && "border-destructive/60",
+                            temConflitoPrevisao && "border-destructive bg-destructive/5"
                           )}
                         >
                           <div className="mb-1 flex items-center justify-between">
-                            <span className={cn("text-[11px] font-semibold", dia === hoje && "rounded bg-primary px-1 text-primary-foreground")}>
+                            <span className={cn(
+                              "text-[11px] font-semibold",
+                              dia === hoje ? "rounded bg-primary px-1 text-primary-foreground" : temConflitoPrevisao ? "text-destructive" : ""
+                            )}>
                               {Number(dia.slice(8, 10))}
                             </span>
                             {lista.length > 0 && (
-                              <span className="text-[9px] text-muted-foreground">{formatBRL(lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0))}</span>
+                              <span className={cn("text-[9px]", temConflitoPrevisao ? "text-destructive font-bold" : "text-muted-foreground")}>
+                                {formatBRL(total)}
+                              </span>
                             )}
                           </div>
                           <div className="space-y-0.5">
@@ -810,8 +821,14 @@ export default function AgendamentoPage() {
                               <span className="block text-[9px] text-muted-foreground">+{lista.length - 3} pedidos</span>
                             )}
                           </div>
+                          {temConflitoPrevisao && (
+                            <div className="absolute top-0 right-0 p-0.5">
+                              <AlertTriangle className="h-2 w-2 text-destructive animate-pulse" />
+                            </div>
+                          )}
                         </button>
                       );
+
                     })}
                   </div>
                 ))}
