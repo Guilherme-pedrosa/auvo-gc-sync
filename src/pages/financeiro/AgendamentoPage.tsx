@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, CHEGADAS_QUERY_POLICY, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates,
+  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates, isForecastDelayedByParts,
+
   type ChegadaItem, type ChegadaStatus,
   type PrevisaoAgendamento,
 } from "@/lib/agendamento";
@@ -340,17 +341,27 @@ export default function AgendamentoPage() {
       && i.saldo_baixa_parcial_status !== "verified";
     const osJaLancada = !ehPedido && Boolean(String(i.os_codigo || "").trim());
     const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
+
+    // Alerta de atraso de peças em relação à execução
+    const execucaoAtrasadaPelaPeca = isForecastDelayedByParts(i);
+
     if (compacto) {
       return (
-        <span
+        <button
           key={chave}
-          className={cn("block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}${osJaLancada ? ` · OS já lançada: ${i.os_codigo}` : ""}`}
+          onClick={() => i.previsao_id ? setDiaSelecionado(i.previsao_data || "") : abrirPrevisao(i)}
+          className={cn(
+            "block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight transition-colors hover:brightness-95",
+            execucaoAtrasadaPelaPeca ? "border-destructive bg-destructive/10 text-destructive font-bold" : style.chip
+          )}
+          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}${osJaLancada ? ` · OS já lançada: ${i.os_codigo}` : ""}${execucaoAtrasadaPelaPeca ? " · ATENÇÃO: Peças chegam APÓS a execução prevista!" : ""}`}
         >
-          {osJaLancada ? "⚠ " : ""}{ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
-        </span>
+          {execucaoAtrasadaPelaPeca ? "🚨 " : osJaLancada ? "⚠ " : ""}{ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
+        </button>
       );
     }
+
+
     return (
       <div key={chave} className="flex flex-col rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
@@ -505,13 +516,20 @@ export default function AgendamentoPage() {
             </div>
           )}
           {i.previsao_data && (
-            <div className="flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] text-emerald-800">
-              <CalendarClock className="h-3 w-3" />
+            <div className={cn(
+              "flex items-center gap-2 rounded border p-1.5 text-[10px]",
+              execucaoAtrasadaPelaPeca 
+                ? "border-destructive/40 bg-destructive/10 text-destructive animate-pulse" 
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            )}>
+              {execucaoAtrasadaPelaPeca ? <AlertTriangle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />}
               <span>
                 <strong>Previsão:</strong> {formatDiaBR(i.previsao_data)} {i.previsao_tecnico ? `com ${i.previsao_tecnico}` : ""}
+                {execucaoAtrasadaPelaPeca && " · Peças chegam DEPOIS desta data!"}
               </span>
             </div>
           )}
+
           <div className="mt-auto flex items-center gap-1 pt-2">
             <Button 
               size="sm" 
@@ -761,7 +779,8 @@ export default function AgendamentoPage() {
                       const doMes = Number(dia.slice(5, 7)) - 1 === mes;
                       const lista = porDia.get(dia) ?? [];
                       const temAtraso = lista.some((i) => getChegadaStatus(i.data_chegada) === "atrasada");
-                      const total = lista.reduce((s, i) => s + i.valor_total, 0);
+                      const temConflitoPrevisao = lista.some(isForecastDelayedByParts);
+                      const total = lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0);
                       return (
                         <button
                           key={dia}
@@ -776,14 +795,21 @@ export default function AgendamentoPage() {
                             doMes ? "bg-background" : "bg-muted/30 opacity-60",
                             diaSelecionado === dia ? "border-primary ring-1 ring-primary" : "border-border",
                             temAtraso && "border-destructive/60",
+                            temConflitoPrevisao && "border-destructive bg-destructive/5"
                           )}
                         >
+
                           <div className="mb-1 flex items-center justify-between">
-                            <span className={cn("text-[11px] font-semibold", dia === hoje && "rounded bg-primary px-1 text-primary-foreground")}>
+                            <span className={cn(
+                              "text-[11px] font-semibold",
+                              dia === hoje ? "rounded bg-primary px-1 text-primary-foreground" : temConflitoPrevisao ? "text-destructive" : ""
+                            )}>
                               {Number(dia.slice(8, 10))}
                             </span>
                             {lista.length > 0 && (
-                              <span className="text-[9px] text-muted-foreground">{formatBRL(lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0))}</span>
+                              <span className={cn("text-[9px]", temConflitoPrevisao ? "text-destructive font-bold" : "text-muted-foreground")}>
+                                {formatBRL(total)}
+                              </span>
                             )}
                           </div>
                           <div className="space-y-0.5">
@@ -792,8 +818,14 @@ export default function AgendamentoPage() {
                               <span className="block text-[9px] text-muted-foreground">+{lista.length - 3} pedidos</span>
                             )}
                           </div>
+                          {temConflitoPrevisao && (
+                            <div className="absolute top-0 right-0 p-0.5">
+                              <AlertTriangle className="h-2 w-2 text-destructive animate-pulse" />
+                            </div>
+                          )}
                         </button>
                       );
+
                     })}
                   </div>
                 ))}
