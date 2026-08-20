@@ -22,7 +22,7 @@ import {
   useSaveAgendamento,
   type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
@@ -73,6 +73,12 @@ import {
   contractMonthlyHoursAreFulfilled,
   sortAgendaItemsWithContractPlanFirst,
 } from "@/lib/agendaContractVisits";
+import { formatDiaBR, type ChegadaItem } from "@/lib/agendamento";
+import {
+  chegadaDoAgendamento,
+  fetchPrevisoesChegada,
+  PREVISAO_CHEGADA_QUERY_KEY,
+} from "@/lib/previsaoChegada";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -191,6 +197,7 @@ interface CelulaProps {
   tagsPorAgendamento: Map<string, AgendaTag[]>;
   tagsSelecionadas: string[];
   apenasPrevisaoOrcamento?: boolean;
+  chegadas?: ChegadaItem[];
 }
 
 type ContractVisitTaskDetail = {
@@ -245,6 +252,7 @@ function Celula({
   tagsPorAgendamento,
   tagsSelecionadas,
   apenasPrevisaoOrcamento = false,
+  chegadas = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
@@ -354,6 +362,9 @@ function Celula({
           </div>
         )}
         {itens.map((a) => {
+          const chegadaAtual = a.previsao_continuidade ? chegadaDoAgendamento(a, chegadas) : null;
+          const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
+          const previsaoAntesDaChegada = Boolean(dataChegadaAtual && a.data < dataChegadaAtual);
           const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
           const visitaContratualCumprida = visitaContratualPlanejada
@@ -447,6 +458,7 @@ function Celula({
                   visitaContratualAlinhada && "border-2 border-sky-500 shadow-sm",
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
+                  previsaoAntesDaChegada && "border-2 border-destructive bg-destructive/10 text-destructive ring-2 ring-destructive/30",
                   colorir && !statusColor && corCliente(a.cliente),
                   statusColor,
                   clienteDivergente && "border-2 border-destructive ring-1 ring-destructive/50",
@@ -573,6 +585,18 @@ function Celula({
                   {a.previsao_detalhes && !visitaContratualRealizada && !visitaContratualCumprida && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
+                    </span>
+                  )}
+                  {a.previsao_continuidade && dataChegadaAtual && (
+                    <span className={cn(
+                      "mt-0.5 flex items-center gap-1 rounded-sm px-1 py-0.5 text-[9px] font-bold normal-case",
+                      previsaoAntesDaChegada
+                        ? "bg-destructive text-destructive-foreground"
+                        : "bg-background/70 text-foreground",
+                    )}>
+                      {previsaoAntesDaChegada && <AlertTriangle className="h-2.5 w-2.5 shrink-0" />}
+                      Prevista: {formatDiaBR(a.data)} · Chegada atual: {formatDiaBR(dataChegadaAtual)}
+                      {previsaoAntesDaChegada ? " · REAGENDAR" : ""}
                     </span>
                   )}
                   {a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && a.conversao_status && (
@@ -745,6 +769,18 @@ export default function AgendamentoEquipePage() {
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data: rhClientes = [] } = useRhClientes();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(diasTodos);
+  const possuiPrevisaoComDocumento = useMemo(
+    () => (data?.agendamentos ?? []).some((item) => item.previsao_continuidade && (item.gc_orcamento_codigo || item.gc_os_codigo)),
+    [data?.agendamentos],
+  );
+  const { data: chegadas = [] } = useQuery({
+    queryKey: PREVISAO_CHEGADA_QUERY_KEY,
+    queryFn: fetchPrevisoesChegada,
+    enabled: possuiPrevisaoComDocumento,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  });
   const agendaIds = useMemo(
     () => (data?.agendamentos ?? []).map((agendamento) => agendamento.id),
     [data?.agendamentos],
@@ -1484,6 +1520,7 @@ export default function AgendamentoEquipePage() {
                               tagsPorAgendamento={tagsPorAgendamento}
                               tagsSelecionadas={tagsSelecionadas}
                               apenasPrevisaoOrcamento={apenasPrevisaoOrcamento}
+                               chegadas={chegadas}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
