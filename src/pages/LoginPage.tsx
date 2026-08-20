@@ -33,9 +33,9 @@ export default function LoginPage() {
           <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-lg">W</span>
           </div>
-          <CardTitle asChild className="text-xl">
-            <h1>WeDo — Acesso ao Painel de Gestão</h1>
-          </CardTitle>
+          <h1 className="text-xl font-semibold leading-none tracking-tight">
+            WeDo — Acesso ao Painel de Gestão
+          </h1>
           <p className="text-sm text-muted-foreground">Entre com suas credenciais</p>
         </CardHeader>
         <CardContent>

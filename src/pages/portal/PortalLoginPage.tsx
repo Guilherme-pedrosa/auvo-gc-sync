@@ -56,9 +56,9 @@ export default function PortalLoginPage() {
           <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-lg">W</span>
           </div>
-          <CardTitle asChild className="text-xl">
-            <h1>Portal do Cliente</h1>
-          </CardTitle>
+          <h1 className="text-xl font-semibold leading-none tracking-tight">
+            Portal do Cliente
+          </h1>
           <p className="text-sm text-muted-foreground">Acesse suas horas trabalhadas</p>
         </CardHeader>
         <CardContent>
