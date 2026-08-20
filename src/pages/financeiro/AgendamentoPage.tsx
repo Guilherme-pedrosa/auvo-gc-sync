@@ -340,17 +340,28 @@ export default function AgendamentoPage() {
       && i.saldo_baixa_parcial_status !== "verified";
     const osJaLancada = !ehPedido && Boolean(String(i.os_codigo || "").trim());
     const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
+
+    // Alerta de atraso de peças em relação à execução
+    const dataChegadaIso = i.data_chegada?.slice(0, 10);
+    const dataPrevisaoIso = i.previsao_data?.slice(0, 10);
+    const execucaoAtrasadaPelaPeca = dataChegadaIso && dataPrevisaoIso && dataChegadaIso > dataPrevisaoIso;
+
     if (compacto) {
       return (
-        <span
+        <button
           key={chave}
-          className={cn("block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}${osJaLancada ? ` · OS já lançada: ${i.os_codigo}` : ""}`}
+          onClick={() => i.previsao_id ? setDiaSelecionado(i.previsao_data || "") : abrirPrevisao(i)}
+          className={cn(
+            "block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight transition-colors hover:brightness-95",
+            execucaoAtrasadaPelaPeca ? "border-destructive bg-destructive/10 text-destructive font-bold" : style.chip
+          )}
+          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}${osJaLancada ? ` · OS já lançada: ${i.os_codigo}` : ""}${execucaoAtrasadaPelaPeca ? " · ATENÇÃO: Peças chegam APÓS a execução prevista!" : ""}`}
         >
-          {osJaLancada ? "⚠ " : ""}{ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
-        </span>
+          {execucaoAtrasadaPelaPeca ? "🚨 " : osJaLancada ? "⚠ " : ""}{ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
+        </button>
       );
     }
+
     return (
       <div key={chave} className="flex flex-col rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
