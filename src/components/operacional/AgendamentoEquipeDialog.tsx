@@ -104,7 +104,9 @@ export default function AgendamentoEquipeDialog({
   });
   const chegadaAtual = agendamento ? chegadaDoAgendamento(agendamento, chegadas) : null;
   const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
-  const previsaoAntesDaChegada = Boolean(data && dataChegadaAtual && data < dataChegadaAtual);
+  const previsaoAtrasada = Boolean(data && dataChegadaAtual && data < dataChegadaAtual);
+  const previsaoNoMesmoDia = Boolean(data && dataChegadaAtual && data === dataChegadaAtual);
+  const previsaoAntesDaChegada = previsaoAtrasada;
 
 
   const { data: questionnaires = [] } = useQuery({
@@ -485,15 +487,17 @@ export default function AgendamentoEquipeDialog({
           {agendamento?.previsao_continuidade && (
             <div className="space-y-3 p-3 bg-primary/5 rounded-md border border-primary/20">
               {ehPrevisaoOrcamento && (
-                <div className={cn(
-                  "space-y-2 rounded-md border p-3",
-                  previsaoAntesDaChegada
-                    ? "border-destructive bg-destructive/10 text-destructive"
-                    : "border-border bg-background text-foreground",
-                )}>
+                  <div className={cn(
+                    "space-y-2 rounded-md border p-3",
+                    previsaoAntesDaChegada
+                      ? "border-destructive bg-destructive/10 text-destructive"
+                      : previsaoNoMesmoDia
+                        ? "border-amber-500 bg-amber-50 text-amber-700"
+                        : "border-border bg-background text-foreground",
+                  )}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-xs font-bold">
-                      {previsaoAntesDaChegada ? <AlertTriangle className="h-4 w-4" /> : <CalendarClock className="h-4 w-4 text-primary" />}
+                      {previsaoAntesDaChegada ? <AlertTriangle className="h-4 w-4" /> : previsaoNoMesmoDia ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : <CalendarClock className="h-4 w-4 text-primary" />}
                       Controle da previsão
                     </span>
                     <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => refetchChegada()} disabled={chegadaLoading}>
