@@ -293,6 +293,16 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
                     </div>
                   </div>
                 )}
+                
+                {alvo?.data_sugerida && dateISO && dateISO < alvo.data_sugerida.slice(0, 10) && (
+                  <div className="flex items-start gap-1.5 text-destructive bg-destructive/10 p-1.5 rounded border border-destructive/40">
+                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                    <div>
+                      <strong>Alerta de Atraso:</strong> A data de chegada das peças está prevista para {format(parseISO(alvo.data_sugerida.slice(0, 10)), "dd/MM/yyyy")}. Agendar antes disso pode causar deslocamento inútil.
+                    </div>
+                  </div>
+                )}
+
               </div>
             </div>
           )}
