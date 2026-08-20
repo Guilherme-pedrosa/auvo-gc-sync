@@ -257,32 +257,6 @@ function Celula({
   chegadas = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
-  const [logExpanded, setLogExpanded] = useState(false);
-
-  const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
-    queryKey: ["agenda_agendamentos_logs_equipe"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("agenda_agendamentos")
-        .select(`
-          id, 
-          atualizado_em, 
-          colaborador_nome, 
-          cliente, 
-          gc_orcamento_codigo, 
-          gc_os_codigo, 
-          data,
-          criado_por
-        `)
-        .eq("previsao_continuidade", true)
-        .order("atualizado_em", { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: logExpanded,
-  });
 
   const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
 
@@ -769,6 +743,33 @@ export default function AgendamentoEquipePage() {
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
+  const [logExpanded, setLogExpanded] = useState(false);
+
+  const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
+    queryKey: ["agenda_agendamentos_logs_equipe"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agenda_agendamentos")
+        .select(`
+          id, 
+          atualizado_em, 
+          colaborador_nome, 
+          cliente, 
+          gc_orcamento_codigo, 
+          gc_os_codigo, 
+          data,
+          criado_por
+        `)
+        .eq("previsao_continuidade", true)
+        .order("atualizado_em", { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: logExpanded,
+  });
+
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
   useEffect(() => {
