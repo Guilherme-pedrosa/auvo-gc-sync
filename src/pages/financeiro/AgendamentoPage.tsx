@@ -135,6 +135,7 @@ function isPedidoCompra(i: ChegadaItem): boolean {
 }
 
 export default function AgendamentoPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const hoje = todayISO();
   const [ano, setAno] = useState(() => new Date().getFullYear());
