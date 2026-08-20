@@ -1,0 +1,1 @@
+UPDATE public.agenda_agendamentos SET previsao_detalhes = 'onde está a tarefa 78596394 na cargill goiania?' WHERE id = 'a71a113a-43f4-463a-8332-a7b530e41cc6';
