@@ -357,7 +357,7 @@ const AuvoSyncPage = () => {
   return (
     <div className="min-h-screen bg-background p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")}><ArrowLeft className="h-5 w-5" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Voltar para o início" onClick={() => navigate("/")}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">📋 Conciliação Auvo ↔ GC</h1>
           <p className="text-muted-foreground">Visão unificada de todas as OS com tarefa Auvo e seu status no GestãoClick</p>
