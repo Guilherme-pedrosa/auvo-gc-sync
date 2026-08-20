@@ -327,39 +327,40 @@ export default function VisitasContratuaisPage() {
     return map;
   }, [executions]);
 
-  const executionsByClientAndMonth = useMemo(() => {
+  const executionsByContractAndMonth = useMemo(() => {
     const map = new Map<string, Map<string, ContractExecution[]>>();
     
     for (const execution of executions) {
-      const clientName = execution.cliente || "Desconhecido";
+      // Contratos do mesmo cliente nunca podem compartilhar a mesma linha.
+      const contractKey = execution.contrato_id || `sem-contrato:${execution.cliente || "Desconhecido"}`;
       const monthKey = execution.data_realizada.slice(0, 7);
       
-      if (!map.has(clientName)) {
-        map.set(clientName, new Map());
+      if (!map.has(contractKey)) {
+        map.set(contractKey, new Map());
       }
       
-      const clientMonths = map.get(clientName)!;
-      const rows = clientMonths.get(monthKey) || [];
+      const contractMonths = map.get(contractKey)!;
+      const rows = contractMonths.get(monthKey) || [];
       rows.push(execution);
-      clientMonths.set(monthKey, rows);
+      contractMonths.set(monthKey, rows);
     }
     return map;
   }, [executions]);
 
-  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedContracts, setExpandedContracts] = useState<Set<string>>(new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
-  const toggleClient = (client: string) => {
-    setExpandedClients((prev) => {
+  const toggleContract = (contractKey: string) => {
+    setExpandedContracts((prev) => {
       const next = new Set(prev);
-      if (next.has(client)) next.delete(client);
-      else next.add(client);
+      if (next.has(contractKey)) next.delete(contractKey);
+      else next.add(contractKey);
       return next;
     });
   };
 
-  const toggleMonth = (client: string, monthKey: string) => {
-    const compositeKey = `${client}|${monthKey}`;
+  const toggleMonth = (contractKey: string, monthKey: string) => {
+    const compositeKey = `${contractKey}|${monthKey}`;
     setExpandedMonths((prev) => {
       const next = new Set(prev);
       if (next.has(compositeKey)) next.delete(compositeKey);
@@ -695,8 +696,8 @@ export default function VisitasContratuaisPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Execuções reconhecidas por cliente e dia</CardTitle>
-            <p className="text-xs text-muted-foreground">Tarefas reais finalizadas no mesmo cliente são consolidadas em uma visita, com horas, técnicos e links do Auvo. A execução cumpre o slot correspondente sem retirar a programação da data original.</p>
+            <CardTitle className="flex items-center gap-2 text-lg"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Execuções reconhecidas por contrato e dia</CardTitle>
+            <p className="text-xs text-muted-foreground">Cada contrato possui sua própria linha e consolidação mensal, mesmo quando pertence ao mesmo cliente. A execução cumpre o slot correspondente sem retirar a programação da data original.</p>
           </CardHeader>
           <CardContent>
             {executionsQuery.isLoading ? (
@@ -719,50 +720,56 @@ export default function VisitasContratuaisPage() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const clients = Array.from(executionsByClientAndMonth.keys()).sort((a, b) => a.localeCompare(b));
-                      return clients.map((client) => {
-                        const clientMonthsMap = executionsByClientAndMonth.get(client)!;
-                        const isClientExpanded = expandedClients.has(client);
-                        const monthKeys = Array.from(clientMonthsMap.keys()).sort((a, b) => b.localeCompare(a));
+                      const contractKeys = Array.from(executionsByContractAndMonth.keys()).sort((a, b) => {
+                        const nameA = contractById.get(a)?.nome || executionsByContractAndMonth.get(a)?.values().next().value?.[0]?.cliente || a;
+                        const nameB = contractById.get(b)?.nome || executionsByContractAndMonth.get(b)?.values().next().value?.[0]?.cliente || b;
+                        return nameA.localeCompare(nameB);
+                      });
+                      return contractKeys.map((contractKey) => {
+                        const contractMonthsMap = executionsByContractAndMonth.get(contractKey)!;
+                        const isContractExpanded = expandedContracts.has(contractKey);
+                        const monthKeys = Array.from(contractMonthsMap.keys()).sort((a, b) => b.localeCompare(a));
+                        const contractName = contractById.get(contractKey)?.nome
+                          || contractMonthsMap.values().next().value?.[0]?.cliente
+                          || "Contrato não identificado";
                         
-                        // Total general de horas del cliente en el año
-                        let clientTotalHours = 0;
-                        clientMonthsMap.forEach(monthExecs => {
-                          clientTotalHours += monthExecs.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
+                        let contractTotalHours = 0;
+                        contractMonthsMap.forEach(monthExecs => {
+                          contractTotalHours += monthExecs.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
                         });
 
                         return (
-                          <React.Fragment key={client}>
-                            {/* Linha do Cliente */}
+                          <React.Fragment key={contractKey}>
+                            {/* Uma linha independente para cada contrato */}
                             <TableRow 
                               className="cursor-pointer bg-slate-50 font-bold hover:bg-slate-100"
-                              onClick={() => toggleClient(client)}
+                              onClick={() => toggleContract(contractKey)}
                             >
                               <TableCell>
-                                {isClientExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                {isContractExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                               </TableCell>
                               <TableCell colSpan={4} className="py-3">
-                                <span className="text-sm font-bold text-slate-900">{client}</span>
+                                <span className="text-sm font-bold text-slate-900">{contractName}</span>
                               </TableCell>
                               <TableCell className="font-bold text-slate-900">
-                                {hoursLabel(clientTotalHours)}
+                                {hoursLabel(contractTotalHours)}
                               </TableCell>
                               <TableCell></TableCell>
                             </TableRow>
 
-                            {/* Linhas dos Meses (se cliente expandido) */}
-                            {isClientExpanded && monthKeys.map((monthKey) => {
-                              const monthExecutions = clientMonthsMap.get(monthKey) || [];
-                              const isMonthExpanded = expandedMonths.has(`${client}|${monthKey}`);
+                            {/* Linhas dos meses do contrato expandido */}
+                            {isContractExpanded && monthKeys.map((monthKey) => {
+                              const monthExecutions = contractMonthsMap.get(monthKey) || [];
+                              const isMonthExpanded = expandedMonths.has(`${contractKey}|${monthKey}`);
                               const monthTotalHours = monthExecutions.reduce((sum, e) => sum + Number(e.horas_trabalhadas || 0), 0);
                               const [yearPart, monthPart] = monthKey.split("-");
                               const monthLabel = `${MONTHS[Number(monthPart) - 1]} / ${yearPart}`;
 
                               return (
-                                <React.Fragment key={`${client}-${monthKey}`}>
+                                <React.Fragment key={`${contractKey}-${monthKey}`}>
                                   <TableRow 
                                     className="cursor-pointer bg-muted/20 font-semibold hover:bg-muted/40"
-                                    onClick={() => toggleMonth(client, monthKey)}
+                                    onClick={() => toggleMonth(contractKey, monthKey)}
                                   >
                                     <TableCell className="pl-6">
                                       {isMonthExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
