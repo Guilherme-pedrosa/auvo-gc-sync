@@ -6,7 +6,7 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://sync-auvo-gc-magic.lovable.app/portal</loc>
+    <loc>https://sync-auvo-gc-magic.lovable.app/portal/login</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
