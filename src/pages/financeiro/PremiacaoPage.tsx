@@ -998,7 +998,7 @@ function OsDetailDialog({
                     <div className="border rounded bg-background divide-y">
                       <div className="flex items-center justify-between px-3 py-2 text-sm">
                         <span className="truncate">
-                          Técnico principal
+                          {os?.tecnico_execucao || "Técnico principal"}
                           <span className="text-xs text-muted-foreground ml-1">(restante)</span>
                         </span>
                         <span className={cn("font-medium tabular-nums", pctPrincipal <= 0 && "text-destructive")}>
