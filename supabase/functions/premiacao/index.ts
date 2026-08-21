@@ -740,6 +740,30 @@ Deno.serve(async (req) => {
         const baseTecnicos = [...tecnicos];
         const processedSharedOs = new Set<string>();
 
+        // Base canônica (100% da OS): a mesma OS pode aparecer em técnicos
+        // diferentes com valores já parciais. Usamos sempre o maior valor
+        // encontrado como referência de 100% para o rateio.
+        const baseOs = new Map<string, any>();
+        for (const t of baseTecnicos) {
+          for (const o of t.ordens as any[]) {
+            const cod = String(o.gc_os_codigo || "");
+            if (!cod || !sharedMap.has(cod)) continue;
+            const fat = o.faturamento ?? ((o.valor_pecas || 0) + (o.valor_servicos || 0));
+            const prev = baseOs.get(cod);
+            if (!prev || fat > prev.fat) {
+              baseOs.set(cod, {
+                fat,
+                valPec: o.valor_pecas || 0,
+                valServ: o.valor_servicos || 0,
+                comPec: o.comissao_pecas || 0,
+                comServ: o.comissao_servicos || 0,
+                comTot: o.comissao_total || 0,
+              });
+            }
+          }
+        }
+
+
         for (const t of baseTecnicos) {
           for (const o of [...t.ordens] as any[]) {
             const osId = String(o.gc_os_id || o.gc_os_codigo || "");
