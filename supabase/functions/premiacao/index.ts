@@ -756,15 +756,20 @@ Deno.serve(async (req) => {
 
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
 
-            // Ignora fatias inválidas (mesmo técnico principal ou duplicadas)
+            // Ignora fatias duplicadas; separa a fatia do próprio técnico principal
             const seen = new Set<string>();
+            let pctPrincipalCadastrado: number | null = null;
             const validSplits = splits.filter((s) => {
               const k = normalize(s.tecnico).split(/\s+/)[0];
-              if (!k || k === mainKey || seen.has(k)) return false;
+              if (!k || seen.has(k)) return false;
               seen.add(k);
+              if (k === mainKey) {
+                pctPrincipalCadastrado = (pctPrincipalCadastrado || 0) + s.pct;
+                return false;
+              }
               return true;
             });
-            if (validSplits.length === 0) continue;
+            if (validSplits.length === 0 && pctPrincipalCadastrado === null) continue;
 
             // Percentual total cedido — limitado a 100%
             let pctCedido = validSplits.reduce((acc, s) => acc + s.pct, 0);
@@ -782,15 +787,23 @@ Deno.serve(async (req) => {
             const baseServ = o.comissao_servicos || 0;
             const baseTot = o.comissao_total || 0;
 
-            const fatorPrincipal = (100 - pctCedido) / 100;
+            // Se o técnico principal também está cadastrado no rateio, ele recebe
+            // exatamente o percentual cadastrado — nunca a comissão integral.
+            const pctPrincipal =
+              pctPrincipalCadastrado !== null
+                ? Math.min(pctPrincipalCadastrado, 100 - pctCedido >= 0 ? 100 : 100)
+                : 100 - pctCedido;
+            const fatorPrincipal = Math.max(0, Math.min(pctPrincipal, 100)) / 100;
             const round2 = (n: number) => Math.round(n * 100) / 100;
 
             const divisao = [
-              { tecnico: t.tecnico, percentual: round2(100 - pctCedido) },
+              { tecnico: t.tecnico, percentual: round2(pctPrincipal) },
               ...validSplits.map((s) => ({
                 tecnico: s.tecnico,
                 percentual: round2(s.pct * escala),
               })),
+            ];
+
             ];
 
             // Ajusta o card e os totais do técnico principal
