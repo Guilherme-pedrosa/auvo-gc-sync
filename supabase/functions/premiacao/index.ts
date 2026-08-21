@@ -742,13 +742,16 @@ Deno.serve(async (req) => {
 
         for (const t of baseTecnicos) {
           for (const o of [...t.ordens] as any[]) {
-            const osId = String(o.gc_os_id || "");
-            if (!osId || processedSharedOs.has(osId)) continue;
-            
+            const osId = String(o.gc_os_id || o.gc_os_codigo || "");
             const splits = sharedMap.get(String(o.gc_os_codigo || ""));
             if (!splits || splits.length === 0) continue;
 
-            processedSharedOs.add(osId);
+            // A distribuição para os secundários só pode ocorrer UMA vez por OS,
+            // mas o desconto no técnico principal deve ser aplicado em TODAS as
+            // linhas dessa OS (senão alguém fica com a comissão integral).
+            const jaDistribuido = osId ? processedSharedOs.has(osId) : false;
+            if (osId) processedSharedOs.add(osId);
+
 
 
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
