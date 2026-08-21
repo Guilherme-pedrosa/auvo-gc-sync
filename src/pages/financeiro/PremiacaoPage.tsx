@@ -36,6 +36,7 @@ type OsRow = {
   comissao_pecas: number;
   comissao_servicos: number;
   comissao_total: number;
+  comissao_total_original?: number;
   pecas_count: number;
   servicos_count: number;
   situacao?: string;
@@ -791,6 +792,10 @@ function OsDetailDialog({
   const pctPrincipal = Math.max(0, 100 - pctCedido);
   const pctNovo = Number(pctCompart) || 0;
   const pctRestanteAposNovo = pctPrincipal - pctNovo;
+  const comissaoBaseDivisao = os?.comissao_total_original
+    ?? (os?.percentual_split && os.percentual_split > 0
+      ? (os.comissao_total * 100) / os.percentual_split
+      : (os?.comissao_total || 0));
 
   const saveCompartMut = useMutation({
     mutationFn: async () => {
@@ -914,7 +919,9 @@ function OsDetailDialog({
               )}
 
               <div className="border-t pt-3 flex items-center justify-between">
-                <span className="text-sm font-medium">Premiação total da OS</span>
+                <span className="text-sm font-medium">
+                  {os.percentual_split != null ? "Premiação deste técnico" : "Premiação total da OS"}
+                </span>
                 <span className="text-lg font-semibold text-primary">{brl(os.comissao_total)}</span>
               </div>
 
@@ -1006,7 +1013,7 @@ function OsDetailDialog({
                               {Number(d.percentual).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
                             </span>
                             <span className="text-xs text-muted-foreground tabular-nums">
-                              {brl((os.comissao_total || 0) * (Number(d.percentual) / 100))}
+                              {brl(comissaoBaseDivisao * (Number(d.percentual) / 100))}
                             </span>
                             <Button
                               size="icon"
