@@ -738,11 +738,18 @@ Deno.serve(async (req) => {
 
         // Snapshot: apenas as OS já existentes antes de criar fatias novas.
         const baseTecnicos = [...tecnicos];
+        const processedSharedOs = new Set<string>();
 
         for (const t of baseTecnicos) {
           for (const o of [...t.ordens] as any[]) {
+            const osId = String(o.gc_os_id || "");
+            if (!osId || processedSharedOs.has(osId)) continue;
+            
             const splits = sharedMap.get(String(o.gc_os_codigo || ""));
             if (!splits || splits.length === 0) continue;
+
+            processedSharedOs.add(osId);
+
 
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
 
