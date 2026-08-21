@@ -740,28 +740,60 @@ Deno.serve(async (req) => {
         const baseTecnicos = [...tecnicos];
         const processedSharedOs = new Set<string>();
 
+        // Base canônica (100% da OS): a mesma OS pode aparecer em técnicos
+        // diferentes com valores já parciais. Usamos sempre o maior valor
+        // encontrado como referência de 100% para o rateio.
+        const baseOs = new Map<string, any>();
+        for (const t of baseTecnicos) {
+          for (const o of t.ordens as any[]) {
+            const cod = String(o.gc_os_codigo || "");
+            if (!cod || !sharedMap.has(cod)) continue;
+            const fat = o.faturamento ?? ((o.valor_pecas || 0) + (o.valor_servicos || 0));
+            const prev = baseOs.get(cod);
+            if (!prev || fat > prev.fat) {
+              baseOs.set(cod, {
+                fat,
+                valPec: o.valor_pecas || 0,
+                valServ: o.valor_servicos || 0,
+                comPec: o.comissao_pecas || 0,
+                comServ: o.comissao_servicos || 0,
+                comTot: o.comissao_total || 0,
+              });
+            }
+          }
+        }
+
+
         for (const t of baseTecnicos) {
           for (const o of [...t.ordens] as any[]) {
-            const osId = String(o.gc_os_id || "");
-            if (!osId || processedSharedOs.has(osId)) continue;
-            
+            const osId = String(o.gc_os_id || o.gc_os_codigo || "");
             const splits = sharedMap.get(String(o.gc_os_codigo || ""));
             if (!splits || splits.length === 0) continue;
 
-            processedSharedOs.add(osId);
+            // A distribuição para os secundários só pode ocorrer UMA vez por OS,
+            // mas o desconto no técnico principal deve ser aplicado em TODAS as
+            // linhas dessa OS (senão alguém fica com a comissão integral).
+            const jaDistribuido = osId ? processedSharedOs.has(osId) : false;
+            if (osId) processedSharedOs.add(osId);
+
 
 
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
 
-            // Ignora fatias inválidas (mesmo técnico principal ou duplicadas)
+            // Ignora fatias duplicadas; separa a fatia do próprio técnico principal
             const seen = new Set<string>();
+            let pctPrincipalCadastrado: number | null = null;
             const validSplits = splits.filter((s) => {
               const k = normalize(s.tecnico).split(/\s+/)[0];
-              if (!k || k === mainKey || seen.has(k)) return false;
+              if (!k || seen.has(k)) return false;
               seen.add(k);
+              if (k === mainKey) {
+                pctPrincipalCadastrado = (pctPrincipalCadastrado || 0) + s.pct;
+                return false;
+              }
               return true;
             });
-            if (validSplits.length === 0) continue;
+            if (validSplits.length === 0 && pctPrincipalCadastrado === null) continue;
 
             // Percentual total cedido — limitado a 100%
             let pctCedido = validSplits.reduce((acc, s) => acc + s.pct, 0);
@@ -771,19 +803,34 @@ Deno.serve(async (req) => {
               pctCedido = 100;
             }
 
-            // Valores originais (100% da OS)
-            const baseValPec = o.valor_pecas || 0;
-            const baseValServ = o.valor_servicos || 0;
-            const baseFat = o.faturamento ?? (baseValPec + baseValServ);
-            const basePec = o.comissao_pecas || 0;
-            const baseServ = o.comissao_servicos || 0;
-            const baseTot = o.comissao_total || 0;
+            // Valores originais (100% da OS) — base canônica compartilhada
+            const canon = baseOs.get(String(o.gc_os_codigo || ""));
+            const baseValPec = canon ? canon.valPec : o.valor_pecas || 0;
+            const baseValServ = canon ? canon.valServ : o.valor_servicos || 0;
+            const baseFat = canon ? canon.fat : (o.faturamento ?? (baseValPec + baseValServ));
+            const basePec = canon ? canon.comPec : o.comissao_pecas || 0;
+            const baseServ = canon ? canon.comServ : o.comissao_servicos || 0;
+            const baseTot = canon ? canon.comTot : o.comissao_total || 0;
 
-            const fatorPrincipal = (100 - pctCedido) / 100;
+            // Valores atuais dessa linha (para acertar os totais do técnico)
+            const prevValPec = o.valor_pecas || 0;
+            const prevValServ = o.valor_servicos || 0;
+            const prevFat = o.faturamento ?? (prevValPec + prevValServ);
+            const prevComPec = o.comissao_pecas || 0;
+            const prevComServ = o.comissao_servicos || 0;
+            const prevComTot = o.comissao_total || 0;
+
+            // Se o técnico principal também está cadastrado no rateio, ele recebe
+            // exatamente o percentual cadastrado — nunca a comissão integral.
+            const pctPrincipal = Math.max(
+              0,
+              Math.min(100, pctPrincipalCadastrado !== null ? pctPrincipalCadastrado : 100 - pctCedido),
+            );
+            const fatorPrincipal = pctPrincipal / 100;
             const round2 = (n: number) => Math.round(n * 100) / 100;
 
             const divisao = [
-              { tecnico: t.tecnico, percentual: round2(100 - pctCedido) },
+              { tecnico: t.tecnico, percentual: round2(pctPrincipal) },
               ...validSplits.map((s) => ({
                 tecnico: s.tecnico,
                 percentual: round2(s.pct * escala),
@@ -798,20 +845,22 @@ Deno.serve(async (req) => {
             o.comissao_servicos = baseServ * fatorPrincipal;
             o.comissao_total = baseTot * fatorPrincipal;
             o.compartilhada_com = validSplits.map((s) => s.tecnico).join(", ");
-            o.percentual_split = round2(100 - pctCedido);
+            o.percentual_split = round2(pctPrincipal);
+
             o.divisao = divisao;
 
-            const cedido = 1 - fatorPrincipal;
-            t.os_count -= cedido;
-            t.valor_pecas -= baseValPec * cedido;
-            t.valor_servicos -= baseValServ * cedido;
-            (t as any).faturamento = ((t as any).faturamento || 0) - baseFat * cedido;
-            t.comissao_pecas -= basePec * cedido;
-            t.comissao_servicos -= baseServ * cedido;
-            t.comissao_total -= baseTot * cedido;
+            t.os_count += fatorPrincipal - 1;
+            t.valor_pecas += o.valor_pecas - prevValPec;
+            t.valor_servicos += o.valor_servicos - prevValServ;
+            (t as any).faturamento = ((t as any).faturamento || 0) + (o.faturamento - prevFat);
+            t.comissao_pecas += o.comissao_pecas - prevComPec;
+            t.comissao_servicos += o.comissao_servicos - prevComServ;
+            t.comissao_total += o.comissao_total - prevComTot;
 
-            // Distribui as fatias para cada técnico secundário
-            for (const s of validSplits) {
+
+            // Distribui as fatias para cada técnico secundário (uma única vez por OS)
+            for (const s of jaDistribuido ? [] : validSplits) {
+
               const fator = (s.pct * escala) / 100;
               const secKey = normalize(s.tecnico).split(/\s+/)[0];
               const secAgg = findOrCreateAgg(s.tecnico, secKey);
