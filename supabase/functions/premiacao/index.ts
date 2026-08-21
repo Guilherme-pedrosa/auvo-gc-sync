@@ -803,13 +803,22 @@ Deno.serve(async (req) => {
               pctCedido = 100;
             }
 
-            // Valores originais (100% da OS)
-            const baseValPec = o.valor_pecas || 0;
-            const baseValServ = o.valor_servicos || 0;
-            const baseFat = o.faturamento ?? (baseValPec + baseValServ);
-            const basePec = o.comissao_pecas || 0;
-            const baseServ = o.comissao_servicos || 0;
-            const baseTot = o.comissao_total || 0;
+            // Valores originais (100% da OS) — base canônica compartilhada
+            const canon = baseOs.get(String(o.gc_os_codigo || ""));
+            const baseValPec = canon ? canon.valPec : o.valor_pecas || 0;
+            const baseValServ = canon ? canon.valServ : o.valor_servicos || 0;
+            const baseFat = canon ? canon.fat : (o.faturamento ?? (baseValPec + baseValServ));
+            const basePec = canon ? canon.comPec : o.comissao_pecas || 0;
+            const baseServ = canon ? canon.comServ : o.comissao_servicos || 0;
+            const baseTot = canon ? canon.comTot : o.comissao_total || 0;
+
+            // Valores atuais dessa linha (para acertar os totais do técnico)
+            const prevValPec = o.valor_pecas || 0;
+            const prevValServ = o.valor_servicos || 0;
+            const prevFat = o.faturamento ?? (prevValPec + prevValServ);
+            const prevComPec = o.comissao_pecas || 0;
+            const prevComServ = o.comissao_servicos || 0;
+            const prevComTot = o.comissao_total || 0;
 
             // Se o técnico principal também está cadastrado no rateio, ele recebe
             // exatamente o percentual cadastrado — nunca a comissão integral.
@@ -840,14 +849,14 @@ Deno.serve(async (req) => {
 
             o.divisao = divisao;
 
-            const cedido = 1 - fatorPrincipal;
-            t.os_count -= cedido;
-            t.valor_pecas -= baseValPec * cedido;
-            t.valor_servicos -= baseValServ * cedido;
-            (t as any).faturamento = ((t as any).faturamento || 0) - baseFat * cedido;
-            t.comissao_pecas -= basePec * cedido;
-            t.comissao_servicos -= baseServ * cedido;
-            t.comissao_total -= baseTot * cedido;
+            t.os_count += fatorPrincipal - 1;
+            t.valor_pecas += o.valor_pecas - prevValPec;
+            t.valor_servicos += o.valor_servicos - prevValServ;
+            (t as any).faturamento = ((t as any).faturamento || 0) + (o.faturamento - prevFat);
+            t.comissao_pecas += o.comissao_pecas - prevComPec;
+            t.comissao_servicos += o.comissao_servicos - prevComServ;
+            t.comissao_total += o.comissao_total - prevComTot;
+
 
             // Distribui as fatias para cada técnico secundário (uma única vez por OS)
             for (const s of jaDistribuido ? [] : validSplits) {
