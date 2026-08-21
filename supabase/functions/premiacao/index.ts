@@ -844,6 +844,7 @@ Deno.serve(async (req) => {
             o.comissao_pecas = basePec * fatorPrincipal;
             o.comissao_servicos = baseServ * fatorPrincipal;
             o.comissao_total = baseTot * fatorPrincipal;
+            o.comissao_total_original = baseTot;
             o.compartilhada_com = validSplits.map((s) => s.tecnico).join(", ");
             o.percentual_split = round2(pctPrincipal);
 
@@ -887,6 +888,7 @@ Deno.serve(async (req) => {
                   comissao_pecas: basePec * fator,
                   comissao_servicos: baseServ * fator,
                   comissao_total: baseTot * fator,
+                  comissao_total_original: baseTot,
                   compartilhada_com: [t.tecnico, ...validSplits.filter((x) => x !== s).map((x) => x.tecnico)].join(", "),
                   percentual_split: round2(s.pct * escala),
                   divisao,
