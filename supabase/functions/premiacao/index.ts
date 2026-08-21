@@ -789,11 +789,11 @@ Deno.serve(async (req) => {
 
             // Se o técnico principal também está cadastrado no rateio, ele recebe
             // exatamente o percentual cadastrado — nunca a comissão integral.
-            const pctPrincipal =
-              pctPrincipalCadastrado !== null
-                ? Math.min(pctPrincipalCadastrado, 100 - pctCedido >= 0 ? 100 : 100)
-                : 100 - pctCedido;
-            const fatorPrincipal = Math.max(0, Math.min(pctPrincipal, 100)) / 100;
+            const pctPrincipal = Math.max(
+              0,
+              Math.min(100, pctPrincipalCadastrado !== null ? pctPrincipalCadastrado : 100 - pctCedido),
+            );
+            const fatorPrincipal = pctPrincipal / 100;
             const round2 = (n: number) => Math.round(n * 100) / 100;
 
             const divisao = [
@@ -804,8 +804,6 @@ Deno.serve(async (req) => {
               })),
             ];
 
-            ];
-
             // Ajusta o card e os totais do técnico principal
             o.valor_pecas = baseValPec * fatorPrincipal;
             o.valor_servicos = baseValServ * fatorPrincipal;
@@ -814,7 +812,8 @@ Deno.serve(async (req) => {
             o.comissao_servicos = baseServ * fatorPrincipal;
             o.comissao_total = baseTot * fatorPrincipal;
             o.compartilhada_com = validSplits.map((s) => s.tecnico).join(", ");
-            o.percentual_split = round2(100 - pctCedido);
+            o.percentual_split = round2(pctPrincipal);
+
             o.divisao = divisao;
 
             const cedido = 1 - fatorPrincipal;
