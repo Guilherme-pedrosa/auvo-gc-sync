@@ -809,6 +809,34 @@ Deno.serve(async (req) => {
               const secKey = normalize(s.tecnico).split(/\s+/)[0];
               const secAgg = findOrCreateAgg(s.tecnico, secKey);
 
+              // Consolidação: verifica se esta OS já foi adicionada para este técnico (ex: múltiplos splits apontando pro mesmo cara por erro)
+              const existingIndex = secAgg.ordens.findIndex((x: any) => x.gc_os_id === o.gc_os_id);
+              
+              if (existingIndex !== -1) {
+                // Se já existe, apenas soma os valores à linha existente em vez de criar duplicata
+                const existing = secAgg.ordens[existingIndex];
+                existing.valor_pecas += baseValPec * fator;
+                existing.valor_servicos += baseValServ * fator;
+                existing.faturamento += baseFat * fator;
+                existing.comissao_pecas += basePec * fator;
+                existing.comissao_servicos += baseServ * fator;
+                existing.comissao_total += baseTot * fator;
+                existing.percentual_split = round2((existing.percentual_split || 0) + s.pct * escala);
+              } else {
+                secAgg.ordens.push({
+                  ...o,
+                  valor_pecas: baseValPec * fator,
+                  valor_servicos: baseValServ * fator,
+                  faturamento: baseFat * fator,
+                  comissao_pecas: basePec * fator,
+                  comissao_servicos: baseServ * fator,
+                  comissao_total: baseTot * fator,
+                  compartilhada_com: [t.tecnico, ...validSplits.filter((x) => x !== s).map((x) => x.tecnico)].join(", "),
+                  percentual_split: round2(s.pct * escala),
+                  divisao,
+                });
+              }
+
               secAgg.os_count += fator;
               secAgg.valor_pecas += baseValPec * fator;
               secAgg.valor_servicos += baseValServ * fator;
@@ -816,18 +844,6 @@ Deno.serve(async (req) => {
               secAgg.comissao_pecas += basePec * fator;
               secAgg.comissao_servicos += baseServ * fator;
               secAgg.comissao_total += baseTot * fator;
-              secAgg.ordens.push({
-                ...o,
-                valor_pecas: baseValPec * fator,
-                valor_servicos: baseValServ * fator,
-                faturamento: baseFat * fator,
-                comissao_pecas: basePec * fator,
-                comissao_servicos: baseServ * fator,
-                comissao_total: baseTot * fator,
-                compartilhada_com: [t.tecnico, ...validSplits.filter((x) => x !== s).map((x) => x.tecnico)].join(", "),
-                percentual_split: round2(s.pct * escala),
-                divisao,
-              });
             }
           }
         }
