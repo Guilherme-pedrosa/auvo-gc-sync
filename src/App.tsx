@@ -29,6 +29,7 @@ import AgendamentoPage from "./pages/financeiro/AgendamentoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
 import TiposEquipamentoPage from "./pages/configuracoes/TiposEquipamentoPage.tsx";
 import TiposTarefaPreventivaPage from "./pages/configuracoes/TiposTarefaPreventivaPage.tsx";
+import RegrasPremiacaoPage from "./pages/configuracoes/RegrasPremiacaoPage.tsx";
 import ClientesRhPage from "./pages/rh/ClientesRhPage.tsx";
 import ClienteRequisitosPage from "./pages/rh/ClienteRequisitosPage.tsx";
 import ColaboradoresPage from "./pages/rh/ColaboradoresPage.tsx";
@@ -132,6 +133,7 @@ const AppRoutes = () => {
                 <Route path="/configuracoes/contratos" element={<ContratosPage />} />
                 <Route path="/configuracoes/tipos-equipamento" element={<TiposEquipamentoPage />} />
                 <Route path="/configuracoes/tipos-tarefa-preventiva" element={<TiposTarefaPreventivaPage />} />
+                <Route path="/configuracoes/regras-premiacao" element={<RegrasPremiacaoPage />} />
                 <Route path="/rh/clientes" element={<ClientesRhPage />} />
                 <Route path="/rh/clientes/:id/requisitos" element={<ClienteRequisitosPage />} />
                 <Route path="/rh/colaboradores" element={<ColaboradoresPage />} />

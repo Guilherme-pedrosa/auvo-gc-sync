@@ -1113,6 +1113,47 @@ Deno.serve(async (req) => {
       console.warn("[premiacao] TVH_SUPABASE_URL/TVH_SERVICE_ROLE_KEY não configurados — reduções de KM não aplicadas");
     }
 
+    // Faixas configuráveis (Configurações > Regras de Premiação)
+    type FaixaRed = { km_min: number; km_max: number | null; pct: number };
+    type FaixaBonus = { km_total_min: number; km_tel_min: number; pct: number };
+    let faixasReducao: FaixaRed[] = [
+      { km_min: 0, km_max: 40, pct: 0.30 },
+      { km_min: 40, km_max: 65, pct: 0.25 },
+    ];
+    let faixasBonus: FaixaBonus[] = [
+      { km_total_min: 800, km_tel_min: 150, pct: 0.03 },
+      { km_total_min: 2000, km_tel_min: 200, pct: 0.05 },
+    ];
+    try {
+      const { data: cfg } = await supabase
+        .from("premiacao_regras_config")
+        .select("reducoes, bonus_telemetria")
+        .eq("id", "default")
+        .maybeSingle();
+      if (cfg) {
+        const red = (cfg as any).reducoes;
+        const bon = (cfg as any).bonus_telemetria;
+        if (Array.isArray(red) && red.length) {
+          faixasReducao = red
+            .map((r: any) => ({
+              km_min: toNum(r.km_min),
+              km_max: r.km_max === null || r.km_max === undefined || r.km_max === "" ? null : toNum(r.km_max),
+              pct: toNum(r.pct),
+            }))
+            .sort((a, b) => a.km_min - b.km_min);
+        }
+        if (Array.isArray(bon)) {
+          faixasBonus = bon.map((b: any) => ({
+            km_total_min: toNum(b.km_total_min),
+            km_tel_min: toNum(b.km_tel_min),
+            pct: toNum(b.pct),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("[premiacao] config regras falhou:", (e as Error).message);
+    }
+
     for (const t of tecnicos) {
       const first = normalize(t.tecnico).split(/\s+/)[0];
       const km = kmByTec.get(first);
@@ -1121,38 +1162,18 @@ Deno.serve(async (req) => {
       const km_por_telemetria = telemetrias > 0 ? km_total / telemetrias : null;
       let reducao_pct = 0;
       const reducoes: Array<{ motivo: string; pct: number; valor: number }> = [];
-      
-      // Regra de redu\u00e7\u00e3o: valor_pecas = 1142, reducao = 20% -> 913?
-      // 1142 * 0.8 = 913.6. A redu\u00e7\u00e3o est\u00e1 sendo aplicada sobre a comiss\u00e3o total.
-      
+
       if (km && km_por_telemetria !== null) {
-        if (km_por_telemetria < 40) {
-          reducao_pct += 0.30;
+        const faixa = faixasReducao.find(
+          (f) => km_por_telemetria >= f.km_min && (f.km_max === null || km_por_telemetria < f.km_max),
+        );
+        if (faixa && faixa.pct > 0) {
+          reducao_pct += faixa.pct;
+          const limite = faixa.km_max === null ? "acima" : `até ${faixa.km_max}`;
           reducoes.push({
-            motivo: `KM/telemetria abaixo de 40 (${km_por_telemetria.toFixed(1)} km)`,
-            pct: 0.30,
-            valor: t.comissao_total * 0.30,
-          });
-        } else if (km_por_telemetria < 70) {
-          reducao_pct += 0.25;
-          reducoes.push({
-            motivo: `KM/telemetria de 40 a 70 (${km_por_telemetria.toFixed(1)} km)`,
-            pct: 0.25,
-            valor: t.comissao_total * 0.25,
-          });
-        } else if (km_por_telemetria < 100) {
-          reducao_pct += 0.20;
-          reducoes.push({
-            motivo: `KM/telemetria de 70 a 100 (${km_por_telemetria.toFixed(1)} km)`,
-            pct: 0.20,
-            valor: t.comissao_total * 0.20,
-          });
-        } else if (km_por_telemetria < 120) {
-          reducao_pct += 0.15;
-          reducoes.push({
-            motivo: `KM/telemetria de 100 a 120 (${km_por_telemetria.toFixed(1)} km)`,
-            pct: 0.15,
-            valor: t.comissao_total * 0.15,
+            motivo: `KM/telemetria ${faixa.km_min > 0 ? `de ${faixa.km_min} ` : ""}${limite} (${km_por_telemetria.toFixed(1)} km)`,
+            pct: faixa.pct,
+            valor: t.comissao_total * faixa.pct,
           });
         }
       }
@@ -1167,15 +1188,13 @@ Deno.serve(async (req) => {
       (t as any).reducoes = reducoes;
       (t as any).comissao_final = comissao_final;
 
-      // BÔNUS DE TELEMETRIA
-      // ≥ 800 km no mês + > 150 km/telemetria → +3%
-      // ≥ 2000 km no mês + > 200 km/telemetria → +5% (senão continua +3%)
+      // BÔNUS DE TELEMETRIA (faixas configuráveis — aplica a de maior pct atendida)
       let bonus_telemetria_pct = 0;
-      if (km_total >= 800 && km_por_telemetria !== null && km_por_telemetria > 150) {
-        if (km_total >= 2000 && km_por_telemetria > 200) {
-          bonus_telemetria_pct = 0.05;
-        } else {
-          bonus_telemetria_pct = 0.03;
+      if (km_por_telemetria !== null) {
+        for (const f of faixasBonus) {
+          if (km_total >= f.km_total_min && km_por_telemetria > f.km_tel_min) {
+            bonus_telemetria_pct = Math.max(bonus_telemetria_pct, f.pct);
+          }
         }
       }
       const bonus_telemetria_valor = t.comissao_total * bonus_telemetria_pct;

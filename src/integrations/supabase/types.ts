@@ -2280,6 +2280,36 @@ export type Database = {
         }
         Relationships: []
       }
+      premiacao_regras_config: {
+        Row: {
+          atualizado_em: string
+          atualizado_por: string | null
+          bonus_telemetria: Json
+          id: string
+          pct_pecas: number
+          pct_servicos: number
+          reducoes: Json
+        }
+        Insert: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          bonus_telemetria?: Json
+          id?: string
+          pct_pecas?: number
+          pct_servicos?: number
+          reducoes?: Json
+        }
+        Update: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          bonus_telemetria?: Json
+          id?: string
+          pct_pecas?: number
+          pct_servicos?: number
+          reducoes?: Json
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           atualizado_em: string

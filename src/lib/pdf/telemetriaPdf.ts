@@ -78,7 +78,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text(
-    "Regra: 1% peças + 15% serviços (excl. deslocamento). Reduções por KM/telemetria: <40→−30% · 40–70→−25% · 70–100→−20% · 100–120→−15% · ≥120 sem redução. Deméritos somam ao percentual de redução.",
+    "Regra: 1% peças + 15% serviços (excl. deslocamento). Reduções por KM/telemetria conforme faixas configuradas (Configurações > Regras de Premiação). Deméritos somam ao percentual de redução.",
     40,
     74,
     { maxWidth: pageW - 80 }
