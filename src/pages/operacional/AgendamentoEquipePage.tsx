@@ -1500,7 +1500,7 @@ export default function AgendamentoEquipePage() {
             mostrarVisitasContratuais={mostrarVisitasContratuais}
             setMostrarVisitasContratuais={setMostrarVisitasContratuais}
             clienteId={clienteId}
-            setClienteId={setClienteId}
+            setClienteId={(v: string) => setClienteId(v && v.trim() ? v : "todos")}
           />
 
           <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
