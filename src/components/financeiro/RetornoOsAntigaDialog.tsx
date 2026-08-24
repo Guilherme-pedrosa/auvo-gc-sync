@@ -44,6 +44,9 @@ export function RetornoOsAntigaDialog({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [tecRetorno, setTecRetorno] = useState("");
   const [obs, setObs] = useState("");
+  const [tecDescontado, setTecDescontado] = useState("");
+
+
 
   const { data: tecnicos } = useQuery<Array<{ value: string; label: string }>>({
     queryKey: ["tecnicos_distinct"],
