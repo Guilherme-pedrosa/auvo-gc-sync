@@ -19,6 +19,9 @@ type Preview = {
   situacao: string;
   executada: boolean;
   tecnico_original: string | null;
+  tecnico_vendedor_gc?: string | null;
+  tecnico_fonte?: string;
+
   valor_pecas: number;
   valor_servicos: number;
   comissao_pecas: number;
