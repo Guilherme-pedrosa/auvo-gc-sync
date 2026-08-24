@@ -172,13 +172,32 @@ export function SearchableSelect(props: SearchableSelectProps) {
             {icon}
             <span className="truncate flex-1 text-left">{selectedLabel}</span>
             {value && (
-              <X
-                className="h-3.5 w-3.5 opacity-50 hover:opacity-100 cursor-pointer shrink-0 ml-1"
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Limpar seleção"
+                className="shrink-0 ml-1 opacity-50 hover:opacity-100 cursor-pointer"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onValueChange("");
+                  setOpen(false);
                 }}
-              />
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onValueChange("");
+                    setOpen(false);
+                  }
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </span>
             )}
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
