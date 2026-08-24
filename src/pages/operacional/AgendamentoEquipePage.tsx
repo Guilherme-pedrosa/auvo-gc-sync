@@ -1284,6 +1284,23 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteId, rhClientes]);
 
+  // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
+  // tem atividade correspondente na agenda — ou quem bate pelo próprio nome.
+  const tecnicos = useMemo(() => {
+    const temFiltro = Boolean(filtroTexto.trim()) || (clienteId && clienteId !== "todos");
+    if (!temFiltro) return tecnicosBase;
+
+    const search = filtroTexto.trim() ? norm(filtroTexto) : "";
+    const comAtividade = new Set<string>();
+    for (const k of mapTec.keys()) comAtividade.add(k.split("|")[0]);
+
+    const filtrados = tecnicosBase.filter(
+      (tec) => comAtividade.has(tec.id) || (search ? norm(tec.nome).includes(search) : false),
+    );
+    return filtrados.length > 0 ? filtrados : [];
+  }, [tecnicosBase, mapTec, filtroTexto, clienteId]);
+
+
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
     const resultado = new Map<string, AgendaTag[]>();
