@@ -29,6 +29,7 @@ import AgendamentoPage from "./pages/financeiro/AgendamentoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
 import TiposEquipamentoPage from "./pages/configuracoes/TiposEquipamentoPage.tsx";
 import TiposTarefaPreventivaPage from "./pages/configuracoes/TiposTarefaPreventivaPage.tsx";
+import RegrasPremiacaoPage from "./pages/configuracoes/RegrasPremiacaoPage.tsx";
 import ClientesRhPage from "./pages/rh/ClientesRhPage.tsx";
 import ClienteRequisitosPage from "./pages/rh/ClienteRequisitosPage.tsx";
 import ColaboradoresPage from "./pages/rh/ColaboradoresPage.tsx";
