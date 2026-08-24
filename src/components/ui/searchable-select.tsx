@@ -225,6 +225,18 @@ export function SearchableSelect(props: SearchableSelectProps) {
             </CommandGroup>
           </CommandList>
         </Command>
+        {value && (
+          <div className="border-t p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs"
+              onClick={() => { onValueChange(""); setOpen(false); }}
+            >
+              <X className="h-3 w-3 mr-1" /> Limpar filtro
+            </Button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
