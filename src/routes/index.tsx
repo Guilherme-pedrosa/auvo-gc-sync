@@ -1,13 +1,6 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+como que 20% de 1142 é 913 reais???? na premiação você está debitando errado novamente!!!
 
-export default function Index() {
-  const navigate = useNavigate();
+Verifique novamente mais uma vez o que eu te pedi mil vezes
 
-  useEffect(() => {
-    // Redireciona para o Agendamento de Equipe, que é o ponto central
-    navigate("/operacional/agendamento-equipe", { replace: true });
-  }, [navigate]);
-
-  return null;
-}
+Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
+Imagem 1: https://sorax.lovable.app/api/public/i/idjapf981c.png
