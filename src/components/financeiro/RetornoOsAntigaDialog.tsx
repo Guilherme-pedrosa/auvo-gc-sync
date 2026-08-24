@@ -19,6 +19,9 @@ type Preview = {
   situacao: string;
   executada: boolean;
   tecnico_original: string | null;
+  tecnico_vendedor_gc?: string | null;
+  tecnico_fonte?: string;
+
   valor_pecas: number;
   valor_servicos: number;
   comissao_pecas: number;
@@ -41,6 +44,9 @@ export function RetornoOsAntigaDialog({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [tecRetorno, setTecRetorno] = useState("");
   const [obs, setObs] = useState("");
+  const [tecDescontado, setTecDescontado] = useState("");
+
+
 
   const { data: tecnicos } = useQuery<Array<{ value: string; label: string }>>({
     queryKey: ["tecnicos_distinct"],
@@ -76,9 +82,10 @@ export function RetornoOsAntigaDialog({
       if (!p.ok) throw new Error(p.error || "Falha ao buscar OS");
       return p;
     },
-    onSuccess: (p) => setPreview(p),
+    onSuccess: (p) => { setPreview(p); setTecDescontado(p.tecnico_original || ""); },
     onError: (e: Error) => {
       setPreview(null);
+      setTecDescontado("");
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     },
   });
@@ -87,14 +94,15 @@ export function RetornoOsAntigaDialog({
     mutationFn: async () => {
       if (!preview) throw new Error("Busque a OS antes.");
       if (!tecRetorno.trim()) throw new Error("Selecione o técnico do retorno.");
-      if (!preview.tecnico_original) throw new Error("OS sem vendedor original — não é possível aplicar desconto.");
+      const alvo = (tecDescontado || preview.tecnico_original || "").trim();
+      if (!alvo) throw new Error("Selecione o técnico que recebeu a premiação desta OS.");
       const { error } = await supabase.from("os_retornos").upsert(
         {
           gc_os_codigo: preview.gc_os_codigo,
           tecnico_retorno: tecRetorno.trim(),
           observacao: obs.trim() || null,
           mes_desconto: month,
-          tecnico_original: preview.tecnico_original,
+          tecnico_original: alvo,
           valor_desconto: preview.comissao_total,
           data_saida_original: preview.data_saida,
           cliente_original: preview.cliente,
@@ -106,10 +114,11 @@ export function RetornoOsAntigaDialog({
     onSuccess: () => {
       toast({
         title: "Retorno lançado",
-        description: `Desconto de ${brl(preview!.comissao_total)} será aplicado a ${preview!.tecnico_original} em ${month}.`,
+        description: `Desconto de ${brl(preview!.comissao_total)} será aplicado a ${tecDescontado || preview!.tecnico_original} em ${month}.`,
       });
       setOpen(false);
-      setCodigo(""); setPreview(null); setTecRetorno(""); setObs("");
+      setCodigo(""); setPreview(null); setTecRetorno(""); setObs(""); setTecDescontado("");
+
       qc.invalidateQueries({ queryKey: ["os_retornos"] });
       onChanged?.();
     },
@@ -121,7 +130,7 @@ export function RetornoOsAntigaDialog({
       <Button variant="outline" onClick={() => setOpen(true)}>
         <RotateCcw className="h-4 w-4" /> Retorno OS antiga
       </Button>
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setPreview(null); setCodigo(""); setTecRetorno(""); setObs(""); } }}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setPreview(null); setCodigo(""); setTecRetorno(""); setObs(""); setTecDescontado(""); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -130,9 +139,10 @@ export function RetornoOsAntigaDialog({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Busque a OS pelo número (qualquer mês). O valor da comissão original será descontado do
-              técnico vendedor (<strong>{preview?.tecnico_original || "—"}</strong>) na premiação de <strong>{month}</strong>.
+              Busque a OS pelo número (qualquer mês). O desconto é aplicado no técnico que
+              <strong> recebeu a premiação</strong> desta OS (<strong>{tecDescontado || preview?.tecnico_original || "—"}</strong>) na premiação de <strong>{month}</strong> — nunca no técnico que foi atender o retorno.
             </p>
+
 
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -167,9 +177,20 @@ export function RetornoOsAntigaDialog({
                       <div className="font-medium text-xs">{preview.situacao || "—"}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Vendedor original</div>
+                      <div className="text-xs text-muted-foreground">Quem recebeu a premiação</div>
                       <div className="font-medium">{preview.tecnico_original || "—"}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {preview.tecnico_fonte === "tarefa_execucao"
+                          ? "fonte: tarefa execução (Auvo)"
+                          : preview.tecnico_fonte === "tarefa_os"
+                          ? "fonte: tarefa OS (Auvo)"
+                          : "fonte: vendedor GC"}
+                        {preview.tecnico_vendedor_gc && preview.tecnico_vendedor_gc !== preview.tecnico_original
+                          ? ` · vendedor GC: ${preview.tecnico_vendedor_gc}`
+                          : ""}
+                      </div>
                     </div>
+
                   </div>
                   <div className="border-t pt-3 grid grid-cols-3 gap-3 text-sm">
                     <div>
@@ -190,11 +211,22 @@ export function RetornoOsAntigaDialog({
                   {!preview.executada && (
                     <div className="text-xs text-amber-600">⚠ Esta OS não está com situação "Executado" — confirme antes de lançar.</div>
                   )}
-                  {!preview.tecnico_original && (
-                    <div className="text-xs text-destructive">⚠ OS sem vendedor original definido. Não é possível aplicar o desconto.</div>
+                  {!tecDescontado && !preview.tecnico_original && (
+                    <div className="text-xs text-destructive">⚠ Não foi possível identificar quem recebeu a premiação — selecione manualmente abaixo.</div>
                   )}
 
-                  <div className="border-t pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border-t pt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Técnico descontado (recebeu a premiação)</label>
+                      <SearchableSelect
+                        options={tecnicos || []}
+                        value={tecDescontado}
+                        onValueChange={(v) => setTecDescontado(v || "")}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                      />
+                    </div>
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Técnico do retorno (foi atender)</label>
                       <SearchableSelect
@@ -216,8 +248,9 @@ export function RetornoOsAntigaDialog({
                     <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                     <Button
                       onClick={() => saveMut.mutate()}
-                      disabled={saveMut.isPending || !tecRetorno || !preview.tecnico_original}
+                      disabled={saveMut.isPending || !tecRetorno || !(tecDescontado || preview.tecnico_original)}
                     >
+
                       {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                       Lançar desconto em {month}
                     </Button>
