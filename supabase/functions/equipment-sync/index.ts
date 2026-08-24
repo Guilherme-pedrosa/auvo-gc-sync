@@ -726,7 +726,21 @@ Deno.serve(async (req) => {
       }
 
       const customerCache = new Map<number, string>();
-      const customerIdList = Array.from(customerIds);
+
+      // O nome de exibição correto do cliente é o que está no cadastro do Auvo
+      // (auvo_clientes_cache.nome). A API de /customers às vezes devolve só a
+      // razão social antiga (ex.: NIP NAPOLI vindo como "1929 TRATTORIA
+      // MODERNA LTDA"), então o cache tem prioridade.
+      const { data: clientesCache } = await sb
+        .from("auvo_clientes_cache")
+        .select("auvo_id, nome");
+      for (const row of clientesCache || []) {
+        const cid = Number(row.auvo_id);
+        const nome = String(row.nome || "").trim();
+        if (cid > 0 && nome) customerCache.set(cid, nome);
+      }
+
+      const customerIdList = Array.from(customerIds).filter((cid) => !customerCache.has(cid));
       console.log(`[equipment-sync] New customers to resolve: ${customerIdList.length}`);
       const CUSTOMER_CONCURRENCY = 20;
       let resolved = 0;
@@ -738,6 +752,7 @@ Deno.serve(async (req) => {
           console.log(`[equipment-sync] Resolved ${resolved}/${customerIdList.length} customers`);
         }
       }
+
 
       // Load manual override protection
       const { data: protectedRows } = await sb
