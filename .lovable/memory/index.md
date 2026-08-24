@@ -3,3 +3,4 @@
 - [Portal/Admin Parity](mem://features/portal-cliente/parity-with-admin) — Regras para portal e admin baterem 100% em horas/faturamento por grupo
 - [Exec Task Fallback](mem://integration/auvo-gestaoclick/exec-task-fallback-linkage) — Fallback vincula GC OS via TAREFA EXECUÇÃO (73344) quando 73343 está errado/duplicado
 - [Premiação Technician Priority](mem://features/premiacao/technician-priority) — Premiação usa TAREFA EXECUÇÃO (73344) como fonte da verdade do técnico; 73343 é irrelevante
+- [Preventiva Competência](mem://features/premiacao/preventiva-competencia) — Preventiva entra no mês da execução (data_conclusao), não do agendamento

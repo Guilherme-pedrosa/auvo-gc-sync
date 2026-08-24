@@ -936,12 +936,20 @@ Deno.serve(async (req) => {
     // ============================================================
     try {
       const PREVENTIVA_TASK_TYPES = ["180176", "180175"];
+      // Janela ampliada: a tarefa pode estar agendada num mês e ter sido
+      // EXECUTADA (finalizada) em outro. A premiação segue a data de execução.
+      const widenStart = new Date(`${startDate}T00:00:00Z`);
+      widenStart.setUTCDate(widenStart.getUTCDate() - 60);
+      const widenEnd = new Date(`${endDate}T00:00:00Z`);
+      widenEnd.setUTCDate(widenEnd.getUTCDate() + 60);
+      const prevStart = widenStart.toISOString().slice(0, 10);
+      const prevEnd = widenEnd.toISOString().slice(0, 10);
       const { data: prevRows, error: prevErr } = await supabase
         .from("tarefas_central")
         .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo, pendencia")
         .in("task_type_id", PREVENTIVA_TASK_TYPES)
-        .gte("data_tarefa", startDate)
-        .lte("data_tarefa", endDate);
+        .gte("data_tarefa", prevStart)
+        .lte("data_tarefa", prevEnd);
       console.log(`[premiacao] preventivas query: rows=${(prevRows||[]).length} err=${prevErr?.message || 'none'}`);
 
       // Dedupe por auvo_task_id (linhas duplicadas em tarefas_central representam a mesma tarefa)
@@ -951,10 +959,14 @@ Deno.serve(async (req) => {
         if (!tid) continue;
         const status = normalize(String((r as any).status_auvo || ""));
         if (!status.startsWith("finalizada")) continue;
+        // Data de competência = execução (conclusão) quando existir.
+        const efetiva = String((r as any).data_conclusao || (r as any).data_tarefa || "").slice(0, 10);
+        if (!efetiva || efetiva < startDate || efetiva > endDate) continue;
         const existing = prevByTask.get(tid);
         if (!existing) { prevByTask.set(tid, r); continue; }
         if (!(existing.tecnico || "").trim() && (r.tecnico || "").trim()) prevByTask.set(tid, r);
       }
+
 
       for (const r of prevByTask.values()) {
         const tecRaw = canonicalTecnico(String(r.tecnico || "").trim());
