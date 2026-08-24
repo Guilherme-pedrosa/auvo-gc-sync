@@ -126,6 +126,42 @@ Deno.serve(async (req) => {
     const sit = String(detail.nome_situacao || "");
     const isExecutada = normalize(sit).startsWith("executado");
 
+    // Técnico que efetivamente RECEBEU a premiação desta OS:
+    // prioridade = técnico da TAREFA EXECUÇÃO (attr 73344); fallback = vendedor GC.
+    let tecnicoPremiado: string | null = null;
+    let fonteTecnico = "vendedor_gc";
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data: rows } = await supabase
+        .from("tarefas_central")
+        .select("auvo_task_id, gc_os_tarefa_exec, tecnico")
+        .eq("gc_os_codigo", codigo);
+      const list = rows || [];
+      const execIds = new Set(
+        list.map((r: any) => String(r.gc_os_tarefa_exec || "").trim()).filter(Boolean),
+      );
+      // 1) linha cujo auvo_task_id é a própria tarefa execução
+      const execRow = list.find((r: any) => execIds.has(String(r.auvo_task_id || "").trim()) && r.tecnico);
+      if (execRow?.tecnico) {
+        tecnicoPremiado = String(execRow.tecnico).trim();
+        fonteTecnico = "tarefa_execucao";
+      } else {
+        // 2) qualquer técnico registrado na OS
+        const anyRow = list.find((r: any) => r.tecnico);
+        if (anyRow?.tecnico) {
+          tecnicoPremiado = String(anyRow.tecnico).trim();
+          fonteTecnico = "tarefa_os";
+        }
+      }
+    } catch (e) {
+      console.error("[os-retorno-preview] resolução do técnico premiado falhou:", (e as Error).message);
+    }
+    const vendedorGc = String(detail.nome_vendedor || "").trim() || null;
+    if (!tecnicoPremiado) tecnicoPremiado = vendedorGc;
+
     return new Response(JSON.stringify({
       ok: true,
       gc_os_id: osId,
@@ -134,13 +170,16 @@ Deno.serve(async (req) => {
       data_saida: dataSaidaRaw || null,
       situacao: sit,
       executada: isExecutada,
-      tecnico_original: String(detail.nome_vendedor || "").trim() || null,
+      tecnico_original: tecnicoPremiado,
+      tecnico_vendedor_gc: vendedorGc,
+      tecnico_fonte: fonteTecnico,
       valor_pecas,
       valor_servicos,
       comissao_pecas,
       comissao_servicos,
       comissao_total,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (err) {
     return new Response(JSON.stringify({ ok: false, error: (err as Error).message }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
