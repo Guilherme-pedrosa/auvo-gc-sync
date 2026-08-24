@@ -130,7 +130,7 @@ export function RetornoOsAntigaDialog({
       <Button variant="outline" onClick={() => setOpen(true)}>
         <RotateCcw className="h-4 w-4" /> Retorno OS antiga
       </Button>
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setPreview(null); setCodigo(""); setTecRetorno(""); setObs(""); } }}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setPreview(null); setCodigo(""); setTecRetorno(""); setObs(""); setTecDescontado(""); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -139,9 +139,10 @@ export function RetornoOsAntigaDialog({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Busque a OS pelo número (qualquer mês). O valor da comissão original será descontado do
-              técnico vendedor (<strong>{preview?.tecnico_original || "—"}</strong>) na premiação de <strong>{month}</strong>.
+              Busque a OS pelo número (qualquer mês). O desconto é aplicado no técnico que
+              <strong> recebeu a premiação</strong> desta OS (<strong>{tecDescontado || preview?.tecnico_original || "—"}</strong>) na premiação de <strong>{month}</strong> — nunca no técnico que foi atender o retorno.
             </p>
+
 
             <div className="flex items-end gap-2">
               <div className="flex-1">
