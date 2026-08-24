@@ -1121,6 +1121,10 @@ Deno.serve(async (req) => {
       const km_por_telemetria = telemetrias > 0 ? km_total / telemetrias : null;
       let reducao_pct = 0;
       const reducoes: Array<{ motivo: string; pct: number; valor: number }> = [];
+      
+      // Regra de redu\u00e7\u00e3o: valor_pecas = 1142, reducao = 20% -> 913?
+      // 1142 * 0.8 = 913.6. A redu\u00e7\u00e3o est\u00e1 sendo aplicada sobre a comiss\u00e3o total.
+      
       if (km && km_por_telemetria !== null) {
         if (km_por_telemetria < 40) {
           reducao_pct += 0.30;
