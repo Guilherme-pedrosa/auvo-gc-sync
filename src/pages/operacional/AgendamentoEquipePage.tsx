@@ -1226,18 +1226,12 @@ export default function AgendamentoEquipePage() {
     }
   };
 
-  const tecnicos = useMemo(() => {
+  const tecnicosBase = useMemo(() => {
     const ativos = colaboradores.filter((c) => c.ativo);
     const t = ativos.filter(isTecnico);
-    let filtrados = t.length > 0 ? t : ativos;
-
-    if (filtroTexto.trim()) {
-      const search = norm(filtroTexto);
-      filtrados = filtrados.filter((tec) => norm(tec.nome).includes(search));
-    }
-
-    return filtrados.sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores, filtroTexto]);
+    const filtrados = t.length > 0 ? t : ativos;
+    return [...filtrados].sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colaboradores]);
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
@@ -1252,7 +1246,7 @@ export default function AgendamentoEquipePage() {
       if (isVisita && !mostrarVisitasContratuais) continue;
 
       // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
-      if (clienteId !== "todos") {
+      if (clienteId && clienteId !== "todos") {
         // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
         if (a.contrato_id && a.contrato_id !== clienteId) continue;
         
@@ -1289,6 +1283,23 @@ export default function AgendamentoEquipePage() {
     }
     return m;
   }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteId, rhClientes]);
+
+  // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
+  // tem atividade correspondente na agenda — ou quem bate pelo próprio nome.
+  const tecnicos = useMemo(() => {
+    const temFiltro = Boolean(filtroTexto.trim()) || (clienteId && clienteId !== "todos");
+    if (!temFiltro) return tecnicosBase;
+
+    const search = filtroTexto.trim() ? norm(filtroTexto) : "";
+    const comAtividade = new Set<string>();
+    for (const k of mapTec.keys()) comAtividade.add(k.split("|")[0]);
+
+    const filtrados = tecnicosBase.filter(
+      (tec) => comAtividade.has(tec.id) || (search ? norm(tec.nome).includes(search) : false),
+    );
+    return filtrados.length > 0 ? filtrados : [];
+  }, [tecnicosBase, mapTec, filtroTexto, clienteId]);
+
 
   const tagsPorAgendamento = useMemo(() => {
     const tagPorId = new Map(agendaTags.map((tag) => [tag.id, tag]));
@@ -1500,7 +1511,7 @@ export default function AgendamentoEquipePage() {
             mostrarVisitasContratuais={mostrarVisitasContratuais}
             setMostrarVisitasContratuais={setMostrarVisitasContratuais}
             clienteId={clienteId}
-            setClienteId={setClienteId}
+            setClienteId={(v: string) => setClienteId(v && v.trim() ? v : "todos")}
           />
 
           <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
