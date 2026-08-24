@@ -9,11 +9,5 @@ export default function Index() {
     navigate("/operacional/agendamento-equipe", { replace: true });
   }, [navigate]);
 
-  return (
-    <div className="p-8">
-      eu não te pedi pra atualizar texto!!
-      <br /><br />
-      remova o texto que colocou e trabalhe meu prompt no back end
-    </div>
-  );
+  return null;
 }
