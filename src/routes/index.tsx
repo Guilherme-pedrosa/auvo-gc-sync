@@ -11,13 +11,9 @@ export default function Index() {
 
   return (
     <div className="p-8">
-      depois que seleciona o filtro, não é possível mais apagar a seleção.
+      eu não te pedi pra atualizar texto!!
       <br /><br />
-      corrija
-      <br /><br />
-      Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
-      <br />
-      Imagem 1: https://sorax.lovable.app/api/public/i/ugdxp8lkec.png
+      remova o texto que colocou e trabalhe meu prompt no back end
     </div>
   );
 }
