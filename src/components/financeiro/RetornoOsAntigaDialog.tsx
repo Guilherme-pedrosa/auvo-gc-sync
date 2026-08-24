@@ -177,9 +177,20 @@ export function RetornoOsAntigaDialog({
                       <div className="font-medium text-xs">{preview.situacao || "—"}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Vendedor original</div>
+                      <div className="text-xs text-muted-foreground">Quem recebeu a premiação</div>
                       <div className="font-medium">{preview.tecnico_original || "—"}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {preview.tecnico_fonte === "tarefa_execucao"
+                          ? "fonte: tarefa execução (Auvo)"
+                          : preview.tecnico_fonte === "tarefa_os"
+                          ? "fonte: tarefa OS (Auvo)"
+                          : "fonte: vendedor GC"}
+                        {preview.tecnico_vendedor_gc && preview.tecnico_vendedor_gc !== preview.tecnico_original
+                          ? ` · vendedor GC: ${preview.tecnico_vendedor_gc}`
+                          : ""}
+                      </div>
                     </div>
+
                   </div>
                   <div className="border-t pt-3 grid grid-cols-3 gap-3 text-sm">
                     <div>
