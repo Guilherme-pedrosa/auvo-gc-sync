@@ -211,11 +211,22 @@ export function RetornoOsAntigaDialog({
                   {!preview.executada && (
                     <div className="text-xs text-amber-600">⚠ Esta OS não está com situação "Executado" — confirme antes de lançar.</div>
                   )}
-                  {!preview.tecnico_original && (
-                    <div className="text-xs text-destructive">⚠ OS sem vendedor original definido. Não é possível aplicar o desconto.</div>
+                  {!tecDescontado && !preview.tecnico_original && (
+                    <div className="text-xs text-destructive">⚠ Não foi possível identificar quem recebeu a premiação — selecione manualmente abaixo.</div>
                   )}
 
-                  <div className="border-t pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border-t pt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Técnico descontado (recebeu a premiação)</label>
+                      <SearchableSelect
+                        options={tecnicos || []}
+                        value={tecDescontado}
+                        onValueChange={(v) => setTecDescontado(v || "")}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                      />
+                    </div>
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Técnico do retorno (foi atender)</label>
                       <SearchableSelect
@@ -237,8 +248,9 @@ export function RetornoOsAntigaDialog({
                     <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                     <Button
                       onClick={() => saveMut.mutate()}
-                      disabled={saveMut.isPending || !tecRetorno || !preview.tecnico_original}
+                      disabled={saveMut.isPending || !tecRetorno || !(tecDescontado || preview.tecnico_original)}
                     >
+
                       {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                       Lançar desconto em {month}
                     </Button>
