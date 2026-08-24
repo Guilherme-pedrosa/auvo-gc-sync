@@ -82,9 +82,10 @@ export function RetornoOsAntigaDialog({
       if (!p.ok) throw new Error(p.error || "Falha ao buscar OS");
       return p;
     },
-    onSuccess: (p) => setPreview(p),
+    onSuccess: (p) => { setPreview(p); setTecDescontado(p.tecnico_original || ""); },
     onError: (e: Error) => {
       setPreview(null);
+      setTecDescontado("");
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     },
   });
@@ -93,14 +94,15 @@ export function RetornoOsAntigaDialog({
     mutationFn: async () => {
       if (!preview) throw new Error("Busque a OS antes.");
       if (!tecRetorno.trim()) throw new Error("Selecione o técnico do retorno.");
-      if (!preview.tecnico_original) throw new Error("OS sem vendedor original — não é possível aplicar desconto.");
+      const alvo = (tecDescontado || preview.tecnico_original || "").trim();
+      if (!alvo) throw new Error("Selecione o técnico que recebeu a premiação desta OS.");
       const { error } = await supabase.from("os_retornos").upsert(
         {
           gc_os_codigo: preview.gc_os_codigo,
           tecnico_retorno: tecRetorno.trim(),
           observacao: obs.trim() || null,
           mes_desconto: month,
-          tecnico_original: preview.tecnico_original,
+          tecnico_original: alvo,
           valor_desconto: preview.comissao_total,
           data_saida_original: preview.data_saida,
           cliente_original: preview.cliente,
@@ -112,10 +114,11 @@ export function RetornoOsAntigaDialog({
     onSuccess: () => {
       toast({
         title: "Retorno lançado",
-        description: `Desconto de ${brl(preview!.comissao_total)} será aplicado a ${preview!.tecnico_original} em ${month}.`,
+        description: `Desconto de ${brl(preview!.comissao_total)} será aplicado a ${tecDescontado || preview!.tecnico_original} em ${month}.`,
       });
       setOpen(false);
-      setCodigo(""); setPreview(null); setTecRetorno(""); setObs("");
+      setCodigo(""); setPreview(null); setTecRetorno(""); setObs(""); setTecDescontado("");
+
       qc.invalidateQueries({ queryKey: ["os_retornos"] });
       onChanged?.();
     },
