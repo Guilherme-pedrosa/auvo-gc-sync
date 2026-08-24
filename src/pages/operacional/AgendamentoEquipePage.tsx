@@ -1246,7 +1246,7 @@ export default function AgendamentoEquipePage() {
       if (isVisita && !mostrarVisitasContratuais) continue;
 
       // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
-      if (clienteId !== "todos") {
+      if (clienteId && clienteId !== "todos") {
         // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
         if (a.contrato_id && a.contrato_id !== clienteId) continue;
         
