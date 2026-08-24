@@ -1226,18 +1226,12 @@ export default function AgendamentoEquipePage() {
     }
   };
 
-  const tecnicos = useMemo(() => {
+  const tecnicosBase = useMemo(() => {
     const ativos = colaboradores.filter((c) => c.ativo);
     const t = ativos.filter(isTecnico);
-    let filtrados = t.length > 0 ? t : ativos;
-
-    if (filtroTexto.trim()) {
-      const search = norm(filtroTexto);
-      filtrados = filtrados.filter((tec) => norm(tec.nome).includes(search));
-    }
-
-    return filtrados.sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores, filtroTexto]);
+    const filtrados = t.length > 0 ? t : ativos;
+    return [...filtrados].sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colaboradores]);
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
