@@ -119,7 +119,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
             <CommandList className="max-h-72">
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
-                {filtered.slice(0, 200).map((option) => (
+                {filtered.map((option) => (
                   <CommandItem
                     key={option.value}
                     value={option.value}
@@ -209,7 +209,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
           <CommandList className="max-h-72">
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {filtered.slice(0, 200).map((option) => (
+              {filtered.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.value}
