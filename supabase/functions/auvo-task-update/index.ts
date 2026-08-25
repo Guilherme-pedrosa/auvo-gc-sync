@@ -333,6 +333,29 @@ function getAdminClient() {
   return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 }
 
+async function listActiveCustomersFromCache(
+  admin: ReturnType<typeof createClient>,
+): Promise<{ data: any[]; error: any }> {
+  const pageSize = 1000;
+  const all: any[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from("auvo_clientes_cache")
+      .select("auvo_id, nome, endereco")
+      .eq("ativo", true)
+      .order("nome")
+      .range(from, from + pageSize - 1);
+
+    if (error) return { data: [], error };
+    const page = data ?? [];
+    all.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return { data: all, error: null };
+}
+
 async function markForecastConversion(
   admin: ReturnType<typeof createClient>,
   forecastId: string,
@@ -1473,12 +1496,9 @@ Deno.serve(async (req) => {
       const admin = getAdminClient();
 
       if (!forceRefresh) {
-        // Tenta buscar do cache primeiro
-        const { data: cache, error: cacheErr } = await admin
-          .from("auvo_clientes_cache")
-          .select("auvo_id, nome, endereco")
-          .eq("ativo", true)
-          .order("nome");
+        // O backend limita cada resposta a 1.000 linhas. Paginar evita que
+        // clientes após esse limite desapareçam do seletor de abertura.
+        const { data: cache, error: cacheErr } = await listActiveCustomersFromCache(admin);
 
         if (!cacheErr && cache && cache.length > 0) {
           console.log(`[auvo-task-update][reqId=${reqId}] list-customers returning from cache (count=${cache.length})`);
@@ -1548,11 +1568,7 @@ Deno.serve(async (req) => {
 
       if (all.length === 0) {
         // Fallback: devolve cache existente em vez de falhar
-        const { data: cache } = await admin
-          .from("auvo_clientes_cache")
-          .select("auvo_id, nome, endereco")
-          .eq("ativo", true)
-          .order("nome");
+        const { data: cache } = await listActiveCustomersFromCache(admin);
         return new Response(
           JSON.stringify({
             data: (cache ?? []).map(c => ({ id: c.auvo_id, name: c.nome, address: c.endereco })),
