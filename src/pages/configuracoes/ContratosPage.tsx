@@ -510,16 +510,17 @@ function ContratoDialog({
           ) : (
             <div>
               <Label>Cliente</Label>
-              <Input
-                list="contrato-clientes-list"
+              <SearchableSelect
+                options={clienteOptions}
                 value={clienteNome}
-                onChange={(e) => setClienteNome(e.target.value)}
-                placeholder="Digite ou selecione um cliente"
+                onValueChange={setClienteNome}
+                placeholder="Selecione um cliente"
+                searchPlaceholder="Buscar cliente..."
+                emptyText="Nenhum cliente encontrado"
               />
-              <datalist id="contrato-clientes-list">
-                {clientesDisponiveis.map((cn: string) => <option key={cn} value={cn} />)}
-              </datalist>
+              <p className="text-xs text-muted-foreground mt-1">{clienteOptions.length} cliente(s) disponíveis.</p>
             </div>
+
           )}
           <div className="grid grid-cols-3 gap-3">
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
