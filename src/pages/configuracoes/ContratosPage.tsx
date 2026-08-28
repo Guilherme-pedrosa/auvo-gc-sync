@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+
 import { Loader2, Plus, Trash2, Edit, Users, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { reconcileFutureContractPlans } from "@/lib/contractVisitPlanning";
@@ -381,16 +383,31 @@ function ContratoDialog({
   const { data: clientesDisponiveis = [] } = useQuery({
     queryKey: ["clientes_contratos_cache"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("auvo_clientes_cache")
-        .select("nome")
-        .eq("ativo", true)
-        .order("nome");
-      if (error) throw error;
-      return [...new Set((data || []).map((row) => row.nome).filter(Boolean))];
+      const nomes: string[] = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from("auvo_clientes_cache")
+          .select("nome")
+          .eq("ativo", true)
+          .order("nome")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        nomes.push(...rows.map((row) => row.nome).filter(Boolean));
+        if (rows.length < pageSize) break;
+      }
+      return [...new Set(nomes)].sort((a, b) => a.localeCompare(b, "pt-BR"));
     },
     enabled: state.open,
   });
+
+  const clienteOptions = useMemo(() => {
+    const nomes = [...clientesDisponiveis];
+    if (clienteNome && !nomes.includes(clienteNome)) nomes.unshift(clienteNome);
+    return nomes.map((n) => ({ value: n, label: n }));
+  }, [clientesDisponiveis, clienteNome]);
+
 
   const save = useMutation({
     mutationFn: async () => {
@@ -495,16 +512,17 @@ function ContratoDialog({
           ) : (
             <div>
               <Label>Cliente</Label>
-              <Input
-                list="contrato-clientes-list"
+              <SearchableSelect
+                options={clienteOptions}
                 value={clienteNome}
-                onChange={(e) => setClienteNome(e.target.value)}
-                placeholder="Digite ou selecione um cliente"
+                onValueChange={setClienteNome}
+                placeholder="Selecione um cliente"
+                searchPlaceholder="Buscar cliente..."
+                emptyText="Nenhum cliente encontrado"
               />
-              <datalist id="contrato-clientes-list">
-                {clientesDisponiveis.map((cn: string) => <option key={cn} value={cn} />)}
-              </datalist>
+              <p className="text-xs text-muted-foreground mt-1">{clienteOptions.length} cliente(s) disponíveis.</p>
             </div>
+
           )}
           <div className="grid grid-cols-3 gap-3">
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
