@@ -381,16 +381,31 @@ function ContratoDialog({
   const { data: clientesDisponiveis = [] } = useQuery({
     queryKey: ["clientes_contratos_cache"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("auvo_clientes_cache")
-        .select("nome")
-        .eq("ativo", true)
-        .order("nome");
-      if (error) throw error;
-      return [...new Set((data || []).map((row) => row.nome).filter(Boolean))];
+      const nomes: string[] = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from("auvo_clientes_cache")
+          .select("nome")
+          .eq("ativo", true)
+          .order("nome")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        nomes.push(...rows.map((row) => row.nome).filter(Boolean));
+        if (rows.length < pageSize) break;
+      }
+      return [...new Set(nomes)].sort((a, b) => a.localeCompare(b, "pt-BR"));
     },
     enabled: state.open,
   });
+
+  const clienteOptions = useMemo(() => {
+    const nomes = [...clientesDisponiveis];
+    if (clienteNome && !nomes.includes(clienteNome)) nomes.unshift(clienteNome);
+    return nomes.map((n) => ({ value: n, label: n }));
+  }, [clientesDisponiveis, clienteNome]);
+
 
   const save = useMutation({
     mutationFn: async () => {
