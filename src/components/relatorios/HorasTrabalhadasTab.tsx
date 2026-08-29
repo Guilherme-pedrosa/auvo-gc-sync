@@ -150,6 +150,7 @@ export default function HorasTrabalhadasTab({
   };
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+  const [tecnicoChartSel, setTecnicoChartSel] = useState<string | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [rejectedModalOpen, setRejectedModalOpen] = useState(false);
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
@@ -775,8 +776,8 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Summary by client. Alert filters affect this grid only; KPI cards keep the
-  // complete technician summary above.
+  // Summary by client. Alert filters and chart selection affect this grid only;
+  // KPI cards keep the complete technician summary above.
   const clienteSummary = useMemo(() => {
     const map = new Map<string, {
       cliente: string;
@@ -786,11 +787,13 @@ export default function HorasTrabalhadasTab({
       tecnicos: Set<string>; tasks: TaskDetail[];
     }>();
     for (const tec of tecnicoSummary) {
+      if (tecnicoChartSel && tec.tecnico !== tecnicoChartSel) continue;
       for (const [cliente, cd] of tec.byCliente) {
         const tasks = alertFilter
           ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
           : cd.tasks;
         if (tasks.length === 0) continue;
+
 
         let entry = map.get(cliente);
         if (!entry) {
@@ -832,7 +835,7 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]);
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
@@ -1041,10 +1044,25 @@ export default function HorasTrabalhadasTab({
     }
   };
 
-  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%)
+  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%).
+  // Respeita o filtro de alerta (OS curta/longa/excessiva...) igual à grid.
   const chartData = useMemo(() => {
-    const ordenado = [...tecnicoSummary]
-      .map((t) => ({ name: t.tecnico.split(" ")[0], horas: Math.round(t.horas * 100) / 100 }))
+    const ordenado = tecnicoSummary
+      .map((t) => {
+        let horas = t.horas;
+        if (alertFilter) {
+          horas = 0;
+          for (const [, cd] of t.byCliente) {
+            for (const task of cd.tasks) {
+              if (!taskMatchesAlertFilter(task.auvo_task_id)) continue;
+              if (task.statusRevisao === "faturavel" || task.statusRevisao === "em_revisao") {
+                horas += task.horas;
+              }
+            }
+          }
+        }
+        return { name: t.tecnico.split(" ")[0], full: t.tecnico, horas: Math.round(horas * 100) / 100 };
+      })
       .filter((t) => t.horas > 0)
       .sort((a, b) => b.horas - a.horas);
     const total = ordenado.reduce((s, t) => s + t.horas, 0);
@@ -1054,7 +1072,7 @@ export default function HorasTrabalhadasTab({
       const acumuladoPct = total > 0 ? Math.round((acumulado / total) * 1000) / 10 : 0;
       return { ...t, acumuladoPct, vital: acumuladoPct - (total > 0 ? (t.horas / total) * 100 : 0) < 80 };
     });
-  }, [tecnicoSummary]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -1994,8 +2012,13 @@ export default function HorasTrabalhadasTab({
       {/* Pareto de horas por técnico */}
       {chartData.length > 0 && (
         <Card>
-          <CardHeader className="py-3 px-4">
+          <CardHeader className="py-3 px-4 flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium">Pareto de Horas por Técnico</CardTitle>
+            {tecnicoChartSel && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTecnicoChartSel(null)}>
+                Técnico: {tecnicoChartSel} · limpar
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <ResponsiveContainer width="100%" height={300}>
@@ -2013,11 +2036,27 @@ export default function HorasTrabalhadasTab({
                 />
                 <Legend formatter={(value) => value === "acumuladoPct" ? "Acumulado" : "Horas"} />
                 <ReferenceLine yAxisId="percent" y={80} stroke="hsl(var(--destructive))" strokeDasharray="4 4" label={{ value: "80%", position: "insideTopRight", fontSize: 10 }} />
-                <Bar yAxisId="hours" dataKey="horas" name="Horas" radius={[4, 4, 0, 0]}>
+                <Bar
+                  yAxisId="hours"
+                  dataKey="horas"
+                  name="Horas"
+                  radius={[4, 4, 0, 0]}
+                  className="cursor-pointer"
+                  onClick={(entry: any) => {
+                    const full = entry?.full || entry?.payload?.full;
+                    if (!full) return;
+                    setTecnicoChartSel((prev) => (prev === full ? null : full));
+                  }}
+                >
                   {chartData.map((entry, idx) => (
-                    <Cell key={entry.name + idx} fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"} />
+                    <Cell
+                      key={entry.name + idx}
+                      fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
+                      fillOpacity={tecnicoChartSel && tecnicoChartSel !== entry.full ? 0.3 : 1}
+                    />
                   ))}
                 </Bar>
+
                 <Line yAxisId="percent" type="monotone" dataKey="acumuladoPct" name="acumuladoPct" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
