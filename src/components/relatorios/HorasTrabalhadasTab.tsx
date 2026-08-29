@@ -769,6 +769,12 @@ export default function HorasTrabalhadasTab({
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
 
+  const taskMatchesAlertFilter = (taskId: string): boolean => {
+    if (!alertFilter) return true;
+    const lst = tasksWithAlertas.get(taskId) || [];
+    return lst.includes(alertFilter);
+  };
+
   // Summary by client. Alert filters affect this grid only; KPI cards keep the
   // complete technician summary above.
   const clienteSummary = useMemo(() => {
@@ -894,11 +900,6 @@ export default function HorasTrabalhadasTab({
     return "";
   };
 
-  const taskMatchesAlertFilter = (taskId: string): boolean => {
-    if (!alertFilter) return true;
-    const lst = tasksWithAlertas.get(taskId) || [];
-    return lst.includes(alertFilter);
-  };
 
   // Totais já incluem tarefas em revisão; o card amarelo é apenas destaque do subconjunto.
   // Rejeitado segue fora.
