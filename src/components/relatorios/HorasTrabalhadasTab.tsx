@@ -775,8 +775,8 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Summary by client. Alert filters affect this grid only; KPI cards keep the
-  // complete technician summary above.
+  // Summary by client. Alert filters and chart selection affect this grid only;
+  // KPI cards keep the complete technician summary above.
   const clienteSummary = useMemo(() => {
     const map = new Map<string, {
       cliente: string;
@@ -786,11 +786,13 @@ export default function HorasTrabalhadasTab({
       tecnicos: Set<string>; tasks: TaskDetail[];
     }>();
     for (const tec of tecnicoSummary) {
+      if (tecnicoChartSel && tec.tecnico !== tecnicoChartSel) continue;
       for (const [cliente, cd] of tec.byCliente) {
         const tasks = alertFilter
           ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
           : cd.tasks;
         if (tasks.length === 0) continue;
+
 
         let entry = map.get(cliente);
         if (!entry) {
