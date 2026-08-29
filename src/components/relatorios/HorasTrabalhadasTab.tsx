@@ -900,11 +900,6 @@ export default function HorasTrabalhadasTab({
     return "";
   };
 
-  const taskMatchesAlertFilter = (taskId: string): boolean => {
-    if (!alertFilter) return true;
-    const lst = tasksWithAlertas.get(taskId) || [];
-    return lst.includes(alertFilter);
-  };
 
   // Totais já incluem tarefas em revisão; o card amarelo é apenas destaque do subconjunto.
   // Rejeitado segue fora.
