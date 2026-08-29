@@ -150,6 +150,7 @@ export default function HorasTrabalhadasTab({
   };
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+  const [tecnicoChartSel, setTecnicoChartSel] = useState<string | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [rejectedModalOpen, setRejectedModalOpen] = useState(false);
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
