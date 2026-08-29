@@ -1044,10 +1044,25 @@ export default function HorasTrabalhadasTab({
     }
   };
 
-  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%)
+  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%).
+  // Respeita o filtro de alerta (OS curta/longa/excessiva...) igual à grid.
   const chartData = useMemo(() => {
-    const ordenado = [...tecnicoSummary]
-      .map((t) => ({ name: t.tecnico.split(" ")[0], horas: Math.round(t.horas * 100) / 100 }))
+    const ordenado = tecnicoSummary
+      .map((t) => {
+        let horas = t.horas;
+        if (alertFilter) {
+          horas = 0;
+          for (const [, cd] of t.byCliente) {
+            for (const task of cd.tasks) {
+              if (!taskMatchesAlertFilter(task.auvo_task_id)) continue;
+              if (task.statusRevisao === "faturavel" || task.statusRevisao === "em_revisao") {
+                horas += task.horas;
+              }
+            }
+          }
+        }
+        return { name: t.tecnico.split(" ")[0], full: t.tecnico, horas: Math.round(horas * 100) / 100 };
+      })
       .filter((t) => t.horas > 0)
       .sort((a, b) => b.horas - a.horas);
     const total = ordenado.reduce((s, t) => s + t.horas, 0);
@@ -1057,7 +1072,7 @@ export default function HorasTrabalhadasTab({
       const acumuladoPct = total > 0 ? Math.round((acumulado / total) * 1000) / 10 : 0;
       return { ...t, acumuladoPct, vital: acumuladoPct - (total > 0 ? (t.horas / total) * 100 : 0) < 80 };
     });
-  }, [tecnicoSummary]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
