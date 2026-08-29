@@ -1990,28 +1990,35 @@ export default function HorasTrabalhadasTab({
         </Alert>
       )}
 
-      {/* Chart */}
+      {/* Pareto de horas por técnico */}
       {chartData.length > 0 && (
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">Horas por Técnico</CardTitle>
+            <CardTitle className="text-sm font-medium">Pareto de Horas por Técnico</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 28, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="hours" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}h`} />
+                <YAxis yAxisId="percent" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}%`} />
                 <RechartsTooltip
-                  formatter={(value: number) => [`${value}h`, "Horas"]}
+                  formatter={(value: number, name: string) => [
+                    name === "acumuladoPct" ? `${value}%` : `${value}h`,
+                    name === "acumuladoPct" ? "Acumulado" : "Horas",
+                  ]}
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
-                <Bar dataKey="horas" radius={[4, 4, 0, 0]}>
-                  {chartData.map((_, idx) => (
-                    <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                <Legend formatter={(value) => value === "acumuladoPct" ? "Acumulado" : "Horas"} />
+                <ReferenceLine yAxisId="percent" y={80} stroke="hsl(var(--destructive))" strokeDasharray="4 4" label={{ value: "80%", position: "insideTopRight", fontSize: 10 }} />
+                <Bar yAxisId="hours" dataKey="horas" name="Horas" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, idx) => (
+                    <Cell key={entry.name + idx} fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"} />
                   ))}
                 </Bar>
-              </BarChart>
+                <Line yAxisId="percent" type="monotone" dataKey="acumuladoPct" name="acumuladoPct" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
+              </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
