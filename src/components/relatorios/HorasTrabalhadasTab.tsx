@@ -769,7 +769,8 @@ export default function HorasTrabalhadasTab({
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
 
-  // Summary by client (across all technicians)
+  // Summary by client. Alert filters affect this grid only; KPI cards keep the
+  // complete technician summary above.
   const clienteSummary = useMemo(() => {
     const map = new Map<string, {
       cliente: string;
@@ -780,6 +781,11 @@ export default function HorasTrabalhadasTab({
     }>();
     for (const tec of tecnicoSummary) {
       for (const [cliente, cd] of tec.byCliente) {
+        const tasks = alertFilter
+          ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
+          : cd.tasks;
+        if (tasks.length === 0) continue;
+
         let entry = map.get(cliente);
         if (!entry) {
           entry = {
@@ -790,18 +796,26 @@ export default function HorasTrabalhadasTab({
           };
           map.set(cliente, entry);
         }
-        entry.horas += cd.horas;
-        entry.deslocamento += cd.deslocamento;
-        entry.tarefas += cd.tarefas;
-        entry.valor += cd.valor;
-        entry.horasEmRevisao += cd.horasEmRevisao;
-        entry.valorEmRevisao += cd.valorEmRevisao;
-        entry.tarefasEmRevisao += cd.tarefasEmRevisao;
-        entry.horasRejeitado += cd.horasRejeitado;
-        entry.valorRejeitado += cd.valorRejeitado;
-        entry.tarefasRejeitado += cd.tarefasRejeitado;
         entry.tecnicos.add(tec.tecnico);
-        entry.tasks.push(...cd.tasks);
+        entry.tasks.push(...tasks);
+        for (const task of tasks) {
+          entry.deslocamento += task.deslocamento;
+          if (task.statusRevisao === "faturavel" || task.statusRevisao === "em_revisao") {
+            entry.horas += task.horas;
+            entry.tarefas++;
+            entry.valor += task.valor;
+          }
+          if (task.statusRevisao === "em_revisao") {
+            entry.horasEmRevisao += task.horasOriginais;
+            entry.valorEmRevisao += task.valorPotencial;
+            entry.tarefasEmRevisao++;
+          }
+          if (task.statusRevisao === "rejeitada") {
+            entry.horasRejeitado += task.horasOriginais;
+            entry.valorRejeitado += task.valorPotencial;
+            entry.tarefasRejeitado++;
+          }
+        }
       }
     }
     for (const e of map.values()) {
@@ -812,7 +826,7 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
