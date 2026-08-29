@@ -769,6 +769,12 @@ export default function HorasTrabalhadasTab({
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
 
+  const taskMatchesAlertFilter = (taskId: string): boolean => {
+    if (!alertFilter) return true;
+    const lst = tasksWithAlertas.get(taskId) || [];
+    return lst.includes(alertFilter);
+  };
+
   // Summary by client. Alert filters affect this grid only; KPI cards keep the
   // complete technician summary above.
   const clienteSummary = useMemo(() => {
