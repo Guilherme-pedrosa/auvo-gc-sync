@@ -2012,8 +2012,13 @@ export default function HorasTrabalhadasTab({
       {/* Pareto de horas por técnico */}
       {chartData.length > 0 && (
         <Card>
-          <CardHeader className="py-3 px-4">
+          <CardHeader className="py-3 px-4 flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium">Pareto de Horas por Técnico</CardTitle>
+            {tecnicoChartSel && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTecnicoChartSel(null)}>
+                Técnico: {tecnicoChartSel} · limpar
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <ResponsiveContainer width="100%" height={300}>
@@ -2031,11 +2036,27 @@ export default function HorasTrabalhadasTab({
                 />
                 <Legend formatter={(value) => value === "acumuladoPct" ? "Acumulado" : "Horas"} />
                 <ReferenceLine yAxisId="percent" y={80} stroke="hsl(var(--destructive))" strokeDasharray="4 4" label={{ value: "80%", position: "insideTopRight", fontSize: 10 }} />
-                <Bar yAxisId="hours" dataKey="horas" name="Horas" radius={[4, 4, 0, 0]}>
+                <Bar
+                  yAxisId="hours"
+                  dataKey="horas"
+                  name="Horas"
+                  radius={[4, 4, 0, 0]}
+                  className="cursor-pointer"
+                  onClick={(entry: any) => {
+                    const full = entry?.full || entry?.payload?.full;
+                    if (!full) return;
+                    setTecnicoChartSel((prev) => (prev === full ? null : full));
+                  }}
+                >
                   {chartData.map((entry, idx) => (
-                    <Cell key={entry.name + idx} fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"} />
+                    <Cell
+                      key={entry.name + idx}
+                      fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
+                      fillOpacity={tecnicoChartSel && tecnicoChartSel !== entry.full ? 0.3 : 1}
+                    />
                   ))}
                 </Bar>
+
                 <Line yAxisId="percent" type="monotone" dataKey="acumuladoPct" name="acumuladoPct" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
