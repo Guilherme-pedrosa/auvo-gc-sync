@@ -835,7 +835,7 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]);
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
