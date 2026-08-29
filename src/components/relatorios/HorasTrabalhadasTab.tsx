@@ -19,8 +19,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox, Siren } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  ResponsiveContainer, Cell,
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, Cell, ComposedChart, Line, Legend, ReferenceLine,
 } from "recharts";
 import { CalendarIcon, Search, Filter, Download, ChevronsUpDown, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
@@ -769,7 +769,8 @@ export default function HorasTrabalhadasTab({
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
 
-  // Summary by client (across all technicians)
+  // Summary by client. Alert filters affect this grid only; KPI cards keep the
+  // complete technician summary above.
   const clienteSummary = useMemo(() => {
     const map = new Map<string, {
       cliente: string;
@@ -780,6 +781,11 @@ export default function HorasTrabalhadasTab({
     }>();
     for (const tec of tecnicoSummary) {
       for (const [cliente, cd] of tec.byCliente) {
+        const tasks = alertFilter
+          ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
+          : cd.tasks;
+        if (tasks.length === 0) continue;
+
         let entry = map.get(cliente);
         if (!entry) {
           entry = {
@@ -790,18 +796,26 @@ export default function HorasTrabalhadasTab({
           };
           map.set(cliente, entry);
         }
-        entry.horas += cd.horas;
-        entry.deslocamento += cd.deslocamento;
-        entry.tarefas += cd.tarefas;
-        entry.valor += cd.valor;
-        entry.horasEmRevisao += cd.horasEmRevisao;
-        entry.valorEmRevisao += cd.valorEmRevisao;
-        entry.tarefasEmRevisao += cd.tarefasEmRevisao;
-        entry.horasRejeitado += cd.horasRejeitado;
-        entry.valorRejeitado += cd.valorRejeitado;
-        entry.tarefasRejeitado += cd.tarefasRejeitado;
         entry.tecnicos.add(tec.tecnico);
-        entry.tasks.push(...cd.tasks);
+        entry.tasks.push(...tasks);
+        for (const task of tasks) {
+          entry.deslocamento += task.deslocamento;
+          if (task.statusRevisao === "faturavel" || task.statusRevisao === "em_revisao") {
+            entry.horas += task.horas;
+            entry.tarefas++;
+            entry.valor += task.valor;
+          }
+          if (task.statusRevisao === "em_revisao") {
+            entry.horasEmRevisao += task.horasOriginais;
+            entry.valorEmRevisao += task.valorPotencial;
+            entry.tarefasEmRevisao++;
+          }
+          if (task.statusRevisao === "rejeitada") {
+            entry.horasRejeitado += task.horasOriginais;
+            entry.valorRejeitado += task.valorPotencial;
+            entry.tarefasRejeitado++;
+          }
+        }
       }
     }
     for (const e of map.values()) {
@@ -812,7 +826,7 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary]);
+  }, [tecnicoSummary, alertFilter, tasksWithAlertas]);
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
@@ -1026,13 +1040,20 @@ export default function HorasTrabalhadasTab({
     }
   };
 
-  // Chart data
-  const chartData = useMemo(() =>
-    tecnicoSummary.map((t) => ({
-      name: t.tecnico.split(" ")[0],
-      horas: Math.round(t.horas * 100) / 100,
-    })),
-  [tecnicoSummary]);
+  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%)
+  const chartData = useMemo(() => {
+    const ordenado = [...tecnicoSummary]
+      .map((t) => ({ name: t.tecnico.split(" ")[0], horas: Math.round(t.horas * 100) / 100 }))
+      .filter((t) => t.horas > 0)
+      .sort((a, b) => b.horas - a.horas);
+    const total = ordenado.reduce((s, t) => s + t.horas, 0);
+    let acumulado = 0;
+    return ordenado.map((t) => {
+      acumulado += t.horas;
+      const acumuladoPct = total > 0 ? Math.round((acumulado / total) * 1000) / 10 : 0;
+      return { ...t, acumuladoPct, vital: acumuladoPct - (total > 0 ? (t.horas / total) * 100 : 0) < 80 };
+    });
+  }, [tecnicoSummary]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -1969,28 +1990,35 @@ export default function HorasTrabalhadasTab({
         </Alert>
       )}
 
-      {/* Chart */}
+      {/* Pareto de horas por técnico */}
       {chartData.length > 0 && (
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">Horas por Técnico</CardTitle>
+            <CardTitle className="text-sm font-medium">Pareto de Horas por Técnico</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 28, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="hours" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}h`} />
+                <YAxis yAxisId="percent" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}%`} />
                 <RechartsTooltip
-                  formatter={(value: number) => [`${value}h`, "Horas"]}
+                  formatter={(value: number, name: string) => [
+                    name === "acumuladoPct" ? `${value}%` : `${value}h`,
+                    name === "acumuladoPct" ? "Acumulado" : "Horas",
+                  ]}
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
-                <Bar dataKey="horas" radius={[4, 4, 0, 0]}>
-                  {chartData.map((_, idx) => (
-                    <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                <Legend formatter={(value) => value === "acumuladoPct" ? "Acumulado" : "Horas"} />
+                <ReferenceLine yAxisId="percent" y={80} stroke="hsl(var(--destructive))" strokeDasharray="4 4" label={{ value: "80%", position: "insideTopRight", fontSize: 10 }} />
+                <Bar yAxisId="hours" dataKey="horas" name="Horas" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, idx) => (
+                    <Cell key={entry.name + idx} fill={entry.vital ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"} />
                   ))}
                 </Bar>
-              </BarChart>
+                <Line yAxisId="percent" type="monotone" dataKey="acumuladoPct" name="acumuladoPct" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
+              </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
