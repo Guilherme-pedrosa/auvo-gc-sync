@@ -19,8 +19,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox, Siren } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  ResponsiveContainer, Cell,
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, Cell, ComposedChart, Line, Legend, ReferenceLine,
 } from "recharts";
 import { CalendarIcon, Search, Filter, Download, ChevronsUpDown, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
@@ -1026,13 +1026,20 @@ export default function HorasTrabalhadasTab({
     }
   };
 
-  // Chart data
-  const chartData = useMemo(() =>
-    tecnicoSummary.map((t) => ({
-      name: t.tecnico.split(" ")[0],
-      horas: Math.round(t.horas * 100) / 100,
-    })),
-  [tecnicoSummary]);
+  // Chart data — Pareto: horas em ordem decrescente + curva acumulada (%)
+  const chartData = useMemo(() => {
+    const ordenado = [...tecnicoSummary]
+      .map((t) => ({ name: t.tecnico.split(" ")[0], horas: Math.round(t.horas * 100) / 100 }))
+      .filter((t) => t.horas > 0)
+      .sort((a, b) => b.horas - a.horas);
+    const total = ordenado.reduce((s, t) => s + t.horas, 0);
+    let acumulado = 0;
+    return ordenado.map((t) => {
+      acumulado += t.horas;
+      const acumuladoPct = total > 0 ? Math.round((acumulado / total) * 1000) / 10 : 0;
+      return { ...t, acumuladoPct, vital: acumuladoPct - (total > 0 ? (t.horas / total) * 100 : 0) < 80 };
+    });
+  }, [tecnicoSummary]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
