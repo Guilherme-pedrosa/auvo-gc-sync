@@ -5,6 +5,7 @@ import {
   forceGcApiUserInRequest,
   isGestaoClickApiUrl,
 } from "./gc-user-core.ts";
+import { GC_BROKER_URL, normalizeSource } from "./gc-broker-core.ts";
 
 // ID confirmado do usuário "API GC" no GestãoClick. Ele é deliberadamente
 // fixo para que um secret ou payload mal configurado não atribua ações ao Guilherme.
@@ -44,7 +45,55 @@ export function installGcUsuarioId() {
     try {
       const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
       const protectedRequest = await forceGcApiUserInRequest(input, init, GC_API_USER_ID);
-      return originalFetch(protectedRequest, requestSignal ? { signal: requestSignal } : undefined);
+
+      // Somente o broker pode atravessar esta fronteira diretamente. Todas as
+      // demais funções deste projeto entram no mesmo orçamento/cache global.
+      if (protectedRequest.headers.get("x-gc-broker-direct") === "1") {
+        const directHeaders = new Headers(protectedRequest.headers);
+        directHeaders.delete("x-gc-broker-direct");
+        const directRequest = new Request(protectedRequest, { headers: directHeaders });
+        return originalFetch(directRequest, requestSignal ? { signal: requestSignal } : undefined);
+      }
+
+      const target = new URL(protectedRequest.url);
+      let payload: unknown;
+      if (!["GET", "HEAD"].includes(protectedRequest.method.toUpperCase())) {
+        const rawBody = await protectedRequest.clone().text();
+        if (rawBody) {
+          try {
+            payload = JSON.parse(rawBody);
+          } catch {
+            payload = rawBody;
+          }
+        }
+      }
+
+      const brokerResponse = await originalFetch(GC_BROKER_URL, {
+        method: "POST",
+        signal: requestSignal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-gc-source": normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
+        },
+        body: JSON.stringify({
+          endpoint: `${target.pathname}${target.search}`,
+          method: protectedRequest.method,
+          payload,
+          source: normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
+        }),
+      });
+      if (!brokerResponse.ok) return brokerResponse;
+
+      const envelope = await brokerResponse.json().catch(() => ({})) as {
+        data?: unknown;
+        status?: number;
+        error?: string;
+      };
+      const status = Number(envelope.status ?? (envelope.error ? 500 : 200));
+      return new Response(JSON.stringify(envelope.data ?? { message: envelope.error || "Resposta vazia" }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (error) {
       // Fail closed: uma chamada ao GC nunca segue sem a identificação técnica.
       throw new Error("Chamada ao GestãoClick bloqueada: não foi possível garantir o usuário da API GC", {
