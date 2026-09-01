@@ -1375,6 +1375,108 @@ export type Database = {
         }
         Relationships: []
       }
+      gc_broker_cache: {
+        Row: {
+          cache_key: string
+          endpoint: string
+          expires_at: string | null
+          refresh_started_at: string | null
+          response_body: Json | null
+          response_status: number | null
+          stale_until: string | null
+          updated_at: string
+        }
+        Insert: {
+          cache_key: string
+          endpoint: string
+          expires_at?: string | null
+          refresh_started_at?: string | null
+          response_body?: Json | null
+          response_status?: number | null
+          stale_until?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cache_key?: string
+          endpoint?: string
+          expires_at?: string | null
+          refresh_started_at?: string | null
+          response_body?: Json | null
+          response_status?: number | null
+          stale_until?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      gc_broker_daily_usage: {
+        Row: {
+          blocked_until: string | null
+          last_error: string | null
+          last_provider_status: number | null
+          next_allowed_at: string
+          read_requests: number
+          total_requests: number
+          updated_at: string
+          usage_date: string
+          write_requests: number
+        }
+        Insert: {
+          blocked_until?: string | null
+          last_error?: string | null
+          last_provider_status?: number | null
+          next_allowed_at?: string
+          read_requests?: number
+          total_requests?: number
+          updated_at?: string
+          usage_date: string
+          write_requests?: number
+        }
+        Update: {
+          blocked_until?: string | null
+          last_error?: string | null
+          last_provider_status?: number | null
+          next_allowed_at?: string
+          read_requests?: number
+          total_requests?: number
+          updated_at?: string
+          usage_date?: string
+          write_requests?: number
+        }
+        Relationships: []
+      }
+      gc_broker_source_usage: {
+        Row: {
+          cache_hits: number
+          denied_requests: number
+          source: string
+          stale_hits: number
+          updated_at: string
+          upstream_reads: number
+          upstream_writes: number
+          usage_date: string
+        }
+        Insert: {
+          cache_hits?: number
+          denied_requests?: number
+          source: string
+          stale_hits?: number
+          updated_at?: string
+          upstream_reads?: number
+          upstream_writes?: number
+          usage_date: string
+        }
+        Update: {
+          cache_hits?: number
+          denied_requests?: number
+          source?: string
+          stale_hits?: number
+          updated_at?: string
+          upstream_reads?: number
+          upstream_writes?: number
+          usage_date?: string
+        }
+        Relationships: []
+      }
       grupo_cliente_membros: {
         Row: {
           cliente_nome: string
@@ -3566,6 +3668,35 @@ export type Database = {
       excluir_previsao_visita_contratual: {
         Args: { p_agendamento_id: string }
         Returns: number
+      }
+      gc_broker_acquire_slot: {
+        Args: {
+          _daily_cap?: number
+          _is_write: boolean
+          _min_interval_ms?: number
+          _source: string
+          _write_reserve?: number
+        }
+        Returns: {
+          allowed: boolean
+          read_requests: number
+          reason: string
+          total_requests: number
+          wait_ms: number
+          write_requests: number
+        }[]
+      }
+      gc_broker_claim_refresh: {
+        Args: { _cache_key: string; _endpoint: string; _lock_seconds?: number }
+        Returns: boolean
+      }
+      gc_broker_mark_rate_limited: {
+        Args: { _daily: boolean; _error: string; _status: number }
+        Returns: undefined
+      }
+      gc_broker_record_cache_metric: {
+        Args: { _source: string; _stale?: boolean }
+        Returns: undefined
       }
       has_role: {
         Args: {
