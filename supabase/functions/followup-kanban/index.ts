@@ -116,10 +116,13 @@ Deno.serve(async (req) => {
       }
 
       const all: any[] = [];
+      let listagemCompleta = true;
       for (const sid of SITUACOES) {
-        const recs = await fetchSituacao(sid, gcHeaders);
-        all.push(...recs);
+        const { records, complete } = await fetchSituacao(sid, gcHeaders);
+        all.push(...records);
+        if (!complete) listagemCompleta = false;
       }
+
 
       // Atualiza títulos das colunas fixas com o nome real da situação vindo do GC
       const nomePorSituacao = new Map<string, string>();
