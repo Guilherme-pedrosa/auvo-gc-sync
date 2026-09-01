@@ -205,16 +205,26 @@ Deno.serve(async (req) => {
 
       // Reconciliação: cards em cache que não vieram em nenhuma situação monitorada
       // (mudaram de situação ou foram excluídos no GC) precisam ser reavaliados 1 a 1.
+      // Reconciliação: cards em cache que não vieram em nenhuma situação monitorada
+      // (mudaram de situação ou foram excluídos no GC) precisam ser reavaliados 1 a 1.
+      // Só é segura quando TODAS as listagens vieram completas — com falha da API do
+      // GC a lista é parcial e remover os "ausentes" apagaria dados legítimos.
       const vistosIds = new Set(all.map((o) => String(o.id)));
-      const orfaos = (cacheAtual || [])
-        .map((r) => String(r.gc_orcamento_id))
-        .filter((id) => !vistosIds.has(id));
+      const orfaos = listagemCompleta
+        ? (cacheAtual || [])
+          .map((r) => String(r.gc_orcamento_id))
+          .filter((id) => !vistosIds.has(id))
+        : [];
+      if (!listagemCompleta) {
+        console.warn("[followup-kanban] listagem parcial do GC: reconciliação/remoções ignoradas");
+      }
 
       let atualizadosOrfaos = 0, removidos = 0;
       const MAX_ORFAOS = 300;
       for (const id of orfaos.slice(0, MAX_ORFAOS)) {
         try {
           const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${id}`, { headers: gcHeaders });
+
           if (r.status === 404 || r.status === 410) {
             await sb.from("followup_kanban_cache").delete().eq("gc_orcamento_id", id);
             removidos++;
