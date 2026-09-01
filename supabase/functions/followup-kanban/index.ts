@@ -29,6 +29,7 @@ function getSb() {
 
 async function fetchSituacao(situacaoId: string, gcHeaders: Record<string, string>) {
   const records: any[] = [];
+  let complete = true;
   const MAX_PAGES = 50;
   for (let pagina = 1; pagina <= MAX_PAGES; pagina++) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${pagina}&situacao_id=${situacaoId}`;
@@ -43,6 +44,9 @@ async function fetchSituacao(situacaoId: string, gcHeaders: Record<string, strin
     }
     if (!res || !res.ok) {
       console.error(`[followup-kanban] situacao ${situacaoId} pagina ${pagina} status ${res?.status}`);
+      // Falha da API do GC ⇒ listagem parcial. Sinaliza para que a
+      // reconciliação (que remove cards ausentes) seja abortada.
+      complete = false;
       break;
     }
     const json = await res.json().catch(() => ({}));
@@ -51,8 +55,9 @@ async function fetchSituacao(situacaoId: string, gcHeaders: Record<string, strin
     const totalPaginas = json?.meta?.total_paginas || 1;
     if (pagina >= totalPaginas) break;
   }
-  return records;
+  return { records, complete };
 }
+
 
 function mapOrc(orc: any) {
   return {
