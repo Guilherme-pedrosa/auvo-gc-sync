@@ -965,6 +965,70 @@ async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string
   return hydrated;
 }
 
+// Busca dirigida (barata) dos orçamentos citados pelo atributo 81831 das OS abertas.
+// Usado no sync em background para religar o orçamento à tarefa Auvo mesmo quando
+// o orçamento foi criado depois da data da tarefa (fora da janela do sync).
+async function fetchGcOrcamentosByOsCodigos(
+  gcHeaders: Record<string, string>,
+  gcOsResult: { byCodigo?: Record<string, any> } | null,
+  sbClient?: any,
+  limite = 80,
+): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
+  const acc = { byTaskId: {} as Record<string, any>, byCodigo: {} as Record<string, any> };
+  let codigos = [...new Set(
+    Object.values(gcOsResult?.byCodigo || {})
+      .map((os: any) => String(os?.gc_os_orcamento_codigo || "").trim())
+      .filter((c) => /^\d{1,7}$/.test(c)),
+  )];
+  // Só consulta o GC dos orçamentos que ainda NÃO estão amarrados a uma tarefa real
+  // (economiza cota da API — o broker limita o volume diário de chamadas).
+  if (sbClient && codigos.length > 0) {
+    const jaVinculados = new Set<string>();
+    for (let i = 0; i < codigos.length; i += 200) {
+      const { data } = await sbClient
+        .from("tarefas_central")
+        .select("gc_orcamento_codigo")
+        .in("gc_orcamento_codigo", codigos.slice(i, i + 200))
+        .not("auvo_task_id", "like", "gc-only::%");
+      for (const row of data || []) {
+        if (row?.gc_orcamento_codigo) jaVinculados.add(String(row.gc_orcamento_codigo));
+      }
+    }
+    codigos = codigos.filter((c) => !jaVinculados.has(c));
+  }
+  codigos = codigos.slice(0, limite);
+  if (codigos.length === 0) return acc;
+  // Sequencial: o broker do GC rejeita rajadas paralelas (fail-closed no wrapper).
+  let hidratados = 0;
+  for (const codigo of codigos) {
+    try {
+      const response = await rateLimitedFetch(
+        `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`,
+        { headers: gcHeaders },
+        "gc",
+      );
+      if (!response.ok) continue;
+      const data = await response.json().catch(() => ({}));
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      const orc = records.find((row) => String(row?.codigo || "").trim() === codigo);
+      if (!orc?.id) continue;
+      const hasProdutos = Array.isArray(orc?.produtos) && orc.produtos.length > 0;
+      const hasServicos = Array.isArray(orc?.servicos) && orc.servicos.length > 0;
+      const tipo = orc?.tipo === "servico" || (!hasProdutos && hasServicos) ? "servico" : "produto";
+      const payload = { ...buildGcOrcPayload(orc), gc_orc_tipo: tipo };
+      acc.byCodigo[codigo] = payload;
+      for (const taskId of collectGcAttrTaskIds(orc.atributos || [], GC_ATRIBUTO_TAREFA_ORC)) {
+        acc.byTaskId[taskId] = payload;
+      }
+      hidratados++;
+    } catch (err) {
+      console.error(`[central-sync] busca dirigida do orçamento ${codigo} falhou:`, (err as Error).message);
+    }
+  }
+  console.log(`[central-sync] busca dirigida de orçamentos via OS/81831: ${hidratados}/${codigos.length}`);
+  return acc;
+}
+
 // Hidrata OS GC pelo código (quando referenciada na orientação Auvo mas fora da janela de listagem)
 async function hydrateMissingOsByCodigo(
   gcHeaders: Record<string, string>,
@@ -1273,6 +1337,149 @@ async function upsertGcOsShellRows(
   }
 
   return upserted;
+}
+
+// CAUSA RAIZ: a OS (73343) e o orçamento (73341) só eram amarrados à tarefa Auvo
+// quando essa tarefa vinha na janela de datas do sync. Documentos criados no GC
+// DEPOIS da data da tarefa (ex.: OS 10168 em 01/09 para a tarefa de 03/08) nunca
+// mais eram religados — a tarefa ficava sem OS/orçamento no Controle de OS e o
+// documento aparecia apenas como linha "gc-only" órfã (ou nem isso).
+// Este passo religa, a cada sync, todo documento GC cuja tarefa já existe no espelho.
+async function backlinkGcDocsToExistingTasks(
+  sbClient: any,
+  gcOsResult?: { byCodigo?: Record<string, any> } | null,
+  gcOrcResult?: { byTaskId?: Record<string, any> } | null,
+) {
+  const summary = { os_linked: 0, orc_linked: 0, shells_removed: 0 };
+
+  const osByTask = new Map<string, any>();
+  for (const os of Object.values(gcOsResult?.byCodigo || {})) {
+    if (!(os as any)?.gc_os_id) continue;
+    const ids = normalizeTaskIdList((os as any).gc_os_tarefa_os).split("/").filter(Boolean);
+    for (const taskId of ids) if (!osByTask.has(taskId)) osByTask.set(taskId, os);
+  }
+
+  const orcByTask = new Map<string, any>();
+  for (const [taskId, orc] of Object.entries(gcOrcResult?.byTaskId || {})) {
+    if (!(orc as any)?.gc_orcamento_id) continue;
+    const clean = String(taskId || "").trim();
+    if (clean) orcByTask.set(clean, orc);
+  }
+
+  const taskIds = [...new Set([...osByTask.keys(), ...orcByTask.keys()])];
+  if (taskIds.length === 0) return summary;
+
+  const rows: any[] = [];
+  for (let i = 0; i < taskIds.length; i += 200) {
+    const { data, error } = await sbClient
+      .from("tarefas_central")
+      .select("mirror_key, auvo_task_id, gc_os_id, gc_orcamento_id")
+      .in("auvo_task_id", taskIds.slice(i, i + 200));
+    if (error) {
+      console.error("[central-sync] backlink select:", error.message);
+      continue;
+    }
+    rows.push(...(data || []));
+  }
+
+  const MAX_UPDATES = 500;
+  let updates = 0;
+  const linkedOsIds = new Set<string>();
+  const linkedOrcIds = new Set<string>();
+
+  for (const row of rows) {
+    if (updates >= MAX_UPDATES) break;
+    const taskId = String(row.auvo_task_id || "").trim();
+    if (!taskId || taskId.startsWith("gc-only::")) continue;
+
+    const patch: Record<string, unknown> = {};
+    const os = !row.gc_os_id ? osByTask.get(taskId) : null;
+    if (os) {
+      Object.assign(patch, {
+        gc_os_id: os.gc_os_id,
+        gc_os_codigo: os.gc_os_codigo,
+        gc_os_cliente: os.gc_os_cliente,
+        gc_os_situacao: os.gc_os_situacao,
+        gc_os_situacao_id: os.gc_os_situacao_id,
+        gc_os_cor_situacao: os.gc_os_cor_situacao,
+        gc_os_valor_total: os.gc_os_valor_total,
+        gc_os_vendedor: os.gc_os_vendedor,
+        gc_os_data: os.gc_os_data,
+        gc_os_data_saida: os.gc_os_data_saida,
+        gc_os_link: os.gc_os_link,
+        gc_os_link_cobranca: os.gc_os_link_cobranca || null,
+        gc_os_tarefa_exec: os.gc_os_tarefa_exec || null,
+        gc_os_tarefa_os: os.gc_os_tarefa_os || null,
+        os_realizada: true,
+      });
+    }
+
+    const orc = !row.gc_orcamento_id ? orcByTask.get(taskId) : null;
+    if (orc) {
+      Object.assign(patch, {
+        gc_orcamento_id: orc.gc_orcamento_id,
+        gc_orcamento_codigo: orc.gc_orcamento_codigo,
+        gc_orc_cliente: orc.gc_orc_cliente,
+        gc_orc_situacao: orc.gc_orc_situacao,
+        gc_orc_situacao_id: orc.gc_orc_situacao_id,
+        gc_orc_cor_situacao: orc.gc_orc_cor_situacao,
+        gc_orc_valor_total: orc.gc_orc_valor_total,
+        gc_orc_valor_produtos: orc.gc_orc_valor_produtos,
+        gc_orc_valor_servicos: orc.gc_orc_valor_servicos,
+        gc_orc_tipo: orc.gc_orc_tipo,
+        gc_orc_vendedor: orc.gc_orc_vendedor,
+        gc_orc_data: orc.gc_orc_data,
+        gc_orc_link: orc.gc_orc_link,
+        orcamento_realizado: true,
+      });
+    }
+
+    if (Object.keys(patch).length === 0) continue;
+
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .update({ ...patch, atualizado_em: new Date().toISOString() })
+      .eq("mirror_key", row.mirror_key);
+    if (error) {
+      console.error(`[central-sync] backlink update ${row.mirror_key}:`, error.message);
+      continue;
+    }
+    updates++;
+    if (os) {
+      summary.os_linked++;
+      linkedOsIds.add(String(os.gc_os_id));
+    }
+    if (orc) {
+      summary.orc_linked++;
+      linkedOrcIds.add(String(orc.gc_orcamento_id));
+    }
+  }
+
+  // Remove as linhas "gc-only" dos documentos que acabaram de ser religados
+  // (evita a mesma OS/orçamento aparecer duplicado no Controle de OS).
+  for (const osId of linkedOsIds) {
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .delete()
+      .eq("mirror_key", `gc-only::${osId}::os:${osId}::orc:`);
+    if (!error) summary.shells_removed++;
+  }
+  for (const orcId of linkedOrcIds) {
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .delete()
+      .eq("mirror_key", `gc-only::orc::${orcId}`)
+      .is("gc_os_id", null);
+    if (!error) summary.shells_removed++;
+  }
+
+  if (summary.os_linked || summary.orc_linked) {
+    console.log(
+      `[central-sync] backlink GC→tarefa: ${summary.os_linked} OS e ${summary.orc_linked} orçamentos religados, ` +
+      `${summary.shells_removed} linhas gc-only removidas`,
+    );
+  }
+  return summary;
 }
 
 type ForecastPromotionSummary = {
@@ -2170,6 +2377,8 @@ async function runReportsOnlySync(
       gcOsOpen = await fetchGcOs(gcHeaders, { situacaoIds: [...OPEN_OS_SITUACAO_IDS] });
       gcOsOpenCount = Object.keys(gcOsOpen.byCodigo || {}).length;
       gcShellUpserted = await upsertGcOsShellRows(sbClient, gcOsOpen);
+      const gcOrcDirigido = await fetchGcOrcamentosByOsCodigos(gcHeaders, gcOsOpen, sbClient);
+      await backlinkGcDocsToExistingTasks(sbClient, gcOsOpen, gcOrcDirigido);
       console.log(`[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`);
     } catch (e) {
       console.error(`[central-sync] Reports-only GC shell fetch falhou: ${(e as Error).message}`);
@@ -2635,6 +2844,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         console.log(`[central-sync] GC orphan backfill: ${gcFirstUpserted} OS sem 73343 gravadas/atualizadas`);
       }
     }
+    // Religa OS/orçamentos GC às tarefas Auvo já espelhadas, mesmo que a tarefa
+    // esteja fora da janela de datas deste sync (documento criado depois da tarefa).
+    try {
+      await backlinkGcDocsToExistingTasks(sbClient, gcOsResult, gcOrcResult);
+    } catch (err) {
+      console.error("[central-sync] backlink GC→tarefa falhou:", (err as Error).message);
+    }
+
     if (isGcSolicitadasOnly) {
       if (body?.fast === true) {
         const requestedSituationIds = new Set(situacaoIds);
