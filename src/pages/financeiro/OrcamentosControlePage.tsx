@@ -914,7 +914,7 @@ export default function OrcamentosControlePage() {
                     )}
                   </div>
                 </div>
-                <div><Label className="text-[11px] text-muted-foreground">Técnico OS</Label><p>{selectedCard.gc_os_tarefa_os || "—"}</p></div>
+                <div><Label className="text-[11px] text-muted-foreground">Tarefa OS</Label><p>{selectedCard.gc_os_tarefa_os || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Técnico Auvo</Label><p>{selectedCard.tecnico || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Data Tarefa</Label><p>{selectedCard.data_tarefa || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Status Auvo</Label><p>{selectedCard.status_auvo || "—"}</p></div>
