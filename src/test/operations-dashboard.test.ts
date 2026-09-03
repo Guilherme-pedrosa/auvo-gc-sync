@@ -54,9 +54,13 @@ describe("operations dashboard aggregation", () => {
         { id: "validated", titulo: "Validado - Seguir processo" },
       ],
       preventiveRows: [
-        { status_preventiva: "vencido", proxima_preventiva: "2026-08-20", atualizado_em: "2026-08-06T13:00:00Z" },
-        { status_preventiva: "em_dia", proxima_preventiva: "2026-10-20", atualizado_em: "2026-08-06T13:00:00Z" },
+        // Atraso é por data + plano ativo (>30 dias e antes do mês vigente), não pelo status_preventiva.
+        { identificador: "700100", status_preventiva: "vencido", proxima_preventiva: "2026-06-15", atualizado_em: "2026-08-06T13:00:00Z" },
+        { identificador: "700200", status_preventiva: "vencido", proxima_preventiva: "2026-06-01", atualizado_em: "2026-08-06T13:00:00Z" },
+        { identificador: "700300", status_preventiva: "agendado", proxima_preventiva: "2026-08-20", atualizado_em: "2026-08-06T13:00:00Z" },
+        { identificador: "700400", status_preventiva: "em_dia", proxima_preventiva: "2026-10-20", atualizado_em: "2026-08-06T13:00:00Z" },
       ],
+      plannedPreventiveIds: ["700100", "700300", "700400"],
       analysisRows: [
         { status_analise: "nova", prioridade: "critica", atualizado_em: "2026-08-06T13:00:00Z" },
         { status_analise: "resolvida", prioridade: "alta", atualizado_em: "2026-08-06T13:00:00Z" },
