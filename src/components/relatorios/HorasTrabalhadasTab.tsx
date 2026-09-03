@@ -778,7 +778,7 @@ export default function HorasTrabalhadasTab({
 
   // Summary by client. Alert filters and chart selection affect the grid only;
   // KPI cards, exports and review lists use the complete (unfiltered) summary.
-  const buildClienteSummary = (chartSel: string | null, alerta: string | null) => {
+  const buildClienteSummary = (chartSel: string | null, alerta: AlertaTipo) => {
     const map = new Map<string, {
       cliente: string;
       horas: number; deslocamento: number; tarefas: number; valor: number;
