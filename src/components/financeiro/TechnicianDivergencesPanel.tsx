@@ -35,6 +35,7 @@ const issueStyle: Record<DivergenceKind, { badge: string; border: string; icon: 
   form: { badge: "border-amber-200 bg-amber-50 text-amber-800", border: "border-l-amber-400", icon: ClipboardX },
   report: { badge: "border-violet-200 bg-violet-50 text-violet-700", border: "border-l-violet-400", icon: MessageSquareWarning },
   photos: { badge: "border-blue-200 bg-blue-50 text-blue-700", border: "border-l-blue-400", icon: Camera },
+  checkin: { badge: "border-emerald-200 bg-emerald-50 text-emerald-700", border: "border-l-emerald-400", icon: ExternalLink },
 };
 
 function SummaryBox({ label, value, icon: Icon, className }: { label: string; value: number; icon: typeof AlertTriangle; className: string }) {

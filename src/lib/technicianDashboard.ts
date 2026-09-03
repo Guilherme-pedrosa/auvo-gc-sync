@@ -1,5 +1,12 @@
 import { DAILY_WORK_HOURS, countBusinessDays, isBusinessDay } from "./businessDays";
-import { auditTechnicianTask, type TechnicianScheduleIssue } from "./technicianDivergences";
+import {
+  auditTechnicianTask,
+  buildTechnicianDivergenceRecords,
+  type TechnicianCheckinIssue,
+  type TechnicianDivergenceRecord,
+  type TechnicianScheduleIssue,
+  type TechnicianTaskAudit,
+} from "./technicianDivergences";
 
 type Interval = { start: number; end: number };
 
@@ -92,6 +99,7 @@ export type TechnicianData = TechnicianQualityInput & {
   id: string;
   nome: string;
   tarefas_abertas: number;
+  tarefas_em_execucao: number;
   tarefas_com_os: number;
   qualidade_pct: number;
   tempo_horas: number;
@@ -109,6 +117,16 @@ export type TechnicianData = TechnicianQualityInput & {
   finalizadas_por_dia: Record<string, number>;
 };
 
+/** Tarefa do período que não entra no painel (sem técnico ou executor fora do cadastro de técnicos do RH). */
+export type OutsideDashboardTask = {
+  auvo_task_id: string;
+  tecnico: string;
+  cliente: string;
+  data: string;
+  motivo: string;
+  auvoUrl: string;
+};
+
 export type TechnicianDashboardData = {
   resumo: {
     periodo: { inicio: string; fim: string };
@@ -124,15 +142,19 @@ export type TechnicianDashboardData = {
     total_pendencias: number;
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
+    total_em_execucao: number;
     total_nao_atendidas: number;
     total_formularios_incompletos: number;
     total_sem_relato: number;
     total_poucas_fotos: number;
+    tarefas_fora_painel: number;
     valor_total: number;
     total_horas_contrato: number;
     total_valor_contratos: number;
   };
   tecnicos: TechnicianData[];
+  divergencias: TechnicianDivergenceRecord[];
+  fora_painel: OutsideDashboardTask[];
 };
 
 const normalizeName = (value: string) =>
@@ -250,6 +272,12 @@ const hasPendingIssue = (task: TechnicianTaskRow) => {
   return Boolean(pending && pending !== "nenhuma" && pending !== "0");
 };
 
+const localDayKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const auvoTaskUrl = (task: TechnicianTaskRow) =>
+  String(task.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.auvo_task_id}`);
+
 export function buildTechnicianDashboardData(
   rows: TechnicianTaskRow[],
   startDate: string,
@@ -257,6 +285,7 @@ export function buildTechnicianDashboardData(
   allowed?: TechnicianAllowlist | null,
   contractRates?: ContractRates | null,
   scheduleIssues: TechnicianScheduleIssue[] = [],
+  now: Date = new Date(),
 ): TechnicianDashboardData {
   const snapshots = new Map<string, TechnicianTaskRow>();
   for (const row of rows) {
@@ -277,6 +306,7 @@ export function buildTechnicianDashboardData(
     pending: number;
     missingQuestionnaire: number;
     openCheckins: number;
+    runningCheckins: number;
     scheduleIssues: number;
     formIssues: number;
     reportIssues: number;
@@ -298,12 +328,32 @@ export function buildTechnicianDashboardData(
   const documents = new Map<string, { value: number; technicianIds: Set<string> }>();
   const businessDays = countBusinessDays(startDate, endDate);
   const availableHours = businessDays * DAILY_WORK_HOURS;
+  const todayKey = localDayKey(now);
+  const outside: OutsideDashboardTask[] = [];
+  const taskAudits: TechnicianTaskAudit[] = [];
+  const checkinIssues: TechnicianCheckinIssue[] = [];
+  let acceptedTasks = 0;
+  let acceptedFinished = 0;
 
   for (const task of tasks) {
     const technicianId = String(task.tecnico_id || task.tecnico || "").trim();
     const name = String(task.tecnico || "").trim();
-    if (!technicianId || !name) continue;
-    if (allowed && !isAllowedTechnician(technicianId, name, allowed)) continue;
+    const outsideReason = !technicianId || !name
+      ? "Tarefa sem técnico atribuído no Auvo"
+      : allowed && !isAllowedTechnician(technicianId, name, allowed)
+        ? "Executor fora do cadastro de técnicos do RH (cargo/função de técnico ou auxiliar)"
+        : null;
+    if (outsideReason) {
+      outside.push({
+        auvo_task_id: String(task.auvo_task_id || task.mirror_key || "").trim(),
+        tecnico: name || "Sem técnico",
+        cliente: String(task.cliente || "Sem cliente").trim() || "Sem cliente",
+        data: String(task.data_conclusao || task.data_tarefa || "").slice(0, 10),
+        motivo: outsideReason,
+        auvoUrl: auvoTaskUrl(task),
+      });
+      continue;
+    }
     const accumulator = technicians.get(technicianId) || {
       id: technicianId,
       nome: name,
@@ -312,6 +362,7 @@ export function buildTechnicianDashboardData(
       pending: 0,
       missingQuestionnaire: 0,
       openCheckins: 0,
+      runningCheckins: 0,
       scheduleIssues: 0,
       formIssues: 0,
       reportIssues: 0,
@@ -333,18 +384,41 @@ export function buildTechnicianDashboardData(
     const finished = isFinished(task);
     const pending = hasPendingIssue(task);
     const missingQuestionnaire = finished && task.questionario_preenchido !== true;
-    const openCheckin = Boolean(task.check_in_iso && !task.check_out_iso);
+    const hasOpenCheckin = Boolean(task.check_in_iso && !task.check_out_iso);
+    // Check-in aberto de hoje = técnico em execução agora (normal); de dias anteriores = tarefa esquecida aberta (alerta).
+    const checkinTime = hasOpenCheckin ? Date.parse(String(task.check_in_iso)) : NaN;
+    const runningCheckin = hasOpenCheckin && Number.isFinite(checkinTime) && localDayKey(new Date(checkinTime)) === todayKey;
+    const openCheckin = hasOpenCheckin && !runningCheckin;
     const executionAudit = auditTechnicianTask(task);
+    if (executionAudit) taskAudits.push(executionAudit);
     const formIssue = executionAudit?.formIssue === true;
     const reportIssue = executionAudit?.reportIssue === true;
     const photoIssue = executionAudit?.photoIssue === true;
     const taskDate = String(task.data_conclusao || task.data_tarefa || startDate).slice(0, 10);
 
     accumulator.total++;
-    if (finished) accumulator.finished++;
+    acceptedTasks++;
+    if (finished) {
+      accumulator.finished++;
+      acceptedFinished++;
+    }
     if (pending) accumulator.pending++;
     if (missingQuestionnaire) accumulator.missingQuestionnaire++;
-    if (openCheckin) accumulator.openCheckins++;
+    if (runningCheckin) accumulator.runningCheckins++;
+    if (openCheckin) {
+      accumulator.openCheckins++;
+      checkinIssues.push({
+        taskId: String(task.auvo_task_id || task.mirror_key || "").trim(),
+        technicianId,
+        technicianName: name,
+        client: String(task.cliente || "Sem cliente").trim() || "Sem cliente",
+        date: taskDate,
+        description: String(task.descricao || "").trim(),
+        gcOsCode: String(task.gc_os_codigo || "").trim(),
+        auvoUrl: auvoTaskUrl(task),
+        checkInIso: String(task.check_in_iso || ""),
+      });
+    }
     if (formIssue) accumulator.formIssues++;
     if (reportIssue) accumulator.reportIssues++;
     if (photoIssue) accumulator.photoIssues++;
@@ -386,6 +460,7 @@ export function buildTechnicianDashboardData(
   }
 
   const seenScheduleIssues = new Set<string>();
+  const acceptedScheduleIssues: TechnicianScheduleIssue[] = [];
   for (const issue of scheduleIssues) {
     const issueKey = `${issue.tecnico_id || issue.tecnico_nome || ""}::${issue.auvo_task_id}`;
     if (seenScheduleIssues.has(issueKey)) continue;
@@ -397,6 +472,7 @@ export function buildTechnicianDashboardData(
     if (!technician) continue;
     technician.scheduleIssues++;
     technician.qualityFailureTaskIds.add(String(issue.auvo_task_id || issueKey));
+    acceptedScheduleIssues.push(issue);
   }
 
   for (const document of documents.values()) {
@@ -421,6 +497,7 @@ export function buildTechnicianDashboardData(
       tarefas_com_pendencia: tech.pending,
       tarefas_sem_questionario: tech.missingQuestionnaire,
       checkins_sem_checkout: tech.openCheckins,
+      tarefas_em_execucao: tech.runningCheckins,
       tarefas_nao_atendidas: tech.scheduleIssues,
       tarefas_com_formulario_incompleto: tech.formIssues,
       tarefas_sem_relato: tech.reportIssues,
@@ -449,8 +526,9 @@ export function buildTechnicianDashboardData(
   return {
     resumo: {
       periodo: { inicio: startDate, fim: endDate },
-      total_tarefas: tasks.length,
-      total_finalizadas: tasks.filter(isFinished).length,
+      // Mesma base da tabela: somente tarefas de técnicos do painel, para os cards baterem com a soma por técnico.
+      total_tarefas: acceptedTasks,
+      total_finalizadas: acceptedFinished,
       total_tecnicos: data.length,
       total_horas: Math.round(data.reduce((total, tech) => total + tech.tempo_horas, 0) * 10) / 10,
       total_deslocamento_horas: Math.round(data.reduce((total, tech) => total + tech.deslocamento_horas, 0) * 10) / 10,
@@ -463,14 +541,18 @@ export function buildTechnicianDashboardData(
       total_pendencias: data.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),
       total_checkins_sem_checkout: data.reduce((total, tech) => total + (tech.checkins_sem_checkout || 0), 0),
+      total_em_execucao: data.reduce((total, tech) => total + (tech.tarefas_em_execucao || 0), 0),
       total_nao_atendidas: data.reduce((total, tech) => total + (tech.tarefas_nao_atendidas || 0), 0),
       total_formularios_incompletos: data.reduce((total, tech) => total + (tech.tarefas_com_formulario_incompleto || 0), 0),
       total_sem_relato: data.reduce((total, tech) => total + (tech.tarefas_sem_relato || 0), 0),
       total_poucas_fotos: data.reduce((total, tech) => total + (tech.tarefas_com_poucas_fotos || 0), 0),
+      tarefas_fora_painel: outside.length,
       valor_total: Math.round(data.reduce((total, tech) => total + tech.valor_total, 0) * 100) / 100,
       total_horas_contrato: Math.round(data.reduce((total, tech) => total + tech.horas_contrato, 0) * 10) / 10,
       total_valor_contratos: Math.round(data.reduce((total, tech) => total + tech.valor_contratos, 0) * 100) / 100,
     },
     tecnicos: data,
+    divergencias: buildTechnicianDivergenceRecords(acceptedScheduleIssues, taskAudits, checkinIssues),
+    fora_painel: outside.sort((a, b) => b.data.localeCompare(a.data) || a.tecnico.localeCompare(b.tecnico)),
   };
 }

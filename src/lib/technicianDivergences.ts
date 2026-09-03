@@ -55,7 +55,7 @@ export type TechnicianScheduleIssue = {
   motivo?: string | null;
 };
 
-export type DivergenceKind = "schedule" | "form" | "report" | "photos";
+export type DivergenceKind = "schedule" | "form" | "report" | "photos" | "checkin";
 
 export type DivergenceIssue = {
   kind: DivergenceKind;
@@ -251,9 +251,22 @@ export function auditTechnicianTasks(rows: TechnicianTaskAuditInput[]) {
   return [...latest.values()].map(auditTechnicianTask).filter((audit): audit is TechnicianTaskAudit => Boolean(audit));
 }
 
+export type TechnicianCheckinIssue = {
+  taskId: string;
+  technicianId: string;
+  technicianName: string;
+  client: string;
+  date: string;
+  description: string;
+  gcOsCode: string;
+  auvoUrl: string;
+  checkInIso: string;
+};
+
 export function buildTechnicianDivergenceRecords(
   scheduleIssues: TechnicianScheduleIssue[],
   taskAudits: TechnicianTaskAudit[],
+  checkinIssues: TechnicianCheckinIssue[] = [],
 ) {
   const records = new Map<string, TechnicianDivergenceRecord>();
 
@@ -305,6 +318,30 @@ export function buildTechnicianDivergenceRecords(
     if (audit.formIssue) record.issues.push({ kind: "form", label: "Formulário", detail: audit.formReasons.join("; ") });
     if (audit.reportIssue) record.issues.push({ kind: "report", label: "Sem relato útil", detail: audit.reportReason });
     if (audit.photoIssue) record.issues.push({ kind: "photos", label: "Fotos insuficientes", detail: audit.photoReason });
+  }
+
+  for (const checkin of checkinIssues) {
+    const record = ensure({
+      key: `${checkin.technicianId || checkin.technicianName}::${checkin.taskId}`,
+      taskId: checkin.taskId,
+      technicianId: checkin.technicianId,
+      technicianName: checkin.technicianName,
+      client: checkin.client,
+      date: checkin.date,
+      description: checkin.description,
+      gcOsCode: checkin.gcOsCode,
+      auvoUrl: checkin.auvoUrl,
+      photoCount: null,
+    });
+    const started = Date.parse(checkin.checkInIso);
+    const startedLabel = Number.isFinite(started)
+      ? new Date(started).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : checkin.checkInIso;
+    record.issues.push({
+      kind: "checkin",
+      label: "Check-in aberto",
+      detail: `Check-in em ${startedLabel} sem check-out registrado — a tarefa ficou aberta no Auvo`,
+    });
   }
 
   return [...records.values()].sort((a, b) => b.date.localeCompare(a.date) || a.technicianName.localeCompare(b.technicianName));
