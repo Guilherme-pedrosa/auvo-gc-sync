@@ -839,7 +839,20 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]);
+  };
+
+  const clienteSummary = useMemo(
+    () => buildClienteSummary(tecnicoChartSel, alertFilter),
+    [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]
+  );
+
+  // Base completa: exports e listas de revisão nunca podem perder dados por
+  // causa de um filtro visual aplicado na grid.
+  const clienteSummaryFull = useMemo(
+    () => buildClienteSummary(null, null),
+    [tecnicoSummary, tasksWithAlertas]
+  );
+
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
