@@ -1391,6 +1391,8 @@ Deno.serve(async (req) => {
         month, startDate, endDate,
         os_total: osIds.length,
         os_detalhadas: osDetails.size,
+        os_falhas_gc: osFalhas.length,
+
         tecnicos,
         totais,
       }),
