@@ -113,22 +113,26 @@ function calcItemTotal(item: any): number {
 }
 
 async function fetchOsDetail(osId: string, gcHeaders: Record<string, string>): Promise<any | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // GC aplica rate limit agressivo: retry com backoff exponencial e jitter,
+  // tratando 429/5xx como transitórios (antes qualquer !ok virava null e a OS
+  // sumia da premiação).
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       const resp = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders });
-      if (resp.status === 429) {
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      if (resp.status === 429 || resp.status >= 500) {
+        await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt) + Math.random() * 300));
         continue;
       }
       if (!resp.ok) return null;
       const data = await resp.json().catch(() => null);
       return data?.data || data;
     } catch {
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt) + Math.random() * 300));
     }
   }
   return null;
 }
+
 
 function parseTaskIds(value: any): string[] {
   return Array.from(new Set(
