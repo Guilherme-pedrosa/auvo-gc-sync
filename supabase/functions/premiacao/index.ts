@@ -293,13 +293,19 @@ Deno.serve(async (req) => {
     console.log(`[premiacao] ${osIds.length} OS únicas no mês ${month}`);
 
     // Fetch GC OS details in parallel
-    const PAR = 6;
+    const PAR = 4;
     const osDetails = new Map<string, any>();
+    const osFalhas: string[] = [];
     for (let i = 0; i < osIds.length; i += PAR) {
       const batch = osIds.slice(i, i + PAR);
       const results = await Promise.all(batch.map((id) => fetchOsDetail(id, gcHeaders)));
-      batch.forEach((id, idx) => { if (results[idx]) osDetails.set(id, results[idx]); });
+      batch.forEach((id, idx) => {
+        if (results[idx]) osDetails.set(id, results[idx]);
+        else osFalhas.push(id);
+      });
     }
+    console.log(`[premiacao] detalhes GC: ${osDetails.size}/${osIds.length} ok, ${osFalhas.length} falhas`);
+
 
     // Reforça o mapa de duração usando apenas as tarefas de execução já
     // resolvidas e salvas localmente em `gc_os_tarefa_exec`.
