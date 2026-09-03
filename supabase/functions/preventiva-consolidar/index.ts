@@ -57,7 +57,13 @@ type TipoEquip = {
   horas_por_tecnico: number | null;
   qtd_tecnicos: number | null;
 };
-type Plano = { codigo_barras_auvo: string; cliente_nome: string; datas_meses: any };
+type Plano = {
+  codigo_barras_auvo: string;
+  cliente_nome: string;
+  ano_referencia: number;
+  mes_inicio_ciclo: number | null;
+  periodicidade: string | null;
+};
 type ActivePlanCacheRow = {
   id: string;
   equipamento_auvo_id: string;
@@ -209,17 +215,21 @@ Deno.serve(async (req) => {
     // 6) planos preventivos (para próxima data via plano)
     const { data: planoRows } = await supa
       .from("equipamento_plano_preventivo")
-      .select("codigo_barras_auvo, cliente_nome, datas_meses, ano_referencia")
+      .select("codigo_barras_auvo, cliente_nome, ano_referencia, mes_inicio_ciclo, periodicidade")
       .order("ano_referencia", { ascending: true });
     // idx: cliente_normalizado + codigo → lista de {ano, datas}
     const planoIdx = new Map<string, { ano: number; datas: string[] }[]>();
     for (const p of (planoRows ?? []) as any[]) {
       const key = normalizeClienteName(p.cliente_nome) + "||" + String(p.codigo_barras_auvo || "");
+      // O plano guarda o mês de início do ciclo + periodicidade; as datas
+      // previstas são o 1º dia de cada mês do ciclo dentro do ano de referência.
       const datas: string[] = [];
-      const dm = p.datas_meses || {};
-      for (let m = 1; m <= 12; m++) {
-        const arr = dm[String(m)] || dm[m] || [];
-        if (Array.isArray(arr)) for (const d of arr) if (d) datas.push(String(d));
+      const passo = periodicidadeToMeses(p.periodicidade) ?? 0;
+      const inicio = Number(p.mes_inicio_ciclo || 0);
+      if (passo > 0 && inicio >= 1 && inicio <= 12) {
+        for (let m = inicio; m <= 12; m += passo) {
+          datas.push(`${p.ano_referencia}-${String(m).padStart(2, "0")}-01`);
+        }
       }
       if (!planoIdx.has(key)) planoIdx.set(key, []);
       planoIdx.get(key)!.push({ ano: p.ano_referencia, datas });
