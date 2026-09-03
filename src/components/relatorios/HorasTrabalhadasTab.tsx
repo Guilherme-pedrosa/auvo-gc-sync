@@ -776,9 +776,9 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Summary by client. Alert filters and chart selection affect this grid only;
-  // KPI cards keep the complete technician summary above.
-  const clienteSummary = useMemo(() => {
+  // Summary by client. Alert filters and chart selection affect the grid only;
+  // KPI cards, exports and review lists use the complete (unfiltered) summary.
+  const buildClienteSummary = (chartSel: string | null, alerta: AlertaTipo) => {
     const map = new Map<string, {
       cliente: string;
       horas: number; deslocamento: number; tarefas: number; valor: number;
@@ -786,13 +786,17 @@ export default function HorasTrabalhadasTab({
       horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
       tecnicos: Set<string>; tasks: TaskDetail[];
     }>();
+    const matchesAlerta = (taskId: string) =>
+      !alerta || (tasksWithAlertas.get(taskId) || []).includes(alerta);
     for (const tec of tecnicoSummary) {
-      if (tecnicoChartSel && tec.tecnico !== tecnicoChartSel) continue;
+      if (chartSel && tec.tecnico !== chartSel) continue;
+
       for (const [cliente, cd] of tec.byCliente) {
-        const tasks = alertFilter
-          ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
+        const tasks = alerta
+          ? cd.tasks.filter((task) => matchesAlerta(task.auvo_task_id))
           : cd.tasks;
         if (tasks.length === 0) continue;
+
 
 
         let entry = map.get(cliente);
@@ -835,7 +839,20 @@ export default function HorasTrabalhadasTab({
       );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]);
+  };
+
+  const clienteSummary = useMemo(
+    () => buildClienteSummary(tecnicoChartSel, alertFilter),
+    [tecnicoSummary, alertFilter, tasksWithAlertas, tecnicoChartSel]
+  );
+
+  // Base completa: exports e listas de revisão nunca podem perder dados por
+  // causa de um filtro visual aplicado na grid.
+  const clienteSummaryFull = useMemo(
+    () => buildClienteSummary(null, null),
+    [tecnicoSummary, tasksWithAlertas]
+  );
+
 
   const clienteSelecionado = useMemo(
     () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
@@ -948,7 +965,7 @@ export default function HorasTrabalhadasTab({
   // Lista plana de OS em revisão (para o modal)
   const osEmRevisao = useMemo(() => {
     const out: TaskDetail[] = [];
-    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "em_revisao") out.push(t);
+    for (const c of clienteSummaryFull) for (const t of c.tasks) if (t.statusRevisao === "em_revisao") out.push(t);
     out.sort((a, b) => {
       const aA = tasksWithAlertas.get(a.auvo_task_id) || [];
       const bA = tasksWithAlertas.get(b.auvo_task_id) || [];
@@ -957,14 +974,14 @@ export default function HorasTrabalhadasTab({
       return bS - aS;
     });
     return out;
-  }, [clienteSummary, tasksWithAlertas]);
+  }, [clienteSummaryFull, tasksWithAlertas]);
 
   const osRejeitadas = useMemo(() => {
     const out: TaskDetail[] = [];
-    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "rejeitada") out.push(t);
+    for (const c of clienteSummaryFull) for (const t of c.tasks) if (t.statusRevisao === "rejeitada") out.push(t);
     out.sort((a, b) => (b.data_tarefa || "").localeCompare(a.data_tarefa || ""));
     return out;
-  }, [clienteSummary]);
+  }, [clienteSummaryFull]);
 
   // Persistir uma decisão de revisão
   const persistRevisao = async (
@@ -1157,7 +1174,7 @@ export default function HorasTrabalhadasTab({
     doc.text("Resumo por Cliente", 14, curY);
     curY += 4;
 
-    const clienteRows = clienteSummary.map((c) => [
+    const clienteRows = clienteSummaryFull.map((c) => [
       c.cliente,
       String(c.tarefas),
       `${c.horas.toFixed(1)}h`,
@@ -1303,7 +1320,7 @@ export default function HorasTrabalhadasTab({
     doc.text(`Período: ${periodoStr}`, 14, curY + 6);
     curY += 14;
 
-    for (const c of clienteSummary) {
+    for (const c of clienteSummaryFull) {
       // Header do cliente
       if (curY > 180) { doc.addPage("a4", "landscape"); curY = 18; }
       doc.setFontSize(11);
@@ -1403,7 +1420,7 @@ export default function HorasTrabalhadasTab({
       [`Período: ${periodoStr}`],
       [],
       ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
-      ...clienteSummary.map((c) => [
+      ...clienteSummaryFull.map((c) => [
         c.cliente,
         c.tarefas,
         Number(c.horas.toFixed(2)),
@@ -1431,7 +1448,7 @@ export default function HorasTrabalhadasTab({
       [],
       detalheHeader,
     ];
-    for (const c of clienteSummary) {
+    for (const c of clienteSummaryFull) {
       for (const t of c.tasks) {
         const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
         const alertasStr = alerts.map((a) => ALERTA_LABEL[a]).join(", ");
@@ -1502,7 +1519,7 @@ export default function HorasTrabalhadasTab({
         "Link Auvo", "Link OS GC (Cobrança)", "Link Orçamento GC",
       ];
       const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
-      for (const c of clienteSummary) {
+      for (const c of clienteSummaryFull) {
         for (const t of c.tasks) {
           const alerts = ((tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[])
             .filter((a) => a !== "curto" && a !== "longo");
