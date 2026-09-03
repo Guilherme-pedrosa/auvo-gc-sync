@@ -35,7 +35,7 @@ const ORCAMENTOS_SELECT = [
   "gc_orc_situacao_id", "gc_orc_tipo", "gc_orc_valor_produtos",
   "gc_orc_valor_servicos", "gc_orc_valor_total", "gc_orc_vendedor",
   "gc_orcamento_codigo", "gc_orcamento_id", "hora_inicio", "orientacao",
-  "tecnico", "tecnico_id", "tecnico_os",
+  "tecnico", "tecnico_id",
 ].join(",");
 const formatCurrency = (val: number) =>
   (val || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -798,7 +798,7 @@ export default function OrcamentosControlePage() {
                                       </Badge>
                                     </TableCell>
                                      <TableCell>{item.gc_orc_vendedor || "—"}</TableCell>
-                                    <TableCell>{item.tecnico_os || "—"}</TableCell>
+                                    <TableCell>{item.gc_os_tarefa_os || "—"}</TableCell>
                                     <TableCell>{item.tecnico || "—"}</TableCell>
                                     <TableCell className="max-w-[220px]">
                                       {(() => {
@@ -914,7 +914,7 @@ export default function OrcamentosControlePage() {
                     )}
                   </div>
                 </div>
-                <div><Label className="text-[11px] text-muted-foreground">Técnico OS</Label><p>{selectedCard.tecnico_os || "—"}</p></div>
+                <div><Label className="text-[11px] text-muted-foreground">Técnico OS</Label><p>{selectedCard.gc_os_tarefa_os || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Técnico Auvo</Label><p>{selectedCard.tecnico || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Data Tarefa</Label><p>{selectedCard.data_tarefa || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Status Auvo</Label><p>{selectedCard.status_auvo || "—"}</p></div>
