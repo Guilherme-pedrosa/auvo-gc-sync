@@ -792,10 +792,11 @@ export default function HorasTrabalhadasTab({
       if (chartSel && tec.tecnico !== chartSel) continue;
 
       for (const [cliente, cd] of tec.byCliente) {
-        const tasks = alertFilter
-          ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
+        const tasks = alerta
+          ? cd.tasks.filter((task) => matchesAlerta(task.auvo_task_id))
           : cd.tasks;
         if (tasks.length === 0) continue;
+
 
 
         let entry = map.get(cliente);
