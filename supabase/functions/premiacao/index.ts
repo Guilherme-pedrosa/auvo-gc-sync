@@ -292,19 +292,57 @@ Deno.serve(async (req) => {
     const osIds = Array.from(byOs.keys());
     console.log(`[premiacao] ${osIds.length} OS únicas no mês ${month}`);
 
-    // Fetch GC OS details in parallel
-    const PAR = 4;
+    // Detalhes das OS: cache local primeiro (o GC limita fortemente as
+    // chamadas — sem cache a maioria das OS falhava e a premiação vinha
+    // incompleta), depois busca no GC apenas o que falta/está velho, dentro
+    // de um orçamento de tempo para não estourar o timeout da função.
     const osDetails = new Map<string, any>();
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+    const cacheFresh = new Set<string>();
+    for (let i = 0; i < osIds.length; i += 300) {
+      const chunk = osIds.slice(i, i + 300);
+      const { data: cacheRows } = await supabase
+        .from("premiacao_os_detalhe_cache")
+        .select("gc_os_id, detalhe, atualizado_em")
+        .in("gc_os_id", chunk);
+      for (const c of cacheRows || []) {
+        if (!c.detalhe) continue;
+        osDetails.set(String(c.gc_os_id), c.detalhe);
+        if (Date.now() - new Date(c.atualizado_em).getTime() < CACHE_TTL_MS) {
+          cacheFresh.add(String(c.gc_os_id));
+        }
+      }
+    }
+
+    const pendentes = osIds.filter((id) => !cacheFresh.has(id));
+    const PAR = 4;
+    const deadline = Date.now() + 100_000;
     const osFalhas: string[] = [];
-    for (let i = 0; i < osIds.length; i += PAR) {
-      const batch = osIds.slice(i, i + PAR);
+    const novosCache: Array<{ gc_os_id: string; detalhe: any; atualizado_em: string }> = [];
+    for (let i = 0; i < pendentes.length; i += PAR) {
+      if (Date.now() > deadline) {
+        osFalhas.push(...pendentes.slice(i).filter((id) => !osDetails.has(id)));
+        break;
+      }
+      const batch = pendentes.slice(i, i + PAR);
       const results = await Promise.all(batch.map((id) => fetchOsDetail(id, gcHeaders)));
       batch.forEach((id, idx) => {
-        if (results[idx]) osDetails.set(id, results[idx]);
-        else osFalhas.push(id);
+        const det = results[idx];
+        if (det) {
+          osDetails.set(id, det);
+          novosCache.push({ gc_os_id: id, detalhe: det, atualizado_em: new Date().toISOString() });
+        } else if (!osDetails.has(id)) {
+          osFalhas.push(id);
+        }
       });
     }
-    console.log(`[premiacao] detalhes GC: ${osDetails.size}/${osIds.length} ok, ${osFalhas.length} falhas`);
+    for (let i = 0; i < novosCache.length; i += 100) {
+      await supabase
+        .from("premiacao_os_detalhe_cache")
+        .upsert(novosCache.slice(i, i + 100), { onConflict: "gc_os_id" });
+    }
+    console.log(`[premiacao] detalhes: ${osDetails.size}/${osIds.length} (cache=${cacheFresh.size}, novos=${novosCache.length}, falhas=${osFalhas.length})`);
+
 
 
     // Reforça o mapa de duração usando apenas as tarefas de execução já
