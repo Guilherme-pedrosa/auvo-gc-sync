@@ -776,9 +776,9 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Summary by client. Alert filters and chart selection affect this grid only;
-  // KPI cards keep the complete technician summary above.
-  const clienteSummary = useMemo(() => {
+  // Summary by client. Alert filters and chart selection affect the grid only;
+  // KPI cards, exports and review lists use the complete (unfiltered) summary.
+  const buildClienteSummary = (chartSel: string | null, alerta: string | null) => {
     const map = new Map<string, {
       cliente: string;
       horas: number; deslocamento: number; tarefas: number; valor: number;
@@ -786,8 +786,11 @@ export default function HorasTrabalhadasTab({
       horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
       tecnicos: Set<string>; tasks: TaskDetail[];
     }>();
+    const matchesAlerta = (taskId: string) =>
+      !alerta || (tasksWithAlertas.get(taskId) || []).includes(alerta);
     for (const tec of tecnicoSummary) {
-      if (tecnicoChartSel && tec.tecnico !== tecnicoChartSel) continue;
+      if (chartSel && tec.tecnico !== chartSel) continue;
+
       for (const [cliente, cd] of tec.byCliente) {
         const tasks = alertFilter
           ? cd.tasks.filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
