@@ -122,13 +122,35 @@ serve(async (req) => {
 
       if (allWaypoints.length <= MAX_WAYPOINTS) {
         // Simple case: fits in one request
-        const data = await fetchDirections(origin, destination, allWaypoints);
+        let data = await fetchDirections(origin, destination, allWaypoints);
+
+        // ZERO_RESULTS with waypoints: retry direct origin -> destination
+        if (data.status === "ZERO_RESULTS" && allWaypoints.length > 0) {
+          console.log("[google-maps] ZERO_RESULTS with waypoints, retrying without waypoints");
+          data = await fetchDirections(origin, destination, []);
+        }
+
         if (data.status !== "OK") {
-          return new Response(JSON.stringify({ error: `Directions API error: ${data.status}`, details: data.error_message }), {
-            status: 400,
+          const noRoute = data.status === "ZERO_RESULTS" || data.status === "NOT_FOUND";
+          // Never blow up the UI: return 200 with an empty, well-formed route
+          return new Response(JSON.stringify({
+            ok: false,
+            status: data.status,
+            error: noRoute
+              ? "Não foi possível traçar uma rota entre os pontos informados (endereços sem rota rodoviária)."
+              : `Directions API error: ${data.status}`,
+            details: data.error_message,
+            polyline: null,
+            waypoint_order: [],
+            total_distance_km: 0,
+            total_duration_min: 0,
+            legs: [],
+          }), {
+            status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+
         const route = data.routes?.[0];
         const legs = route?.legs || [];
         const totalDistance = legs.reduce((sum: number, l: any) => sum + (l.distance?.value || 0), 0);
