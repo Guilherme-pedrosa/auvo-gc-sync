@@ -33,6 +33,12 @@ import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
+  buildRhClientAddressIndex,
+  resolveOSMapAddress,
+  type MapAddressSource,
+  type RhClientMapRow,
+} from "@/lib/osMapAddress";
+import {
   loadBudgetExecutionForecast,
   promoteBudgetExecutionForecast,
 } from "@/lib/budgetForecastPromotion";
@@ -41,6 +47,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { toast } from "sonner";
 
 type OSItem = {
+  mirror_key?: string;
   auvo_task_id: string;
   cliente: string;
   tecnico: string;
@@ -85,6 +92,9 @@ type OSItem = {
   equipamento_nome?: string | null;
   equipamento_id_serie?: string | null;
   auvo_equipment_id?: string | null;
+  map_address_source?: MapAddressSource;
+  map_address_issue?: string | null;
+  map_client_id?: string | null;
   _coluna?: string;
 };
 
@@ -481,15 +491,53 @@ export default function OSKanbanPage() {
     });
   }, [rawItems, excludedSituacoes]);
 
+  // O mapa usa o cadastro oficial RH > Clientes como fallback do endereço da
+  // tarefa. A consulta é local ao Supabase e não consome nenhuma requisição GC.
+  const { data: rhMapClients = [] } = useQuery({
+    queryKey: ["rh-clientes", "os-map-addresses"],
+    queryFn: async () => {
+      const result: RhClientMapRow[] = [];
+      const pageSize = 1000;
+      for (let from = 0; from < 50_000; from += pageSize) {
+        const { data, error } = await supabase
+          .from("rh_clientes")
+          .select("id,nome,nome_gc,nome_auvo,nome_fantasia,endereco,cidade,uf,cep,vinculo_status,ativo")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const page = (data || []) as RhClientMapRow[];
+        result.push(...page);
+        if (page.length < pageSize) break;
+      }
+      return result;
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const rhAddressIndex = useMemo(
+    () => buildRhClientAddressIndex(rhMapClients),
+    [rhMapClients],
+  );
+
+  const itemsWithMapAddress = useMemo(() => items.map((item) => {
+    const resolution = resolveOSMapAddress(item, rhAddressIndex);
+    return {
+      ...item,
+      endereco: resolution.address,
+      map_address_source: resolution.source,
+      map_address_issue: resolution.issue,
+      map_client_id: resolution.clientId,
+    };
+  }), [items, rhAddressIndex]);
+
   // Build columns: OS with status "Agendada" go to a special first column
   // Rebuild every time items change (no columnsInitialized gate)
   useEffect(() => {
-    if (!items.length) return;
+    if (!itemsWithMapAddress.length) return;
 
     const agendadoItems: OSItem[] = [];
     const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string; displayName: string }> = {};
 
-    for (const item of items) {
+    for (const item of itemsWithMapAddress) {
       const statusAuvo = (item.status_auvo || "").toLowerCase();
       if (statusAuvo === "aberta" || statusAuvo.includes("agendad")) {
         agendadoItems.push(item);
@@ -527,7 +575,7 @@ export default function OSKanbanPage() {
     };
 
     setColumns([agendadoCol, ...osCols]);
-  }, [items]);
+  }, [itemsWithMapAddress]);
 
   // Async sync: fire-and-forget + poll for completion (same pattern as Agenda Semanal)
   const handleSync = useCallback(async () => {
@@ -788,7 +836,7 @@ export default function OSKanbanPage() {
   const locationMap = useMemo(() => {
     const map = new Map<string, LocationInfo>();
     // First pass: extract from own fields
-    for (const item of items) {
+    for (const item of itemsWithMapAddress) {
       const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente, item.descricao);
       if (loc) map.set(item.auvo_task_id, loc);
     }
@@ -797,7 +845,7 @@ export default function OSKanbanPage() {
     for (const [, loc] of map) {
       // Build cache of client→city from resolved items (skip if already cached)
     }
-    for (const item of items) {
+    for (const item of itemsWithMapAddress) {
       if (map.has(item.auvo_task_id)) {
         // Cache this client's city using normalized name
         const clientKey = normalizeClientName(item.cliente);
@@ -807,7 +855,7 @@ export default function OSKanbanPage() {
         if (gcKey && !clientCityCache.has(gcKey)) clientCityCache.set(gcKey, loc);
       }
     }
-    for (const item of items) {
+    for (const item of itemsWithMapAddress) {
       if (!map.has(item.auvo_task_id)) {
         const clientKey = normalizeClientName(item.cliente);
         const gcClientKey = normalizeClientName(item.gc_os_cliente);
@@ -818,7 +866,7 @@ export default function OSKanbanPage() {
       }
     }
     return map;
-  }, [items, extractLocation]);
+  }, [itemsWithMapAddress, extractLocation]);
 
   // cityMap for backward compat (flags, route grouping uses region)
   const cityMap = useMemo(() => {
@@ -836,7 +884,7 @@ export default function OSKanbanPage() {
     const byDateCity = new Map<string, { label: string; taskIds: Set<string> }>();
     const byClientCity = new Map<string, { label: string; taskIds: Set<string> }>();
 
-    for (const item of items) {
+    for (const item of itemsWithMapAddress) {
       const loc = locationMap.get(item.auvo_task_id);
       if (!loc) continue;
       const cityLow = loc.city.toLowerCase();
@@ -882,7 +930,7 @@ export default function OSKanbanPage() {
     for (const [taskId, partnerIds] of taskPartnerIds) {
       const loc = locationMap.get(taskId);
       const region = loc?.region || cityMap.get(taskId) || "";
-      const partnerItems = items.filter((i) => partnerIds.has(i.auvo_task_id));
+      const partnerItems = itemsWithMapAddress.filter((i) => partnerIds.has(i.auvo_task_id));
       taskToGroup.set(taskId, {
         city: region,
         label: taskLabels.get(taskId) || region,
@@ -890,7 +938,7 @@ export default function OSKanbanPage() {
       });
     }
     return taskToGroup;
-  }, [items, locationMap, cityMap]);
+  }, [itemsWithMapAddress, locationMap, cityMap]);
 
   // Color palette for city flags
   const FLAG_COLORS = [
@@ -997,6 +1045,16 @@ export default function OSKanbanPage() {
       return { ...col, items: filtered };
     });
   }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds, searchQuery, filterSharedExec, execTaskDuplicates]);
+
+  // O mapa deve respeitar exatamente os mesmos filtros visíveis no Kanban.
+  const filteredMapItems = useMemo(() => {
+    const visibleKeys = new Set(
+      filteredColumns.flatMap((column) => column.items.map((item) => item.mirror_key || `${item.auvo_task_id}::${item.gc_os_id || ""}`)),
+    );
+    return itemsWithMapAddress.filter((item) => (
+      visibleKeys.has(item.mirror_key || `${item.auvo_task_id}::${item.gc_os_id || ""}`)
+    ));
+  }, [filteredColumns, itemsWithMapAddress]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -1371,22 +1429,7 @@ export default function OSKanbanPage() {
       {/* Map View */}
       {!isLoading && viewMode === "map" && (
         <OSMapView
-          items={(() => {
-            let filtered = items;
-            if (!allFlagsSelected && selectedFlags.size > 0) {
-              filtered = filtered.filter((item) => {
-                const city = cityMap.get(item.auvo_task_id);
-                return city && selectedFlags.has(city);
-              });
-            }
-            if (filterOnlyRoutes) {
-              filtered = filtered.filter((item) => routeGroups.has(item.auvo_task_id));
-            }
-            if (corridorFilterIds !== null) {
-              filtered = filtered.filter((item) => corridorFilterIds.has(item.auvo_task_id));
-            }
-            return filtered;
-          })()}
+          items={filteredMapItems}
           cityColorMap={cityColorMap}
           cityMap={cityMap}
           formatCurrency={formatCurrency}
