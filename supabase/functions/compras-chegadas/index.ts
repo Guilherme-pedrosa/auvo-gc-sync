@@ -17,6 +17,26 @@ const corsHeaders = {
 
 installGcUsuarioId();
 
+// O runtime limita a quantidade de chamadas externas por execução e devolve
+// "Rate limit exceeded ... Retry after Nms". Em vez de derrubar todo o cálculo,
+// aguardamos o tempo pedido e repetimos a chamada.
+{
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = async function throttleAwareFetch(input: any, init?: any) {
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        return await baseFetch(input, init);
+      } catch (error) {
+        const texto = `${(error as any)?.message ?? ""} ${(error as any)?.cause?.message ?? ""}`;
+        const limite = /Rate limit exceeded/i.test(texto);
+        if (!limite || tentativa >= 6) throw error;
+        const espera = Number(texto.match(/Retry after (\d+)ms/i)?.[1] ?? 1500);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(espera + 250, 20000)));
+      }
+    }
+  } as typeof fetch;
+}
+
 const GC_BASE = "https://api.gestaoclick.com";
 const PICK_PACK_PARTIAL_BALANCE_URL = Deno.env.get("PICK_PACK_PARTIAL_BALANCE_URL")
   || "https://yfqbhyadogytswelopsl.supabase.co/functions/v1/partial-writeoff-balances";
