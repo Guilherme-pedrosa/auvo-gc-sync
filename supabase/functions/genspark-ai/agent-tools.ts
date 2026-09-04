@@ -129,7 +129,38 @@ export const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "gc_mcp",
+      description:
+        "Consulta AO VIVO o servidor MCP oficial do GestãoClick (somente leitura). Use quando precisar descobrir recursos/campos da API do ERP ou consultar a Central de Ajuda do GestãoClick (regras de negócio, o que um filtro faz). Operações: listar_recursos, describe_recurso, buscar_conhecimento, ler_conhecimento, chamar_api (apenas ações de leitura: listar/visualizar).",
+      parameters: {
+        type: "object",
+        properties: {
+          operacao: {
+            type: "string",
+            enum: [
+              "listar_recursos",
+              "describe_recurso",
+              "buscar_conhecimento",
+              "ler_conhecimento",
+              "chamar_api",
+            ],
+          },
+          recurso: { type: "string", description: "Nome do recurso do ERP (describe_recurso / chamar_api)" },
+          acao: { type: "string", description: "Somente 'listar' ou 'visualizar'" },
+          id: { type: "string", description: "ID do registro para 'visualizar'" },
+          dados: { type: "object", description: "Filtros de consulta para 'listar'" },
+          pergunta: { type: "string", description: "Pergunta para buscar_conhecimento" },
+          ref: { type: "string", description: "Referência do artigo para ler_conhecimento" },
+        },
+        required: ["operacao"],
+      },
+    },
+  },
 ];
+
 
 async function toolBuscarControleOs(a: any) {
   const limit = Math.min(Number(a?.limite) || 25, 50);
