@@ -153,10 +153,15 @@ Deno.serve(async (req) => {
       _write_reserve: configuredReserve,
       _min_interval_ms: GC_BROKER_MIN_INTERVAL_MS,
     });
-    if (slotError) throw new Error(`Falha no orçamento GC: ${slotError.message}`);
-    const slot = Array.isArray(slots) ? slots[0] : slots;
+    if (slotError) {
+      // Contenção/timeout no controlador de cota não deve virar 500: degradamos
+      // para cache (mesmo velho) ou 429 para o chamador tentar de novo.
+      console.error(`[gc-proxy] slot indisponível: ${slotError.message}`);
+    }
+    const slot = slotError ? null : (Array.isArray(slots) ? slots[0] : slots);
 
     if (!slot?.allowed) {
+
       if (cacheKey) {
         await admin.from("gc_broker_cache").update({ refresh_started_at: null }).eq("cache_key", cacheKey);
         if (isStaleUsable(cached)) {
