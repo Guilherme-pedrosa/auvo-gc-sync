@@ -388,8 +388,11 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
   return out;
 }
 
+const ESTOQUE_CACHE_TTL_MS = 30 * 60 * 1000;
+
 async function computeChegadas(): Promise<any> {
   {
+    const stockDeadline = Date.now() + 75_000;
     const orcamentosResults = await Promise.all(
       SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
     );
@@ -482,14 +485,67 @@ async function computeChegadas(): Promise<any> {
 
     const stockByProduct = new Map<string, EstoqueProduto>();
     const productKeys = [...productReferences.keys()];
-    for (let start = 0; start < productKeys.length; start += 3) {
-      const batch = productKeys.slice(start, start + 3);
+
+    // Saldos já consultados recentemente vêm do cache (evita estourar o tempo limite
+    // e o limite de chamadas do GestãoClick).
+    const cacheDb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const cacheLimite = new Date(Date.now() - ESTOQUE_CACHE_TTL_MS).toISOString();
+    const pendentes: string[] = [];
+    for (let i = 0; i < productKeys.length; i += 200) {
+      const fatia = productKeys.slice(i, i + 200);
+      const { data } = await cacheDb
+        .from("gc_produto_estoque_cache")
+        .select("produto_key, estoque, verificado, atualizado_em")
+        .in("produto_key", fatia)
+        .gte("atualizado_em", cacheLimite);
+      for (const row of data ?? []) {
+        stockByProduct.set(String(row.produto_key), {
+          estoque: Number(row.estoque) || 0,
+          verificado: !!row.verificado,
+        });
+      }
+    }
+    for (const key of productKeys) if (!stockByProduct.has(key)) pendentes.push(key);
+    console.log(
+      `[compras-chegadas] estoque: ${productKeys.length - pendentes.length} em cache, ${pendentes.length} a consultar`,
+    );
+
+    const novosRegistros: any[] = [];
+    for (let start = 0; start < pendentes.length; start += 3) {
+      if (Date.now() > stockDeadline) {
+        console.warn(
+          `[compras-chegadas] tempo limite de estoque atingido; ${pendentes.length - start} peça(s) ficam para a próxima atualização`,
+        );
+        break;
+      }
+      const batch = pendentes.slice(start, start + 3);
       const stocks = await Promise.all(batch.map((key) => {
         const reference = productReferences.get(key)!;
         return fetchProductStock(reference.produto_id, reference.variacao_id);
       }));
-      batch.forEach((key, index) => stockByProduct.set(key, stocks[index]));
-      if (start + 3 < productKeys.length) await new Promise((resolve) => setTimeout(resolve, 1050));
+      batch.forEach((key, index) => {
+        stockByProduct.set(key, stocks[index]);
+        if (stocks[index].verificado) {
+          const reference = productReferences.get(key)!;
+          novosRegistros.push({
+            produto_key: key,
+            produto_id: reference.produto_id,
+            variacao_id: reference.variacao_id,
+            estoque: stocks[index].estoque,
+            verificado: true,
+            atualizado_em: new Date().toISOString(),
+          });
+        }
+      });
+      if (start + 3 < pendentes.length) await new Promise((resolve) => setTimeout(resolve, 1050));
+    }
+    for (let i = 0; i < novosRegistros.length; i += 200) {
+      await cacheDb
+        .from("gc_produto_estoque_cache")
+        .upsert(novosRegistros.slice(i, i + 200), { onConflict: "produto_key" });
     }
 
     // Procura pedidos de compra abertos pelas próprias peças, em vez de depender apenas
