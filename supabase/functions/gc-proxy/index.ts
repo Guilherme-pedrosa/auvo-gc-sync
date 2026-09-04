@@ -176,9 +176,10 @@ Deno.serve(async (req) => {
       }
       return responseEnvelope({
         message: "Orçamento compartilhado de requisições do GestãoClick protegido",
-        reason: slot?.reason || "quota",
+        reason: slot?.reason || (slotError ? "broker_busy" : "quota"),
       }, 429, {
-        error: "GC_BROKER_QUOTA",
+        error: slotError ? "GC_BROKER_BUSY" : "GC_BROKER_QUOTA",
+
         usage: {
           total: slot?.total_requests,
           reads: slot?.read_requests,
