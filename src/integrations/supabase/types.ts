@@ -2382,6 +2382,24 @@ export type Database = {
         }
         Relationships: []
       }
+      premiacao_os_detalhe_cache: {
+        Row: {
+          atualizado_em: string
+          detalhe: Json
+          gc_os_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          detalhe: Json
+          gc_os_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          detalhe?: Json
+          gc_os_id?: string
+        }
+        Relationships: []
+      }
       premiacao_regras_config: {
         Row: {
           atualizado_em: string
