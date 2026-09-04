@@ -839,9 +839,18 @@ async function handleRequest(req: Request) {
       });
     }
 
-    // Primeira execução: não há foto anterior, calcula na hora
-    const payload = await refreshSnapshot();
-    return jsonResponse({ ...payload, cache: "novo" });
+    // Primeira execução (ou cache vazio): calcula em segundo plano para não estourar o timeout
+    if (!refreshing) {
+      // @ts-ignore EdgeRuntime existe no runtime do Supabase
+      EdgeRuntime.waitUntil(refreshSnapshot().catch(() => {}));
+    }
+    return jsonResponse({
+      ok: true,
+      cache: "gerando",
+      total: 0,
+      itens: [],
+      mensagem: "Estamos montando a lista pela primeira vez. Atualize em alguns instantes.",
+    });
   } catch (e) {
     console.error("[compras-chegadas] fatal error:", e);
     return jsonResponse({ ok: false, error: (e as Error).message, itens: [] });
