@@ -388,10 +388,8 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
   return out;
 }
 
-async function handleRequest(req: Request) {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  try {
+async function computeChegadas(): Promise<any> {
+  {
     const orcamentosResults = await Promise.all(
       SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
     );
@@ -757,17 +755,96 @@ async function handleRequest(req: Request) {
       ),
       gerado_em: new Date().toISOString(),
     };
-    const apenasResumo = new URL(req.url).searchParams.get("resumo") === "1";
-    return new Response(
-      JSON.stringify(apenasResumo ? totais : { ...totais, itens }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return { ...totais, itens };
+  }
+}
+
+// ---- Snapshot: entrega imediata + recálculo em segundo plano ----
+const SNAPSHOT_ID = "default";
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000; // 10 minutos
+const REFRESH_LOCK_MS = 4 * 60 * 1000;
+
+function snapshotClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
+
+async function readSnapshot() {
+  const { data } = await snapshotClient()
+    .from("compras_chegadas_snapshot")
+    .select("payload, gerado_em, atualizando_desde")
+    .eq("id", SNAPSHOT_ID)
+    .maybeSingle();
+  return data ?? null;
+}
+
+async function refreshSnapshot() {
+  const sb = snapshotClient();
+  await sb.from("compras_chegadas_snapshot").upsert({
+    id: SNAPSHOT_ID,
+    atualizando_desde: new Date().toISOString(),
+  }, { onConflict: "id" });
+  try {
+    const payload = await computeChegadas();
+    await sb.from("compras_chegadas_snapshot").upsert({
+      id: SNAPSHOT_ID,
+      payload,
+      gerado_em: new Date().toISOString(),
+      atualizando_desde: null,
+    }, { onConflict: "id" });
+    return payload;
+  } catch (e) {
+    console.error("[compras-chegadas] refresh error:", e);
+    await sb.from("compras_chegadas_snapshot")
+      .update({ atualizando_desde: null })
+      .eq("id", SNAPSHOT_ID);
+    throw e;
+  }
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function handleRequest(req: Request) {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const snap = await readSnapshot();
+    const geradoEm = snap?.gerado_em ? new Date(snap.gerado_em).getTime() : 0;
+    const idade = Date.now() - geradoEm;
+    const temDados = !!snap?.payload && Array.isArray((snap.payload as any)?.itens);
+    const refreshing =
+      !!snap?.atualizando_desde &&
+      Date.now() - new Date(snap.atualizando_desde).getTime() < REFRESH_LOCK_MS;
+
+    if (temDados && idade < SNAPSHOT_TTL_MS) {
+      return jsonResponse({ ...(snap!.payload as any), cache: "fresco", gerado_em: snap!.gerado_em });
+    }
+
+    if (temDados) {
+      // Entrega a última foto na hora e recalcula em segundo plano (evita timeout de 150s)
+      if (!refreshing) {
+        // @ts-ignore EdgeRuntime existe no runtime do Supabase
+        EdgeRuntime.waitUntil(refreshSnapshot().catch(() => {}));
+      }
+      return jsonResponse({
+        ...(snap!.payload as any),
+        cache: "atualizando",
+        gerado_em: snap!.gerado_em,
+      });
+    }
+
+    // Primeira execução: não há foto anterior, calcula na hora
+    const payload = await refreshSnapshot();
+    return jsonResponse({ ...payload, cache: "novo" });
   } catch (e) {
     console.error("[compras-chegadas] fatal error:", e);
-    return new Response(JSON.stringify({ ok: false, error: (e as Error).message, itens: [] }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ ok: false, error: (e as Error).message, itens: [] });
   }
 }
 
