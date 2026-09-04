@@ -655,6 +655,33 @@ export type Database = {
         }
         Relationships: []
       }
+      compras_chegadas_snapshot: {
+        Row: {
+          atualizando_desde: string | null
+          created_at: string
+          gerado_em: string
+          id: string
+          payload: Json
+          updated_at: string
+        }
+        Insert: {
+          atualizando_desde?: string | null
+          created_at?: string
+          gerado_em?: string
+          id: string
+          payload?: Json
+          updated_at?: string
+        }
+        Update: {
+          atualizando_desde?: string | null
+          created_at?: string
+          gerado_em?: string
+          id?: string
+          payload?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contrato_tipos: {
         Row: {
           atualizado_em: string
