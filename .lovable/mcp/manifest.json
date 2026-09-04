@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "sdk_version": "2.0.1",
+  "path": "/functions/v1/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://bysljmkwkxrkovsaodxv.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "auvo-gc-sync",
+      "version": "0.1.0",
+      "title": "Auvo GC Sync"
+    },
+    "tools": [
+      {
+        "name": "buscar_ordens_servico",
+        "title": "Buscar ordens de serviço",
+        "description": "Consulta o Controle de OS (tarefas do Auvo cruzadas com OS e orçamentos do GestãoClick): cliente, técnico, datas, situação e valores.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cliente": {
+              "type": "string",
+              "description": "Nome ou parte do nome do cliente"
+            },
+            "tecnico": {
+              "type": "string",
+              "description": "Nome ou parte do nome do técnico"
+            },
+            "numero": {
+              "type": "string",
+              "description": "Número da OS ou do orçamento no GestãoClick"
+            },
+            "situacao": {
+              "type": "string",
+              "description": "Texto da situação da OS ou do orçamento"
+            },
+            "data_de": {
+              "type": "string",
+              "description": "Data inicial no formato YYYY-MM-DD"
+            },
+            "data_ate": {
+              "type": "string",
+              "description": "Data final no formato YYYY-MM-DD"
+            },
+            "limite": {
+              "type": "number",
+              "description": "Máximo de registros retornados (padrão 25, máximo 100)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "consultar_preventivas",
+        "title": "Consultar preventivas de equipamentos",
+        "description": "Consulta a preventiva dos equipamentos: última preventiva, próxima prevista, periodicidade, criticidade e status (Em dia, Atrasada, Sem registro).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cliente": {
+              "type": "string",
+              "description": "Nome ou parte do nome do cliente"
+            },
+            "equipamento": {
+              "type": "string",
+              "description": "Nome do equipamento"
+            },
+            "identificador": {
+              "type": "string",
+              "description": "Série ou patrimônio do equipamento"
+            },
+            "status": {
+              "type": "string",
+              "description": "Filtro pelo status da preventiva"
+            },
+            "limite": {
+              "type": "number",
+              "description": "Máximo de registros (padrão 25, máximo 100)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "buscar_equipamentos",
+        "title": "Buscar equipamentos",
+        "description": "Lista equipamentos cadastrados (Auvo) por cliente, nome ou série, com marca, categoria e status.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cliente": {
+              "type": "string",
+              "description": "Nome ou parte do nome do cliente"
+            },
+            "nome": {
+              "type": "string",
+              "description": "Nome do equipamento"
+            },
+            "identificador": {
+              "type": "string",
+              "description": "Série ou patrimônio"
+            },
+            "limite": {
+              "type": "number",
+              "description": "Máximo de registros (padrão 25, máximo 100)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "observacoes_os",
+        "title": "Ler observações de OS",
+        "description": "Lê as observações internas registradas no Controle de OS para uma ordem de serviço, tarefa ou cliente.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "gc_os_codigo": {
+              "type": "string",
+              "description": "Código da OS no GestãoClick"
+            },
+            "auvo_task_id": {
+              "type": "string",
+              "description": "ID da tarefa no Auvo"
+            },
+            "cliente": {
+              "type": "string",
+              "description": "Nome ou parte do nome do cliente"
+            },
+            "limite": {
+              "type": "number",
+              "description": "Máximo de registros (padrão 20, máximo 50)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "consultar_agenda",
+        "title": "Consultar agenda da equipe",
+        "description": "Consulta os agendamentos da equipe por período, técnico ou cliente, com duração planejada, origem (Auvo, contrato ou manual) e status.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "data_de": {
+              "type": "string",
+              "description": "Data inicial no formato YYYY-MM-DD"
+            },
+            "data_ate": {
+              "type": "string",
+              "description": "Data final no formato YYYY-MM-DD"
+            },
+            "colaborador": {
+              "type": "string",
+              "description": "Nome ou parte do nome do técnico"
+            },
+            "cliente": {
+              "type": "string",
+              "description": "Nome ou parte do nome do cliente"
+            },
+            "limite": {
+              "type": "number",
+              "description": "Máximo de registros (padrão 50, máximo 200)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}

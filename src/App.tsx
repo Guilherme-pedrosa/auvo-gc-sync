@@ -8,6 +8,7 @@ import AppLayout from "@/components/AppLayout";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import LoginPage from "./pages/LoginPage.tsx";
+import OAuthConsent from "./pages/OAuthConsent.tsx";
 import AuvoSyncPage from "./pages/financeiro/AuvoSyncPage.tsx";
 import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
@@ -98,8 +99,9 @@ const AppRoutes = () => {
     <Routes>
       <Route
         path="/login"
-        element={user ? <Navigate to={isCliente ? "/portal/horas" : "/"} replace /> : <LoginPage />}
+        element={user && !window.location.search.includes("next=") ? <Navigate to={isCliente ? "/portal/horas" : "/"} replace /> : <LoginPage />}
       />
+      <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
       <Route path="/portal/login" element={<PortalLoginPage />} />
       <Route path="/portal/horas" element={<PortalHorasPage />} />
       <Route path="/portal/orcamentos" element={<PortalOrcamentosPage />} />
