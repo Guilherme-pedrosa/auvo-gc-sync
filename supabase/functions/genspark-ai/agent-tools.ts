@@ -389,6 +389,7 @@ export async function runAgentTool(name: string, args: any): Promise<any> {
       case "buscar_equipamentos": return await toolEquipamentos(args);
       case "consultar_gc": return await toolConsultarGc(args);
       case "observacoes_os": return await toolObservacoes(args);
+      case "gc_mcp": return await toolGcMcp(args);
       default: return { ok: false, error: `Ferramenta desconhecida: ${name}` };
     }
   } catch (e) {
