@@ -1504,6 +1504,36 @@ export type Database = {
         }
         Relationships: []
       }
+      gc_produto_estoque_cache: {
+        Row: {
+          atualizado_em: string
+          created_at: string
+          estoque: number
+          produto_id: string
+          produto_key: string
+          variacao_id: string | null
+          verificado: boolean
+        }
+        Insert: {
+          atualizado_em?: string
+          created_at?: string
+          estoque?: number
+          produto_id: string
+          produto_key: string
+          variacao_id?: string | null
+          verificado?: boolean
+        }
+        Update: {
+          atualizado_em?: string
+          created_at?: string
+          estoque?: number
+          produto_id?: string
+          produto_key?: string
+          variacao_id?: string | null
+          verificado?: boolean
+        }
+        Relationships: []
+      }
       grupo_cliente_membros: {
         Row: {
           cliente_nome: string
