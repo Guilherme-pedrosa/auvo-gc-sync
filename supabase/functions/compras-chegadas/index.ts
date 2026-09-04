@@ -392,7 +392,7 @@ const ESTOQUE_CACHE_TTL_MS = 30 * 60 * 1000;
 
 async function computeChegadas(): Promise<any> {
   {
-    const stockDeadline = Date.now() + 75_000;
+    const stockDeadline = Date.now() + 45_000;
     const orcamentosResults = await Promise.all(
       SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
     );
@@ -540,12 +540,13 @@ async function computeChegadas(): Promise<any> {
           });
         }
       });
+      // Grava o cache a cada lote para não perder o progresso se a execução for interrompida
+      if (novosRegistros.length) {
+        await cacheDb
+          .from("gc_produto_estoque_cache")
+          .upsert(novosRegistros.splice(0, novosRegistros.length), { onConflict: "produto_key" });
+      }
       if (start + 3 < pendentes.length) await new Promise((resolve) => setTimeout(resolve, 1050));
-    }
-    for (let i = 0; i < novosRegistros.length; i += 200) {
-      await cacheDb
-        .from("gc_produto_estoque_cache")
-        .upsert(novosRegistros.slice(i, i + 200), { onConflict: "produto_key" });
     }
 
     // Procura pedidos de compra abertos pelas próprias peças, em vez de depender apenas
