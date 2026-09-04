@@ -34,8 +34,9 @@ const ORCAMENTOS_SELECT = [
   "gc_orc_cor_situacao", "gc_orc_data", "gc_orc_link", "gc_orc_situacao",
   "gc_orc_situacao_id", "gc_orc_tipo", "gc_orc_valor_produtos",
   "gc_orc_valor_servicos", "gc_orc_valor_total", "gc_orc_vendedor",
-  "gc_orcamento_codigo", "gc_orcamento_id", "hora_inicio", "orientacao",
+  "gc_orcamento_codigo", "gc_orcamento_id", "gc_os_tarefa_os", "hora_inicio", "orientacao",
   "tecnico", "tecnico_id",
+
 ].join(",");
 const formatCurrency = (val: number) =>
   (val || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
