@@ -288,7 +288,98 @@ async function toolObservacoes(a: any) {
   return { ok: true, total: data?.length || 0, observacoes: data };
 }
 
+// ---- MCP oficial do GestãoClick (somente leitura) ----
+const GC_MCP_URL = "https://api.gestaoclick.com/mcp";
+const GC_MCP_READ_ACTIONS = new Set(["listar", "visualizar"]);
+
+async function toolGcMcp(a: any) {
+  const operacao = String(a?.operacao || "").trim();
+  const access = Deno.env.get("GC_ACCESS_TOKEN");
+  const secret = Deno.env.get("GC_SECRET_TOKEN");
+  if (!access || !secret) return { ok: false, error: "Credenciais do GestãoClick ausentes" };
+
+  let toolName = operacao;
+  let toolArgs: Record<string, unknown> = {};
+
+  switch (operacao) {
+    case "listar_recursos":
+      break;
+    case "describe_recurso":
+      if (!a?.recurso) return { ok: false, error: "Informe o recurso" };
+      toolArgs = { recurso: String(a.recurso), ...(a?.acao ? { acao: String(a.acao) } : {}) };
+      break;
+    case "buscar_conhecimento":
+      if (!a?.pergunta) return { ok: false, error: "Informe a pergunta" };
+      toolArgs = { pergunta: String(a.pergunta), k: 5 };
+      break;
+    case "ler_conhecimento":
+      if (!a?.ref) return { ok: false, error: "Informe o ref do artigo" };
+      toolArgs = { ref: String(a.ref) };
+      break;
+    case "chamar_api": {
+      const acao = String(a?.acao || "listar").toLowerCase();
+      if (!GC_MCP_READ_ACTIONS.has(acao)) {
+        return { ok: false, error: "Somente leitura: use 'listar' ou 'visualizar'" };
+      }
+      if (!a?.recurso) return { ok: false, error: "Informe o recurso" };
+      toolArgs = {
+        recurso: String(a.recurso),
+        acao,
+        ...(a?.id ? { id: String(a.id) } : {}),
+        ...(a?.dados && typeof a.dados === "object" ? { dados: a.dados } : {}),
+      };
+      break;
+    }
+    default:
+      return { ok: false, error: `Operação MCP inválida: ${operacao}` };
+  }
+
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 25000);
+    const res = await fetch(GC_MCP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "access-token": access,
+        "secret-access-token": secret,
+      },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "tools/call",
+        params: { name: toolName, arguments: toolArgs },
+      }),
+    });
+    clearTimeout(tid);
+    const raw = await res.text();
+    if (!res.ok) return { ok: false, error: `GC MCP HTTP ${res.status}`, detalhe: raw.substring(0, 300) };
+
+    let json: any = null;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      // resposta em SSE: extrai o último bloco data:
+      const last = raw.split("\n").filter((l) => l.startsWith("data:")).pop();
+      if (last) json = JSON.parse(last.slice(5).trim());
+    }
+    if (!json) return { ok: false, error: "Resposta MCP ilegível" };
+    if (json.error) return { ok: false, error: json.error?.message || "Erro no MCP do GestãoClick" };
+
+    const content = json.result?.content;
+    const texto = Array.isArray(content)
+      ? content.map((c: any) => c?.text ?? "").join("\n").substring(0, 12000)
+      : JSON.stringify(json.result ?? {}).substring(0, 12000);
+    return { ok: true, operacao, resultado: texto };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export async function runAgentTool(name: string, args: any): Promise<any> {
+
   console.log(`[genspark-ai] [tool] ${name} args=${JSON.stringify(args).substring(0, 300)}`);
   try {
     switch (name) {
