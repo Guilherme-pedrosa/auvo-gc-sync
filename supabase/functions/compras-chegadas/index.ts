@@ -17,6 +17,26 @@ const corsHeaders = {
 
 installGcUsuarioId();
 
+// O runtime limita a quantidade de chamadas externas por execução e devolve
+// "Rate limit exceeded ... Retry after Nms". Em vez de derrubar todo o cálculo,
+// aguardamos o tempo pedido e repetimos a chamada.
+{
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = async function throttleAwareFetch(input: any, init?: any) {
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        return await baseFetch(input, init);
+      } catch (error) {
+        const texto = `${(error as any)?.message ?? ""} ${(error as any)?.cause?.message ?? ""}`;
+        const limite = /Rate limit exceeded/i.test(texto);
+        if (!limite || tentativa >= 6) throw error;
+        const espera = Number(texto.match(/Retry after (\d+)ms/i)?.[1] ?? 1500);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(espera + 250, 20000)));
+      }
+    }
+  } as typeof fetch;
+}
+
 const GC_BASE = "https://api.gestaoclick.com";
 const PICK_PACK_PARTIAL_BALANCE_URL = Deno.env.get("PICK_PACK_PARTIAL_BALANCE_URL")
   || "https://yfqbhyadogytswelopsl.supabase.co/functions/v1/partial-writeoff-balances";
@@ -388,10 +408,11 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
   return out;
 }
 
-async function handleRequest(req: Request) {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+const ESTOQUE_CACHE_TTL_MS = 30 * 60 * 1000;
 
-  try {
+async function computeChegadas(): Promise<any> {
+  {
+    const stockDeadline = Date.now() + 45_000;
     const orcamentosResults = await Promise.all(
       SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
     );
@@ -484,14 +505,68 @@ async function handleRequest(req: Request) {
 
     const stockByProduct = new Map<string, EstoqueProduto>();
     const productKeys = [...productReferences.keys()];
-    for (let start = 0; start < productKeys.length; start += 3) {
-      const batch = productKeys.slice(start, start + 3);
+
+    // Saldos já consultados recentemente vêm do cache (evita estourar o tempo limite
+    // e o limite de chamadas do GestãoClick).
+    const cacheDb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const cacheLimite = new Date(Date.now() - ESTOQUE_CACHE_TTL_MS).toISOString();
+    const pendentes: string[] = [];
+    for (let i = 0; i < productKeys.length; i += 200) {
+      const fatia = productKeys.slice(i, i + 200);
+      const { data } = await cacheDb
+        .from("gc_produto_estoque_cache")
+        .select("produto_key, estoque, verificado, atualizado_em")
+        .in("produto_key", fatia)
+        .gte("atualizado_em", cacheLimite);
+      for (const row of data ?? []) {
+        stockByProduct.set(String(row.produto_key), {
+          estoque: Number(row.estoque) || 0,
+          verificado: !!row.verificado,
+        });
+      }
+    }
+    for (const key of productKeys) if (!stockByProduct.has(key)) pendentes.push(key);
+    console.log(
+      `[compras-chegadas] estoque: ${productKeys.length - pendentes.length} em cache, ${pendentes.length} a consultar`,
+    );
+
+    const novosRegistros: any[] = [];
+    for (let start = 0; start < pendentes.length; start += 3) {
+      if (Date.now() > stockDeadline) {
+        console.warn(
+          `[compras-chegadas] tempo limite de estoque atingido; ${pendentes.length - start} peça(s) ficam para a próxima atualização`,
+        );
+        break;
+      }
+      const batch = pendentes.slice(start, start + 3);
       const stocks = await Promise.all(batch.map((key) => {
         const reference = productReferences.get(key)!;
         return fetchProductStock(reference.produto_id, reference.variacao_id);
       }));
-      batch.forEach((key, index) => stockByProduct.set(key, stocks[index]));
-      if (start + 3 < productKeys.length) await new Promise((resolve) => setTimeout(resolve, 1050));
+      batch.forEach((key, index) => {
+        stockByProduct.set(key, stocks[index]);
+        if (stocks[index].verificado) {
+          const reference = productReferences.get(key)!;
+          novosRegistros.push({
+            produto_key: key,
+            produto_id: reference.produto_id,
+            variacao_id: reference.variacao_id,
+            estoque: stocks[index].estoque,
+            verificado: true,
+            atualizado_em: new Date().toISOString(),
+          });
+        }
+      });
+      // Grava o cache a cada lote para não perder o progresso se a execução for interrompida
+      if (novosRegistros.length) {
+        await cacheDb
+          .from("gc_produto_estoque_cache")
+          .upsert(novosRegistros.splice(0, novosRegistros.length), { onConflict: "produto_key" });
+      }
+      if (start + 3 < pendentes.length) await new Promise((resolve) => setTimeout(resolve, 1050));
     }
 
     // Procura pedidos de compra abertos pelas próprias peças, em vez de depender apenas
@@ -757,17 +832,105 @@ async function handleRequest(req: Request) {
       ),
       gerado_em: new Date().toISOString(),
     };
-    const apenasResumo = new URL(req.url).searchParams.get("resumo") === "1";
-    return new Response(
-      JSON.stringify(apenasResumo ? totais : { ...totais, itens }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return { ...totais, itens };
+  }
+}
+
+// ---- Snapshot: entrega imediata + recálculo em segundo plano ----
+const SNAPSHOT_ID = "default";
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000; // 10 minutos
+const REFRESH_LOCK_MS = 4 * 60 * 1000;
+
+function snapshotClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
+
+async function readSnapshot() {
+  const { data } = await snapshotClient()
+    .from("compras_chegadas_snapshot")
+    .select("payload, gerado_em, atualizando_desde")
+    .eq("id", SNAPSHOT_ID)
+    .maybeSingle();
+  return data ?? null;
+}
+
+async function refreshSnapshot() {
+  const sb = snapshotClient();
+  await sb.from("compras_chegadas_snapshot").upsert({
+    id: SNAPSHOT_ID,
+    atualizando_desde: new Date().toISOString(),
+  }, { onConflict: "id" });
+  try {
+    const payload = await computeChegadas();
+    await sb.from("compras_chegadas_snapshot").upsert({
+      id: SNAPSHOT_ID,
+      payload,
+      gerado_em: new Date().toISOString(),
+      atualizando_desde: null,
+    }, { onConflict: "id" });
+    return payload;
+  } catch (e) {
+    console.error("[compras-chegadas] refresh error:", e);
+    await sb.from("compras_chegadas_snapshot")
+      .update({ atualizando_desde: null })
+      .eq("id", SNAPSHOT_ID);
+    throw e;
+  }
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function handleRequest(req: Request) {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const snap = await readSnapshot();
+    const geradoEm = snap?.gerado_em ? new Date(snap.gerado_em).getTime() : 0;
+    const idade = Date.now() - geradoEm;
+    const temDados = !!snap?.payload && Array.isArray((snap.payload as any)?.itens);
+    const refreshing =
+      !!snap?.atualizando_desde &&
+      Date.now() - new Date(snap.atualizando_desde).getTime() < REFRESH_LOCK_MS;
+
+    if (temDados && idade < SNAPSHOT_TTL_MS) {
+      return jsonResponse({ ...(snap!.payload as any), cache: "fresco", gerado_em: snap!.gerado_em });
+    }
+
+    if (temDados) {
+      // Entrega a última foto na hora e recalcula em segundo plano (evita timeout de 150s)
+      if (!refreshing) {
+        // @ts-ignore EdgeRuntime existe no runtime do Supabase
+        EdgeRuntime.waitUntil(refreshSnapshot().catch(() => {}));
+      }
+      return jsonResponse({
+        ...(snap!.payload as any),
+        cache: "atualizando",
+        gerado_em: snap!.gerado_em,
+      });
+    }
+
+    // Primeira execução (ou cache vazio): calcula em segundo plano para não estourar o timeout
+    if (!refreshing) {
+      // @ts-ignore EdgeRuntime existe no runtime do Supabase
+      EdgeRuntime.waitUntil(refreshSnapshot().catch(() => {}));
+    }
+    return jsonResponse({
+      ok: true,
+      cache: "gerando",
+      total: 0,
+      itens: [],
+      mensagem: "Estamos montando a lista pela primeira vez. Atualize em alguns instantes.",
+    });
   } catch (e) {
     console.error("[compras-chegadas] fatal error:", e);
-    return new Response(JSON.stringify({ ok: false, error: (e as Error).message, itens: [] }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ ok: false, error: (e as Error).message, itens: [] });
   }
 }
 

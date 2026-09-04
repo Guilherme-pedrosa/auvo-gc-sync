@@ -655,6 +655,33 @@ export type Database = {
         }
         Relationships: []
       }
+      compras_chegadas_snapshot: {
+        Row: {
+          atualizando_desde: string | null
+          created_at: string
+          gerado_em: string
+          id: string
+          payload: Json
+          updated_at: string
+        }
+        Insert: {
+          atualizando_desde?: string | null
+          created_at?: string
+          gerado_em?: string
+          id: string
+          payload?: Json
+          updated_at?: string
+        }
+        Update: {
+          atualizando_desde?: string | null
+          created_at?: string
+          gerado_em?: string
+          id?: string
+          payload?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contrato_tipos: {
         Row: {
           atualizado_em: string
@@ -1474,6 +1501,36 @@ export type Database = {
           upstream_reads?: number
           upstream_writes?: number
           usage_date?: string
+        }
+        Relationships: []
+      }
+      gc_produto_estoque_cache: {
+        Row: {
+          atualizado_em: string
+          created_at: string
+          estoque: number
+          produto_id: string
+          produto_key: string
+          variacao_id: string | null
+          verificado: boolean
+        }
+        Insert: {
+          atualizado_em?: string
+          created_at?: string
+          estoque?: number
+          produto_id: string
+          produto_key: string
+          variacao_id?: string | null
+          verificado?: boolean
+        }
+        Update: {
+          atualizado_em?: string
+          created_at?: string
+          estoque?: number
+          produto_id?: string
+          produto_key?: string
+          variacao_id?: string | null
+          verificado?: boolean
         }
         Relationships: []
       }
