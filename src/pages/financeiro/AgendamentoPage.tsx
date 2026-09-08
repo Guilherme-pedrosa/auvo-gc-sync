@@ -214,15 +214,25 @@ export default function AgendamentoPage() {
       console.log("[AgendamentoPage] Forçando atualização manual...");
       const data = await queryClient.fetchQuery({
         queryKey: ["compras-chegadas"],
-        queryFn: fetchChegadas,
+        queryFn: async () => {
+          const rows = await fetchChegadas(true);
+          setStatusChegadas(getStatusChegadas());
+          return rows;
+        },
         staleTime: 0,
       });
-      toast.success(`Atualizado: ${data?.length ?? 0} documentos`, { id: t });
+      const status = getStatusChegadas();
+      if (status.cache === "gerando" || status.cache === "atualizando") {
+        toast.success("Buscando dados novos no GestãoClick. A lista atualiza sozinha em instantes.", { id: t });
+      } else {
+        toast.success(`Atualizado: ${data?.length ?? 0} documentos`, { id: t });
+      }
     } catch (e) {
       console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
   }, [queryClient]);
+
 
   const termo = busca.trim().toLowerCase();
   const termoCliente = buscaCliente.trim().toLowerCase();
