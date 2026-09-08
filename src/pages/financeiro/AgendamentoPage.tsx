@@ -57,10 +57,18 @@ async function fetchForecastsByDocument(
   return rows;
 }
 
-async function fetchChegadas(): Promise<ChegadaItem[]> {
-  console.log("[AgendamentoPage] chamando compras-chegadas...");
+export type ChegadasStatus = { cache?: string; mensagem?: string; gerado_em?: string };
+let ultimoStatusChegadas: ChegadasStatus = {};
+export function getStatusChegadas(): ChegadasStatus {
+  return ultimoStatusChegadas;
+}
+
+async function fetchChegadas(force = false): Promise<ChegadaItem[]> {
+  console.log("[AgendamentoPage] chamando compras-chegadas...", { force });
   try {
-    const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
+    const { data, error } = await supabase.functions.invoke("compras-chegadas", {
+      body: force ? { force: true } : {},
+    });
     if (error) {
       console.error("[AgendamentoPage] erro invoke:", error);
       throw error;
@@ -69,6 +77,8 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
       console.error("[AgendamentoPage] erro backend:", data?.error);
       throw new Error(data?.error || "Falha ao consultar compras");
     }
+    ultimoStatusChegadas = { cache: data?.cache, mensagem: data?.mensagem, gerado_em: data?.gerado_em };
+
 
     let itens = ((data?.itens || []) as ChegadaItem[]).map((item) => {
       const maiorPrazo = latestMissingPartsArrival(item.pecas_em_falta);
@@ -157,11 +167,21 @@ export default function AgendamentoPage() {
   const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
   const [logExpanded, setLogExpanded] = useState(false);
 
+  const [statusChegadas, setStatusChegadas] = useState<ChegadasStatus>({});
+
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["compras-chegadas"],
-    queryFn: fetchChegadas,
+    queryFn: async () => {
+      const rows = await fetchChegadas();
+      setStatusChegadas(getStatusChegadas());
+      return rows;
+    },
     ...CHEGADAS_QUERY_POLICY,
+    // Enquanto a lista está sendo montada/atualizada no servidor, tenta de novo sozinho
+    refetchInterval:
+      statusChegadas.cache === "gerando" || statusChegadas.cache === "atualizando" ? 20000 : false,
   });
+
 
   const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
     queryKey: ["agenda_agendamentos_logs"],
@@ -194,15 +214,25 @@ export default function AgendamentoPage() {
       console.log("[AgendamentoPage] Forçando atualização manual...");
       const data = await queryClient.fetchQuery({
         queryKey: ["compras-chegadas"],
-        queryFn: fetchChegadas,
+        queryFn: async () => {
+          const rows = await fetchChegadas(true);
+          setStatusChegadas(getStatusChegadas());
+          return rows;
+        },
         staleTime: 0,
       });
-      toast.success(`Atualizado: ${data?.length ?? 0} documentos`, { id: t });
+      const status = getStatusChegadas();
+      if (status.cache === "gerando" || status.cache === "atualizando") {
+        toast.success("Buscando dados novos no GestãoClick. A lista atualiza sozinha em instantes.", { id: t });
+      } else {
+        toast.success(`Atualizado: ${data?.length ?? 0} documentos`, { id: t });
+      }
     } catch (e) {
       console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
   }, [queryClient]);
+
 
   const termo = busca.trim().toLowerCase();
   const termoCliente = buscaCliente.trim().toLowerCase();
@@ -762,6 +792,15 @@ export default function AgendamentoPage() {
           </Button>
         </div>
       </header>
+
+      {statusChegadas.cache === "gerando" || statusChegadas.cache === "atualizando" ? (
+        <div className="flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-800">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {statusChegadas.cache === "gerando"
+            ? "Estamos montando a lista de chegadas pela primeira vez. Ela aparece aqui em instantes."
+            : "Mostrando a última lista salva enquanto buscamos os dados mais recentes no GestãoClick."}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">

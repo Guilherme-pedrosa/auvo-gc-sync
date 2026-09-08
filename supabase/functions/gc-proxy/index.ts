@@ -105,7 +105,23 @@ Deno.serve(async (req) => {
         _endpoint: endpointForCache,
         _lock_seconds: 20,
       });
-      if (claimError) throw new Error(`Falha ao travar cache GC: ${claimError.message}`);
+      if (claimError) {
+        // Timeout/contenção no lock não pode virar 500: entrega cache (mesmo velho) ou 429.
+        console.error(`[gc-proxy] claim indisponível: ${claimError.message}`);
+        if (isStaleUsable(cached)) {
+          await admin.rpc("gc_broker_record_cache_metric", { _source: source, _stale: true });
+          return responseEnvelope(cached!.response_body, cached!.response_status ?? 200, {
+            cached: true,
+            stale: true,
+            source,
+          });
+        }
+        return responseEnvelope({ message: "Consulta GC temporariamente indisponível" }, 429, {
+          error: "GC_BROKER_BUSY",
+          source,
+        });
+      }
+
 
       if (!claimed) {
         for (let attempt = 0; attempt < 40; attempt += 1) {
