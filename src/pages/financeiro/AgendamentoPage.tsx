@@ -57,10 +57,18 @@ async function fetchForecastsByDocument(
   return rows;
 }
 
-async function fetchChegadas(): Promise<ChegadaItem[]> {
-  console.log("[AgendamentoPage] chamando compras-chegadas...");
+export type ChegadasStatus = { cache?: string; mensagem?: string; gerado_em?: string };
+let ultimoStatusChegadas: ChegadasStatus = {};
+export function getStatusChegadas(): ChegadasStatus {
+  return ultimoStatusChegadas;
+}
+
+async function fetchChegadas(force = false): Promise<ChegadaItem[]> {
+  console.log("[AgendamentoPage] chamando compras-chegadas...", { force });
   try {
-    const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
+    const { data, error } = await supabase.functions.invoke("compras-chegadas", {
+      body: force ? { force: true } : {},
+    });
     if (error) {
       console.error("[AgendamentoPage] erro invoke:", error);
       throw error;
@@ -69,6 +77,8 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
       console.error("[AgendamentoPage] erro backend:", data?.error);
       throw new Error(data?.error || "Falha ao consultar compras");
     }
+    ultimoStatusChegadas = { cache: data?.cache, mensagem: data?.mensagem, gerado_em: data?.gerado_em };
+
 
     let itens = ((data?.itens || []) as ChegadaItem[]).map((item) => {
       const maiorPrazo = latestMissingPartsArrival(item.pecas_em_falta);
