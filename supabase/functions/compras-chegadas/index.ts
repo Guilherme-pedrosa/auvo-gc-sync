@@ -891,6 +891,18 @@ async function handleRequest(req: Request) {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    let force = false;
+    try {
+      const url = new URL(req.url);
+      if (url.searchParams.get("force") === "1") force = true;
+      if (req.method === "POST") {
+        const body = await req.json().catch(() => ({}));
+        if (body && (body.force === true || body.force === 1 || body.force === "1")) force = true;
+      }
+    } catch {
+      // corpo inválido: segue sem forçar
+    }
+
     const snap = await readSnapshot();
     const geradoEm = snap?.gerado_em ? new Date(snap.gerado_em).getTime() : 0;
     const idade = Date.now() - geradoEm;
@@ -899,9 +911,10 @@ async function handleRequest(req: Request) {
       !!snap?.atualizando_desde &&
       Date.now() - new Date(snap.atualizando_desde).getTime() < REFRESH_LOCK_MS;
 
-    if (temDados && idade < SNAPSHOT_TTL_MS) {
+    if (temDados && idade < SNAPSHOT_TTL_MS && !force) {
       return jsonResponse({ ...(snap!.payload as any), cache: "fresco", gerado_em: snap!.gerado_em });
     }
+
 
     if (temDados) {
       // Entrega a última foto na hora e recalcula em segundo plano (evita timeout de 150s)
