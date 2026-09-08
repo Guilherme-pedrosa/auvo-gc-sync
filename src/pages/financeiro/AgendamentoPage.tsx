@@ -793,6 +793,15 @@ export default function AgendamentoPage() {
         </div>
       </header>
 
+      {statusChegadas.cache === "gerando" || statusChegadas.cache === "atualizando" ? (
+        <div className="flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-800">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {statusChegadas.cache === "gerando"
+            ? "Estamos montando a lista de chegadas pela primeira vez. Ela aparece aqui em instantes."
+            : "Mostrando a última lista salva enquanto buscamos os dados mais recentes no GestãoClick."}
+        </div>
+      ) : null}
+
       {error ? (
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
           <AlertTriangle className="h-4 w-4" /> Não consegui carregar os orçamentos: {String((error as Error).message)}
