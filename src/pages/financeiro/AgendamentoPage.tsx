@@ -167,11 +167,21 @@ export default function AgendamentoPage() {
   const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
   const [logExpanded, setLogExpanded] = useState(false);
 
+  const [statusChegadas, setStatusChegadas] = useState<ChegadasStatus>({});
+
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["compras-chegadas"],
-    queryFn: fetchChegadas,
+    queryFn: async () => {
+      const rows = await fetchChegadas();
+      setStatusChegadas(getStatusChegadas());
+      return rows;
+    },
     ...CHEGADAS_QUERY_POLICY,
+    // Enquanto a lista está sendo montada/atualizada no servidor, tenta de novo sozinho
+    refetchInterval:
+      statusChegadas.cache === "gerando" || statusChegadas.cache === "atualizando" ? 20000 : false,
   });
+
 
   const { data: logs = [], isLoading: isLoadingLogs } = useQuery({
     queryKey: ["agenda_agendamentos_logs"],
