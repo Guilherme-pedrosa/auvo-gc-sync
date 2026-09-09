@@ -1,23 +1,18 @@
-// Paginação segura para consultas da agenda: o PostgREST limita cada resposta,
-// então varremos em lotes até esgotar as linhas.
+const AGENDA_PAGE_SIZE = 500;
 
-const PAGE_SIZE = 1000;
-const MAX_PAGES = 60;
-
-type PageResult<T> = { data: T[] | null; error: { message?: string } | null };
-
+/** The query must order by a unique key so adjacent pages cannot overlap. */
 export async function fetchAgendaPages<T>(
-  fetchPage: (from: number, to: number) => PromiseLike<PageResult<T>>,
-  pageSize = PAGE_SIZE,
+  fetchPage: (from: number, to: number) => PromiseLike<{
+    data: T[] | null;
+    error: { message?: string } | null;
+  }>,
 ): Promise<T[]> {
   const rows: T[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const from = page * pageSize;
-    const { data, error } = await fetchPage(from, from + pageSize - 1);
+  for (let from = 0; ; from += AGENDA_PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + AGENDA_PAGE_SIZE - 1);
     if (error) throw new Error(error.message || "Falha ao carregar a agenda");
-    if (!data?.length) break;
-    rows.push(...data);
-    if (data.length < pageSize) break;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < AGENDA_PAGE_SIZE) return rows;
   }
-  return rows;
 }
