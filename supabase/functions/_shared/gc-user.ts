@@ -23,15 +23,74 @@ export function gcHeaders(extra?: Record<string, string>): Record<string, string
   };
 }
 
-let installed = false;
+function isNetworkFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (["AbortError", "TimeoutError"].includes(error.name)) return false;
+  if (/header|invalid url|parse url/i.test(error.message)) return false;
+  if (["NetworkError", "ConnectionReset", "ConnectionRefused", "NotConnected", "BrokenPipe", "UnexpectedEof"].includes(error.name)) return true;
+  return error instanceof TypeError &&
+    /fetch failed|failed to fetch|network.?error|network request failed|error sending request|connection (?:reset|refused|closed)/i.test(error.message);
+}
 
-export function installGcUsuarioId() {
-  if (installed) return;
-  installed = true;
+async function fetchBroker(
+  originalFetch: typeof fetch,
+  init: RequestInit,
+  method: string,
+): Promise<Response> {
+  // The broker uses POST even for reads. Retry based on the logical GC method,
+  // never on the broker's HTTP method, to avoid repeating business writes.
+  const maxAttempts = ["GET", "HEAD"].includes(method.toUpperCase()) ? 3 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    init.signal?.throwIfAborted();
+    try {
+      return await originalFetch(GC_BROKER_URL, init);
+    } catch (error) {
+      if (init.signal?.aborted || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) {
+        throw error;
+      }
+      if (!isNetworkFailure(error) || attempt === maxAttempts - 1) {
+        throw new Error("Falha no transporte do broker GestãoClick", { cause: error });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw new Error("Falha no transporte do broker GestãoClick");
+}
 
-  const originalFetch = globalThis.fetch.bind(globalThis);
+async function unpackBrokerResponse(response: Response, method: string): Promise<Response> {
+  if (!response.ok) return response;
 
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch (error) {
+    throw new Error("Resposta inválida do broker GestãoClick: JSON inválido ou incompleto", { cause: error });
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Resposta inválida do broker GestãoClick: envelope ausente");
+  }
+  const envelope = raw as { data?: unknown; status?: unknown; error?: unknown };
+  const status = typeof envelope.status === "number" || (
+      typeof envelope.status === "string" && /^[2-5]\d{2}$/.test(envelope.status)
+    ) ? Number(envelope.status) : NaN;
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    throw new Error("Resposta inválida do broker GestãoClick: status HTTP inválido");
+  }
+  if (method.toUpperCase() === "HEAD" || [204, 205, 304].includes(status)) {
+    return new Response(null, { status });
+  }
+  const hasData = Object.hasOwn(envelope, "data");
+  if (!hasData && !(status >= 400 && typeof envelope.error === "string")) {
+    throw new Error("Resposta inválida do broker GestãoClick: dados ausentes");
+  }
+  return new Response(JSON.stringify(hasData ? envelope.data : { message: envelope.error }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export function createGcFetch(originalFetch: typeof fetch): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const rawUrl =
       typeof input === "string"
         ? input
@@ -43,69 +102,70 @@ export function installGcUsuarioId() {
       return originalFetch(input, init);
     }
 
+    const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    requestSignal?.throwIfAborted();
+    let protectedRequest: Request;
     try {
-      const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
-      const protectedRequest = await forceGcApiUserInRequest(input, init, GC_API_USER_ID);
-
-      // MCP usa JSON-RPC/SSE e não pode atravessar o broker de endpoints /api/.
-      // A identificação técnica já foi aplicada à URL e aos dados de chamar_api.
-      if (isGestaoClickMcpUrl(protectedRequest.url)) {
-        return originalFetch(protectedRequest, requestSignal ? { signal: requestSignal } : undefined);
-      }
-
-      // Somente o broker pode atravessar esta fronteira diretamente. Todas as
-      // demais funções deste projeto entram no mesmo orçamento/cache global.
-      if (protectedRequest.headers.get("x-gc-broker-direct") === "1") {
-        const directHeaders = new Headers(protectedRequest.headers);
-        directHeaders.delete("x-gc-broker-direct");
-        const directRequest = new Request(protectedRequest, { headers: directHeaders });
-        return originalFetch(directRequest, requestSignal ? { signal: requestSignal } : undefined);
-      }
-
-      const target = new URL(protectedRequest.url);
-      let payload: unknown;
-      if (!["GET", "HEAD"].includes(protectedRequest.method.toUpperCase())) {
-        const rawBody = await protectedRequest.clone().text();
-        if (rawBody) {
-          try {
-            payload = JSON.parse(rawBody);
-          } catch {
-            payload = rawBody;
-          }
-        }
-      }
-
-      const brokerResponse = await originalFetch(GC_BROKER_URL, {
-        method: "POST",
-        signal: requestSignal,
-        headers: {
-          "Content-Type": "application/json",
-          "x-gc-source": normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
-        },
-        body: JSON.stringify({
-          endpoint: `${target.pathname}${target.search}`,
-          method: protectedRequest.method,
-          payload,
-          source: normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
-        }),
-      });
-      if (!brokerResponse.ok) return brokerResponse;
-
-      const envelope = await brokerResponse.json().catch(() => ({})) as {
-        data?: unknown;
-        status?: number;
-        error?: string;
-      };
-      const status = Number(envelope.status ?? (envelope.error ? 500 : 200));
-      return new Response(JSON.stringify(envelope.data ?? { message: envelope.error || "Resposta vazia" }), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      });
+      protectedRequest = await forceGcApiUserInRequest(input, init, GC_API_USER_ID);
     } catch (error) {
-      // Fail closed: uma chamada ao GC nunca segue sem a identificação técnica.
+      if (requestSignal?.aborted || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) {
+        throw error;
+      }
+      // Only request/identity preparation errors belong to this stage.
       throw new Error("Chamada ao GestãoClick bloqueada: não foi possível garantir o usuário da API GC", {
         cause: error,
       });
     }
+
+    // MCP usa JSON-RPC/SSE e não pode atravessar o broker de endpoints /api/.
+    // A identificação técnica já foi aplicada à URL e aos dados de chamar_api.
+    if (isGestaoClickMcpUrl(protectedRequest.url)) {
+      return originalFetch(protectedRequest, requestSignal ? { signal: requestSignal } : undefined);
+    }
+
+    // Somente o broker pode atravessar esta fronteira diretamente. Todas as
+    // demais funções deste projeto entram no mesmo orçamento/cache global.
+    if (protectedRequest.headers.get("x-gc-broker-direct") === "1") {
+      const directHeaders = new Headers(protectedRequest.headers);
+      directHeaders.delete("x-gc-broker-direct");
+      const directRequest = new Request(protectedRequest, { headers: directHeaders });
+      return originalFetch(directRequest, requestSignal ? { signal: requestSignal } : undefined);
+    }
+
+    const target = new URL(protectedRequest.url);
+    let payload: unknown;
+    if (!["GET", "HEAD"].includes(protectedRequest.method.toUpperCase())) {
+      const rawBody = await protectedRequest.clone().text();
+      if (rawBody) {
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          payload = rawBody;
+        }
+      }
+    }
+
+    const brokerResponse = await fetchBroker(originalFetch, {
+      method: "POST",
+      signal: requestSignal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-gc-source": normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
+      },
+      body: JSON.stringify({
+        endpoint: `${target.pathname}${target.search}`,
+        method: protectedRequest.method,
+        payload,
+        source: normalizeSource(Deno.env.get("GC_CALLER_APP") || "auvo-gc-sync"),
+      }),
+    }, protectedRequest.method);
+    return unpackBrokerResponse(brokerResponse, protectedRequest.method);
   }) as typeof fetch;
+}
+
+let installed = false;
+export function installGcUsuarioId() {
+  if (installed) return;
+  installed = true;
+  globalThis.fetch = createGcFetch(globalThis.fetch.bind(globalThis));
 }
