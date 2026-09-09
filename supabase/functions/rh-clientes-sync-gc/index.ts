@@ -1,6 +1,10 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
+import { startJob, claimJob, getJob, saveJob, beginMutation, completeJob, failJob, releaseJob, savePage, readPage, loadPages, type Job } from "../_shared/rh-customer-jobs.ts";
+import { runRhCustomerStep } from "../_shared/rh-customer-runner.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -13,6 +17,17 @@ const AUVO_TOKEN = Deno.env.get("AUVO_TOKEN") ?? "";
 const GC_BASE = "https://api.gestaoclick.com/api";
 const AUVO_BASE = "https://api.auvo.com.br/v2";
 const RESPONSE_CONTRACT = "gc-auvo-v2";
+const SYNC_RUNTIME_VERSION = "rh-customer-jobs-v1";
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+const requestDeadline = new AsyncLocalStorage<AbortSignal | undefined>();
+class UncertainAuvoWriteError extends Error {}
+
+async function syncFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const timeout = AbortSignal.timeout(12_000);
+  const signal = AbortSignal.any([timeout, init.signal, requestDeadline.getStore()].filter((value): value is AbortSignal => !!value));
+  signal.throwIfAborted();
+  return fetch(input, { ...init, signal });
+}
 
 type AuvoCustomer = {
   id: number;
@@ -81,57 +96,22 @@ async function gcPage(
   url.searchParams.set("limite", "100");
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   const headers = { ...gcHeaders, "usuario-id": "1320473" };
-  const response = await fetch(url.toString(), { headers });
+  const response = await syncFetch(url.toString(), { headers });
   const raw = await response.text();
   if (response.status === 404) return { rows: [], hasNext: false };
   if (!response.ok) throw new Error(`GestãoClick /clientes página ${page} respondeu ${response.status}: ${raw.slice(0, 300)}`);
   const json = raw ? JSON.parse(raw) : {};
-  const rows = Array.isArray(json?.data) ? json.data : [];
-  return { rows, hasNext: Boolean(json?.meta?.proxima_pagina) && rows.length > 0 };
-}
-
-async function fetchNewGcCustomers(knownIds: Set<string>): Promise<any[]> {
-  if (knownIds.size === 0) return fetchAllGcCustomers();
-
-  const newCustomers: any[] = [];
-  // IDs do GC são crescentes. Ordenando do mais novo para o mais antigo, a
-  // varredura automática normalmente consome uma única requisição e para ao
-  // encontrar o primeiro cliente que já existe no cadastro central.
-  for (let page = 1; page <= 50; page++) {
-    const result = await gcPage(page, { ordenacao: "id", direcao: "desc" });
-    let reachedKnownCustomer = false;
-    for (const customer of result.rows) {
-      const id = String(customer?.id ?? customer?.codigo ?? "").trim();
-      if (id && knownIds.has(id)) {
-        reachedKnownCustomer = true;
-        break;
-      }
-      if (id) newCustomers.push(customer);
-    }
-    if (reachedKnownCustomer || !result.hasNext) break;
-    // Pequeno intervalo para respeitar limite de 3req/s do GC
-    await new Promise((resolve) => setTimeout(resolve, 350));
-  }
-  return newCustomers;
-}
-
-async function fetchAllGcCustomers(): Promise<any[]> {
-  const all: any[] = [];
-  // GestãoClick limita a 3 chamadas/s. Três páginas por bloco respeitam o limite.
-  for (let firstPage = 1; firstPage <= 300; firstPage += 3) {
-    const pages = [firstPage, firstPage + 1, firstPage + 2];
-    const results = await Promise.all(pages.map(gcPage));
-    for (const result of results) all.push(...result.rows);
-    if (!results.some((result) => result.hasNext)) break;
-    // Intervalo ligeiramente maior para garantir conformidade com o limite de taxa do GC
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-  }
-  return all;
+  if (!Array.isArray(json?.data)) throw new Error(`GestãoClick /clientes página ${page}: resposta inválida`);
+  const rows = json.data;
+  const totalPages = Number(json?.meta?.total_paginas || 0);
+  const hasNext = totalPages > 0 ? page < totalPages : Boolean(json?.meta?.proxima_pagina);
+  if (hasNext && rows.length === 0) throw new Error(`GestãoClick /clientes página ${page}: página intermediária vazia`);
+  return { rows, hasNext };
 }
 
 async function auvoLogin(): Promise<string> {
   if (!AUVO_APP_KEY || !AUVO_TOKEN) throw new Error("Credenciais do Auvo não configuradas");
-  const response = await fetch(
+  const response = await syncFetch(
     `${AUVO_BASE}/login/?apiKey=${encodeURIComponent(AUVO_APP_KEY)}&apiToken=${encodeURIComponent(AUVO_TOKEN)}`,
     { headers: { "Content-Type": "application/json" } },
   );
@@ -161,30 +141,6 @@ function mapAuvoCustomer(raw: any): AuvoCustomer | null {
     state: String(raw?.state || raw?.billingState || "").trim() || null,
     zipCode: digits(raw?.zipCode || raw?.billingZipCode) || null,
   };
-}
-
-async function fetchAllAuvoCustomers(accessToken: string): Promise<AuvoCustomer[]> {
-  const all: AuvoCustomer[] = [];
-  for (let page = 1; page <= 300; page++) {
-    const filter = encodeURIComponent(JSON.stringify({}));
-    const response = await fetch(
-      `${AUVO_BASE}/customers/?paramFilter=${filter}&page=${page}&pageSize=100&order=asc`,
-      { headers: auvoHeaders(accessToken) },
-    );
-    if (response.status === 404) break;
-    const raw = await response.text();
-    if (!response.ok) throw new Error(`Auvo /customers página ${page} respondeu ${response.status}: ${raw.slice(0, 300)}`);
-    const json = raw ? JSON.parse(raw) : {};
-    const list = json?.result?.entityList ?? json?.result ?? [];
-    if (!Array.isArray(list) || list.length === 0) break;
-    for (const item of list) {
-      const mapped = mapAuvoCustomer(item);
-      if (mapped) all.push(mapped);
-    }
-    const total = Number(json?.result?.pagedSearchReturnData?.totalItems || 0);
-    if (list.length < 100 || (total > 0 && all.length >= total)) break;
-  }
-  return all;
 }
 
 function firstGcAddress(customer: any): any {
@@ -247,22 +203,29 @@ function auvoPayload(customer: any): Record<string, unknown> {
 }
 
 async function upsertCustomerInAuvo(customer: any, accessToken: string): Promise<AuvoCustomer> {
-  const response = await fetch(`${AUVO_BASE}/customers/`, {
-    method: "PUT",
-    headers: auvoHeaders(accessToken),
-    body: JSON.stringify(auvoPayload(customer)),
-  });
-  const raw = await response.text();
-  const json = raw ? JSON.parse(raw) : {};
-  if (!response.ok) throw new Error(`Auvo recusou cliente GC ${customer?.id} (${response.status}): ${raw.slice(0, 500)}`);
-  const mapped = mapAuvoCustomer(json?.result ?? json);
-  if (!mapped) throw new Error(`Auvo criou/atualizou cliente GC ${customer?.id}, mas não devolveu o ID`);
-  return mapped;
+  let response: Response;
+  try {
+    response = await syncFetch(`${AUVO_BASE}/customers/`, {
+      method: "PUT", headers: auvoHeaders(accessToken), body: JSON.stringify(auvoPayload(customer)),
+    });
+  } catch {
+    throw new UncertainAuvoWriteError(`Resultado da escrita Auvo do cliente GC ${customer?.id} não confirmado; verificar antes de repetir`);
+  }
+  if (response.status >= 500) throw new UncertainAuvoWriteError(`Auvo respondeu ${response.status} ao gravar cliente GC ${customer?.id}; resultado não confirmado`);
+  if (!response.ok) throw new Error(`Auvo recusou cliente GC ${customer?.id} (${response.status})`);
+  try {
+    const json = await response.json();
+    const mapped = mapAuvoCustomer(json?.result ?? json);
+    if (!mapped) throw new Error("ID ausente");
+    return mapped;
+  } catch {
+    throw new UncertainAuvoWriteError(`Auvo não confirmou o ID após gravar cliente GC ${customer?.id}; verificar antes de repetir`);
+  }
 }
 
 async function fetchAuvoCustomerById(customerId: number): Promise<AuvoCustomer> {
   const accessToken = await auvoLogin();
-  const response = await fetch(`${AUVO_BASE}/customers/${customerId}`, {
+  const response = await syncFetch(`${AUVO_BASE}/customers/${customerId}`, {
     headers: auvoHeaders(accessToken),
   });
   const raw = await response.text();
@@ -514,30 +477,6 @@ async function refreshAuvoNameReferences(
   if (autoGroupError && autoGroupError.code !== "23505") throw autoGroupError;
 }
 
-async function fetchAuvoCustomersLight(accessToken: string): Promise<AuvoCustomer[]> {
-  const all: AuvoCustomer[] = [];
-  const filter = encodeURIComponent(JSON.stringify({}));
-  const fields = encodeURIComponent("id,externalId,description,name,legalName,cpfCnpj,active");
-  for (let page = 1; page <= 200; page++) {
-    const response = await fetch(
-      `${AUVO_BASE}/customers/?paramFilter=${filter}&page=${page}&pageSize=500&order=asc&selectfields=${fields}`,
-      { headers: auvoHeaders(accessToken) },
-    );
-    if (response.status === 404) break;
-    const raw = await response.text();
-    if (!response.ok) throw new Error(`Auvo /customers página ${page} respondeu ${response.status}: ${raw.slice(0, 200)}`);
-    const json = raw ? JSON.parse(raw) : {};
-    const list = json?.result?.entityList ?? json?.result ?? [];
-    if (!Array.isArray(list) || list.length === 0) break;
-    for (const item of list) {
-      const mapped = mapAuvoCustomer(item);
-      if (mapped) all.push(mapped);
-    }
-    if (list.length < 500) break;
-  }
-  return all;
-}
-
 function namesLookCompatible(a: string, b: string): boolean {
   const tokensA = new Set(normalize(a).split(" ").filter((t) => t.length >= 3));
   const tokensB = new Set(normalize(b).split(" ").filter((t) => t.length >= 3));
@@ -546,7 +485,7 @@ function namesLookCompatible(a: string, b: string): boolean {
   return false;
 }
 
-async function handleDocumentLookup(supabase: any, body: any): Promise<Record<string, unknown>> {
+async function handleDocumentLookup(supabase: any, body: any, auvoCustomers: AuvoCustomer[]): Promise<Record<string, unknown>> {
   const ids = Array.isArray(body?.rhClientIds)
     ? body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
     : [];
@@ -559,8 +498,6 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
     .in("id", ids);
   if (error) throw error;
 
-  const accessToken = await auvoLogin();
-  const auvoCustomers = await fetchAuvoCustomersLight(accessToken);
   const auvoByDocument = new Map<string, AuvoCustomer[]>();
   for (const customer of auvoCustomers) addMulti(auvoByDocument, digits(customer.cpfCnpj), customer);
 
@@ -689,7 +626,7 @@ async function handleUpdateAuvoName(supabase: any, body: any, sharedToken?: stri
   const accessToken = sharedToken ?? await auvoLogin();
   
   // GET completo para preservar outros campos (Estratégia da memória)
-  const response = await fetch(`${AUVO_BASE}/customers/${target.auvo_cliente_id}`, {
+  const response = await syncFetch(`${AUVO_BASE}/customers/${target.auvo_cliente_id}`, {
     headers: auvoHeaders(accessToken),
   });
   if (!response.ok) throw new Error(`Falha ao buscar cliente no Auvo (#${target.auvo_cliente_id})`);
@@ -715,7 +652,7 @@ async function handleUpdateAuvoName(supabase: any, body: any, sharedToken?: stri
     identifierBycpfCnpj: false
   };
   
-  const putResponse = await fetch(`${AUVO_BASE}/customers/`, {
+  const putResponse = await syncFetch(`${AUVO_BASE}/customers/`, {
     method: "PUT",
     headers: auvoHeaders(accessToken),
     body: JSON.stringify(payload),
@@ -747,7 +684,7 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
 
   // O runtime derruba a requisição em 150s ociosos. Trabalhamos com folga e
   // devolvemos os pendentes para o cliente reenviar em outro lote.
-  const deadline = Date.now() + 100_000;
+  const deadline = Date.now() + 40_000;
   const accessToken = await auvoLogin();
 
   const { data: rows, error } = await supabase
@@ -788,80 +725,38 @@ async function handleUpdateAuvoNames(supabase: any, body: any): Promise<Record<s
   return { ok: errors === 0, requested: ids.length, updated, errors, pending, details };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  try {
-    const body = await req.json().catch(() => ({}));
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    if (body?.action === "link") {
-      const result = await handleManualLink(supabase, body);
-      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+type AuvoIndexes = {
+  length: number;
+  auvoById: Map<number, AuvoCustomer>;
+  auvoByExternalId: Map<string, AuvoCustomer>;
+  auvoByDocument: Map<string, AuvoCustomer[]>;
+  auvoByName: Map<string, AuvoCustomer[]>;
+};
+const auvoIndexCache = new WeakMap<AuvoCustomer[], AuvoIndexes>();
 
-    if (body?.action === "lookup_document") {
-      const result = await handleDocumentLookup(supabase, body);
-      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+function indexAuvoCustomers(customers: AuvoCustomer[]): AuvoIndexes {
+  let indexes = auvoIndexCache.get(customers);
+  if (!indexes || indexes.length > customers.length) {
+    indexes = { length: 0, auvoById: new Map(), auvoByExternalId: new Map(), auvoByDocument: new Map(), auvoByName: new Map() };
+    auvoIndexCache.set(customers, indexes);
+  }
+  // A job's snapshot is append-only. Reuse normalized indexes across its steps;
+  // newly confirmed Auvo customers require indexing only the appended rows.
+  for (let i = indexes.length; i < customers.length; i++) {
+    const customer = customers[i];
+    indexes.auvoById.set(customer.id, customer);
+    if (customer.externalId) indexes.auvoByExternalId.set(String(customer.externalId).toUpperCase(), customer);
+    addMulti(indexes.auvoByDocument, digits(customer.cpfCnpj), customer);
+    addMulti(indexes.auvoByName, normalize(customer.name), customer);
+    if (customer.legalName) addMulti(indexes.auvoByName, normalize(customer.legalName), customer);
+  }
+  indexes.length = customers.length;
+  return indexes;
+}
 
-    if (body?.action === "update_auvo_name") {
-      const result = await handleUpdateAuvoName(supabase, body);
-      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (body?.action === "update_auvo_names") {
-      const result = await handleUpdateAuvoNames(supabase, body);
-      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!GC_ACCESS_TOKEN || !GC_SECRET_TOKEN) throw new Error("Credenciais do GestãoClick não configuradas");
-    const autoCreateAuvo = body?.autoCreateAuvo !== false;
-    const syncMode = body?.mode === "incremental" ? "incremental" : "full";
-
-    const { data: localRows, error: localError } = await supabase
-      .from("rh_clientes")
-      .select("id, nome, nome_auvo, nome_normalizado, gc_cliente_id, auvo_cliente_id, origem")
-      .limit(10000);
-    if (localError) throw localError;
-    const locals = (localRows ?? []) as LocalCustomer[];
-    const knownGcIds = new Set(
-      locals.map((row) => String(row.gc_cliente_id || "").trim()).filter(Boolean),
-    );
-    const gcCustomers = syncMode === "incremental"
-      ? await fetchNewGcCustomers(knownGcIds)
-      : await fetchAllGcCustomers();
-
-    // O polling de dez minutos existe só para descobrir novos cadastros do GC.
-    // Se não há novidade, não varre o Auvo nem regrava mil clientes.
-    if (syncMode === "incremental" && gcCustomers.length === 0) {
-      return new Response(JSON.stringify({
-        ok: true,
-        apiVersion: RESPONSE_CONTRACT,
-        mode: syncMode,
-        gcTotal: 0,
-        auvoTotal: 0,
-        linked: 0,
-        createdInAuvo: 0,
-        ambiguous: 0,
-        auvoOnly: 0,
-        inserted: 0,
-        updated: 0,
-        errors: 0,
-        syncTime: new Date().toISOString()
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const accessToken = await auvoLogin();
-    const auvoCustomers = await fetchAllAuvoCustomers(accessToken);
-
+async function reconcileCustomerBatch(supabase: any, gcCustomers: any[], auvoCustomers: AuvoCustomer[], autoCreateAuvo: boolean, includeAuvoOnly: boolean, accessToken: string): Promise<Record<string, any>> {
+  const locals = await loadLocalCustomers(supabase);
     const localByGcId = new Map(locals.filter((row) => row.gc_cliente_id).map((row) => [String(row.gc_cliente_id), row]));
     const localByAuvoId = new Map(locals.filter((row) => row.auvo_cliente_id).map((row) => [Number(row.auvo_cliente_id), row]));
     const localByName = new Map<string, LocalCustomer[]>();
@@ -871,38 +766,11 @@ Deno.serve(async (req) => {
       bucket.push(row);
       localByName.set(key, bucket);
     }
-    const auvoById = new Map(auvoCustomers.map((customer) => [customer.id, customer]));
-    const auvoByExternalId = new Map(auvoCustomers.filter((customer) => customer.externalId).map((customer) => [String(customer.externalId).toUpperCase(), customer]));
-    const auvoByDocument = new Map<string, AuvoCustomer[]>();
-    const auvoByName = new Map<string, AuvoCustomer[]>();
-    for (const customer of auvoCustomers) {
-      addMulti(auvoByDocument, digits(customer.cpfCnpj), customer);
-      addMulti(auvoByName, normalize(customer.name), customer);
-      if (customer.legalName) addMulti(auvoByName, normalize(customer.legalName), customer);
-    }
-
-    // Atualiza o espelho completo do Auvo usado nas demais telas.
-    const auvoCacheRows = auvoCustomers.map((customer) => ({
-      auvo_id: customer.id,
-      nome: customer.name,
-      external_id: customer.externalId,
-      cpf_cnpj: customer.cpfCnpj,
-      nome_legal: customer.legalName,
-      ativo: customer.active,
-      endereco: customer.address,
-      cidade: customer.city,
-      estado: customer.state,
-      cep: customer.zipCode,
-      atualizado_em: new Date().toISOString(),
-    }));
-    for (let i = 0; i < auvoCacheRows.length; i += 500) {
-      const { error } = await supabase.from("auvo_clientes_cache")
-        .upsert(auvoCacheRows.slice(i, i + 500), { onConflict: "auvo_id" });
-      if (error) throw error;
-    }
+    const { auvoById, auvoByExternalId, auvoByDocument, auvoByName } = indexAuvoCustomers(auvoCustomers);
 
     let linked = 0;
     let createdInAuvo = 0;
+    const createdCustomers: AuvoCustomer[] = [];
     let ambiguous = 0;
     let errors = 0;
     const errorSamples: string[] = [];
@@ -927,7 +795,8 @@ Deno.serve(async (req) => {
       const document = gcDocument(gc);
       const externalId = `GC:${gcId}`;
       const localNameCandidates = localByName.get(normalize(name)) ?? [];
-      let local = localByGcId.get(gcId) || (localNameCandidates.length === 1 ? localNameCandidates[0] : null);
+      const nameCandidate = localNameCandidates.length === 1 ? localNameCandidates[0] : null;
+      let local = localByGcId.get(gcId) || (nameCandidate && !nameCandidate.gc_cliente_id ? nameCandidate : null);
 
       let match: AuvoCustomer | null = null;
       let method = "";
@@ -954,7 +823,12 @@ Deno.serve(async (req) => {
       let holderConflict = false;
       if (match) {
         const holder = localByAuvoId.get(match.id);
-        if (!local && holder) local = holder;
+        if (holder?.gc_cliente_id && holder.gc_cliente_id !== gcId) {
+          match = null;
+          method = "id_auvo_vinculado_a_outro_gc";
+          confidence = 0;
+          holderConflict = true;
+        } else if (!local && holder) local = holder;
         else if (local && holder && holder.id !== local.id) {
           if (!holder.gc_cliente_id) {
             try {
@@ -989,8 +863,12 @@ Deno.serve(async (req) => {
           method = "criado_por_gc";
           confidence = 1;
           createdInAuvo++;
+          createdCustomers.push(match);
           auvoById.set(match.id, match);
           auvoByExternalId.set(externalId.toUpperCase(), match);
+          addMulti(auvoByDocument, digits(match.cpfCnpj), match);
+          addMulti(auvoByName, normalize(match.name), match);
+          if (match.legalName) addMulti(auvoByName, normalize(match.legalName), match);
           const { error: cacheError } = await supabase.from("auvo_clientes_cache").upsert({
             auvo_id: match.id,
             nome: match.name,
@@ -1006,6 +884,7 @@ Deno.serve(async (req) => {
           }, { onConflict: "auvo_id" });
           if (cacheError) throw cacheError;
         } catch (error) {
+          if (error instanceof UncertainAuvoWriteError) throw error;
           syncError = (error as Error).message;
           errors++;
           if (errorSamples.length < 10) errorSamples.push(`GC ${gcId}: ${syncError}`);
@@ -1079,7 +958,7 @@ Deno.serve(async (req) => {
     let auvoOnly = 0;
     const existingAuvoOnlyRows: any[] = [];
     const newAuvoOnlyRows: any[] = [];
-    for (const customer of auvoCustomers) {
+    for (const customer of includeAuvoOnly ? auvoCustomers : []) {
       if (matchedAuvoIds.has(customer.id)) continue;
       const existing = localByAuvoId.get(customer.id);
       const row = {
@@ -1139,14 +1018,14 @@ Deno.serve(async (req) => {
       errorSamples.push(...result.errorSamples.slice(0, Math.max(0, 10 - errorSamples.length)));
     }
 
-    return new Response(JSON.stringify({
+    return {
       ok: errors === 0,
       apiVersion: RESPONSE_CONTRACT,
-      mode: syncMode,
       gcTotal: gcCustomers.length,
       auvoTotal: auvoCustomers.length,
       linked,
       createdInAuvo,
+      createdCustomers,
       ambiguous,
       auvoOnly,
       inserted,
@@ -1154,12 +1033,207 @@ Deno.serve(async (req) => {
       mergedDuplicates,
       errors,
       errorSamples,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    };
+}
+
+async function loadLocalCustomers(supabase: any): Promise<LocalCustomer[]> {
+  const rows: LocalCustomer[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const result = await supabase.from("rh_clientes")
+      .select("id, nome, nome_auvo, nome_normalizado, gc_cliente_id, auvo_cliente_id, origem")
+      .order("id").range(offset, offset + 999);
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []));
+    if (!result.data || result.data.length < 1000) return rows;
+  }
+}
+
+async function fetchAuvoCustomerPage(accessToken: string, page: number, light: boolean) {
+  const pageSize = light ? 500 : 100;
+  const url = new URL(`${AUVO_BASE}/customers/`);
+  url.searchParams.set("paramFilter", "{}");
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("pageSize", String(pageSize));
+  url.searchParams.set("order", "asc");
+  if (light) url.searchParams.set("selectfields", "id,externalId,description,name,legalName,cpfCnpj,active");
+  const response = await syncFetch(url, { headers: auvoHeaders(accessToken) });
+  if (response.status === 404) return { rows: [], hasNext: false, totalRows: 0 };
+  if (!response.ok) throw new Error(`Auvo /customers página ${page} respondeu ${response.status}`);
+  const json = await response.json();
+  const list = json?.result?.entityList ?? json?.result;
+  if (!Array.isArray(list)) throw new Error(`Auvo /customers página ${page}: resposta inválida`);
+  const total = Number(json?.result?.pagedSearchReturnData?.totalItems || 0);
+  if (list.length === 0 && total > (page - 1) * pageSize) throw new Error(`Auvo /customers página ${page}: página intermediária vazia`);
+  return {
+    rows: list.map(mapAuvoCustomer).filter((row): row is AuvoCustomer => row !== null),
+    totalRows: list.length,
+    hasNext: list.length === pageSize && (total === 0 || page * pageSize < total),
+  };
+}
+
+function auvoCacheRow(customer: AuvoCustomer) {
+  return {
+    auvo_id: customer.id, nome: customer.name, external_id: customer.externalId,
+    cpf_cnpj: customer.cpfCnpj, nome_legal: customer.legalName, ativo: customer.active,
+    endereco: customer.address, cidade: customer.city, estado: customer.state,
+    cep: customer.zipCode, atualizado_em: new Date().toISOString(),
+  };
+}
+
+function jobResponse(job: Job): Record<string, unknown> {
+  const done = job.status === "succeeded" || job.status === "failed";
+  return {
+    ...(done ? job.result || {} : {}),
+    ok: job.status !== "failed" && (job.result?.ok !== false),
+    apiVersion: RESPONSE_CONTRACT, runtimeVersion: SYNC_RUNTIME_VERSION,
+    done, jobId: job.id, status: job.status, phase: job.state.phase,
+    progress: { gcTotal: job.state.gcTotal || 0, auvoTotal: job.state.auvoTotal || 0, ...job.state.metrics },
+    ...(job.error ? { error: job.error } : {}),
+    ...(!done ? { retryAfterMs: 1500 } : {}),
+  };
+}
+
+function jsonResponse(value: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(value), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+async function processCustomerJob(supabase: any, job: Job): Promise<void> {
+  return requestDeadline.run(AbortSignal.timeout(55_000), () => processCustomerJobWithDeadline(supabase, job));
+}
+
+async function processCustomerJobWithDeadline(supabase: any, job: Job): Promise<void> {
+  let token: string | null = null;
+  let auvoSnapshot: AuvoCustomer[] | null = null;
+  let knownGcIds: Set<string> | null = null;
+  let wantedDocuments: Set<string> | null = null;
+  const getToken = async () => token ?? (token = await auvoLogin());
+  const loadAuvo = async () => auvoSnapshot ?? (auvoSnapshot = [
+    ...(await loadPages(supabase, job, "auvo")),
+    ...(await loadPages(supabase, job, "created_auvo")),
+  ].flatMap((page) => page.data));
+  const started = Date.now();
+  try {
+    // Background work is also bounded. The next invocation resumes the stored
+    // cursor; waitUntil never wraps the original unbounded whole-catalog scan.
+    for (let steps = 0; steps < 20 && Date.now() - started < 35_000; steps++) {
+      await runRhCustomerStep({
+        payload: { ...job.payload, kind: job.payload.kind },
+        state: { ...job.state, phase: job.state.phase },
+      }, {
+        fetchGcPage: async (page, mode) => {
+          const result = await gcPage(page, mode === "incremental" ? { ordenacao: "id", direcao: "desc" } : {});
+          if (mode !== "incremental") return result;
+          knownGcIds ??= new Set((await loadLocalCustomers(supabase)).map((row) => String(row.gc_cliente_id || "")).filter(Boolean));
+          const knownAt = result.rows.findIndex((row) => knownGcIds!.has(String(row.id ?? row.codigo ?? "")));
+          return knownAt < 0 ? result : { rows: result.rows.slice(0, knownAt), hasNext: false };
+        },
+        fetchAuvoPage: async (page, light) => {
+          if (light && !wantedDocuments) {
+            const { data, error } = await supabase.from("rh_clientes").select("cpf_cnpj,auvo_cliente_id").in("id", job.payload.rhClientIds);
+            if (error) throw error;
+            wantedDocuments = new Set((data || []).filter((row: any) => !row.auvo_cliente_id).map((row: any) => digits(row.cpf_cnpj)).filter((doc: string) => doc.length === 11 || doc.length === 14));
+          }
+          if (light && wantedDocuments!.size === 0) return { rows: [], hasNext: false, totalRows: 0 };
+          const result = await fetchAuvoCustomerPage(await getToken(), page, light);
+          return light ? { ...result, rows: result.rows.filter((row) => wantedDocuments!.has(digits(row.cpfCnpj))) } : result;
+        },
+        savePage: async (source, page, rows) => {
+          await savePage(supabase, job, source, page, rows);
+          if (source === "auvo" && job.payload.kind === "sync" && rows.length) {
+            const { error } = await supabase.from("auvo_clientes_cache").upsert((rows as AuvoCustomer[]).map(auvoCacheRow), { onConflict: "auvo_id" });
+            if (error) throw error;
+          }
+        },
+        readPage: async (source, page) => {
+          const rows = await readPage(supabase, job, source, page);
+          if (!rows) throw new Error(`Página persistida ausente: ${source}/${page}`);
+          return rows;
+        },
+        loadAuvo,
+        beginMutation: async () => { await beginMutation(supabase, job); },
+        checkpoint: async (state) => { await saveJob(supabase, job, state); },
+        complete: async (result) => { await completeJob(supabase, job, result); },
+        applyGc: async (rows, auvo, autoCreate) => {
+          const result = await reconcileCustomerBatch(supabase, rows, auvo as AuvoCustomer[], autoCreate, false, await getToken());
+          if (result.createdCustomers?.length) {
+            const ordinal = (Number(job.state.page) - 1) * 100 + Number(job.state.offset || 0) + 1;
+            await savePage(supabase, job, "created_auvo", ordinal, result.createdCustomers);
+            auvoSnapshot!.push(...result.createdCustomers);
+          }
+          return result;
+        },
+        applyAuvoOnly: async (rows) => reconcileCustomerBatch(supabase, [], rows as AuvoCustomer[], false, true, ""),
+        applyLookup: async (ids, auvo) => handleDocumentLookup(supabase, { rhClientIds: ids }, auvo as AuvoCustomer[]),
+      });
+      if (job.status === "succeeded" || job.status === "failed") return;
+    }
+    await releaseJob(supabase, job);
+  } catch (error) {
+    // Never replay a possibly applied write. A lost checkpoint leaves a marker
+    // for the lease recovery path, which fails explicitly with UNCERTAIN_WRITE.
+    console.error("[rh-clientes-sync] Lote interrompido", job.id, error);
+    try { await requestDeadline.run(undefined, () => failJob(supabase, job, error)); }
+    catch (recordError) { console.error("[rh-clientes-sync] Falha ao registrar lote", job.id, recordError); }
+  }
+}
+
+async function continueCustomerJob(supabase: any, jobId?: string) {
+  const claimed = await claimJob(supabase, jobId);
+  if (!claimed) {
+    const existing = jobId ? await getJob(supabase, jobId) : null;
+    if (jobId && !existing) throw new Error("Sincronização não encontrada");
+    return jsonResponse(existing ? jobResponse(existing) : { ok: true, done: true, idle: true, apiVersion: RESPONSE_CONTRACT, runtimeVersion: SYNC_RUNTIME_VERSION });
+  }
+  const work = processCustomerJob(supabase, claimed);
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+    EdgeRuntime.waitUntil(work);
+    return jsonResponse(jobResponse(claimed), 202);
+  }
+  await work;
+  return jsonResponse(jobResponse(claimed));
+}
+
+async function handleRequest(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    const body = await req.json().catch(() => ({}));
+    if (body.action === "lookup_document" && body.continueJob === true) body.action = "continue";
+    if (body.action === "version") return jsonResponse({ ok: true, apiVersion: RESPONSE_CONTRACT, runtimeVersion: SYNC_RUNTIME_VERSION });
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { global: { fetch: syncFetch } });
+    if (body.action === "continue" || body.action === "status") {
+      const jobId = body.jobId === undefined ? undefined : String(body.jobId);
+      if (jobId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) throw new Error("Identificador de sincronização inválido");
+      if (body.action === "status") {
+        if (!jobId) throw new Error("Identificador de sincronização não informado");
+        const job = await getJob(supabase, jobId);
+        if (!job) throw new Error("Sincronização não encontrada");
+        return jsonResponse(jobResponse(job));
+      }
+      return await continueCustomerJob(supabase, jobId);
+    }
+    if (["link", "update_auvo_name", "update_auvo_names"].includes(body.action)) {
+      const result = body.action === "link" ? await handleManualLink(supabase, body)
+        : body.action === "update_auvo_name" ? await handleUpdateAuvoName(supabase, body)
+        : await handleUpdateAuvoNames(supabase, body);
+      return jsonResponse({ ...result, apiVersion: RESPONSE_CONTRACT, runtimeVersion: SYNC_RUNTIME_VERSION });
+    }
+    if (body.action && body.action !== "lookup_document") throw new Error("Ação de sincronização desconhecida");
+    const lookup = body.action === "lookup_document";
+    const ids: string[] = [...new Set((Array.isArray(body.rhClientIds) ? body.rhClientIds : []).map((id: unknown) => String(id || "").trim()).filter(Boolean))] as string[];
+    if (lookup && (ids.length === 0 || ids.length > 200)) throw new Error("Selecione de 1 a 200 clientes por consulta");
+    if (!lookup && (!GC_ACCESS_TOKEN || !GC_SECRET_TOKEN)) throw new Error("Credenciais do GestãoClick não configuradas");
+    const payload = lookup ? { kind: "lookup_document", rhClientIds: ids }
+      : { kind: "sync", mode: body.mode === "incremental" ? "incremental" : "full", autoCreateAuvo: body.autoCreateAuvo !== false };
+    const keyInput = lookup ? `lookup:${[...ids].sort().join(",")}` : `sync:${payload.mode}:${payload.autoCreateAuvo}`;
+    const key = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyInput))), (value) => value.toString(16).padStart(2, "0")).join("");
+    const job = await startJob(supabase, key, payload, { phase: lookup ? "auvo_fetch" : "gc_fetch", page: 1, offset: 0, gcTotal: 0, auvoTotal: 0, metrics: {} });
+    // Starting a job never enumerates either provider. The client and the cron
+    // worker invoke the same leased continuation protocol.
+    return jsonResponse(jobResponse(job), 202);
   } catch (error) {
     console.error("[rh-clientes-sync]", error);
-    return new Response(
-      JSON.stringify({ ok: false, apiVersion: RESPONSE_CONTRACT, error: (error as Error).message }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ ok: false, apiVersion: RESPONSE_CONTRACT, runtimeVersion: SYNC_RUNTIME_VERSION, error: error instanceof Error ? error.message : String(error) });
   }
-});
+}
+
+Deno.serve((req) => requestDeadline.run(AbortSignal.timeout(60_000), () => handleRequest(req)));

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { validateRhPendingBatch } from "@/lib/rhClientesSync";
 
 /**
  * Atualiza o nome de um cliente no Auvo para corresponder ao nome no GestãoClick.
@@ -32,17 +33,18 @@ type UpdateNamesResult = {
 const BATCH_SIZE = 15;
 
 /**
- * Processa em lotes pequenos para nunca estourar o limite de 150s da Edge Function.
+ * Processa em lotes pequenos e continua somente quando o backend confirma avanço.
  */
 export async function updateAuvoClientNames(
   rhClientIds: string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<UpdateNamesResult> {
-  const total = rhClientIds.length;
+  const uniqueIds = [...new Set(rhClientIds)];
+  const total = uniqueIds.length;
   const aggregate: UpdateNamesResult = { ok: true, requested: total, updated: 0, errors: 0, details: [] };
 
   for (let i = 0; i < total; i += BATCH_SIZE) {
-    let batch = rhClientIds.slice(i, i + BATCH_SIZE);
+    let batch = uniqueIds.slice(i, i + BATCH_SIZE);
 
     // Se o backend devolver pendentes (corte por tempo), reenvia até esvaziar.
     while (batch.length) {
@@ -53,10 +55,11 @@ export async function updateAuvoClientNames(
       if (!data || typeof data.updated !== "number") {
         throw new Error(data?.error || "Resposta inválida ao atualizar nomes no Auvo");
       }
+      const pending = validateRhPendingBatch(batch, data.pending);
       aggregate.updated += data.updated;
       aggregate.errors += data.errors ?? 0;
       aggregate.details.push(...(data.details ?? []));
-      batch = Array.isArray(data.pending) ? data.pending : [];
+      batch = pending;
     }
 
     onProgress?.(Math.min(i + BATCH_SIZE, total), total);

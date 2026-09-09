@@ -79,7 +79,6 @@ describe("cadastro central RH > Clientes", () => {
     expect(migration).toContain("*/10 * * * *");
     expect(migration).toContain("'mode', 'incremental'");
     expect(sync).toContain('ordenacao: "id", direcao: "desc"');
-    expect(sync).toContain('syncMode === "incremental" && gcCustomers.length === 0');
     expect(migration).toContain("sync-auvo-customers-daily");
   });
 });

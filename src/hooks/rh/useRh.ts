@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { runRhClientesSync } from "@/lib/rhClientesSync";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -322,11 +323,11 @@ export function useConsultarClientesPorCnpj() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (rhClientIds: string[]) => {
-      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
-        body: { action: "lookup_document", requestVersion: "gc-auvo-v2", rhClientIds },
-      });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Não foi possível consultar os CNPJs no Auvo");
+      const data = await runRhClientesSync(
+        (body) => sb.functions.invoke("rh-clientes-sync-gc", { body }),
+        { action: "lookup_document", requestVersion: "gc-auvo-v2", rhClientIds },
+      );
+      if (!data?.ok) throw new Error(String(data?.error || "Não foi possível consultar os CNPJs no Auvo"));
       return data as {
         ok: true; checked: number; linked: number; alreadyLinked: number;
         ambiguous: number; notFound: number; invalidDocument: number; errors: number;
@@ -341,6 +342,8 @@ export function useConsultarClientesPorCnpj() {
           (data.invalidDocument ? `, ${data.invalidDocument} sem CPF/CNPJ` : "") +
           (data.errors ? `, ${data.errors} com erro` : ""),
       );
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["rh_clientes"] });
       qc.invalidateQueries({ queryKey: ["auvo_clientes_cache"] });
     },
@@ -698,11 +701,11 @@ export function useSyncClientesGc() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
-        body: { requestVersion: "gc-auvo-v2", mode: "full" },
-      });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || `A sincronização terminou com ${data?.errors ?? 1} falha(s)`);
+      const data = await runRhClientesSync(
+        (body) => sb.functions.invoke("rh-clientes-sync-gc", { body }),
+        { requestVersion: "gc-auvo-v2", mode: "full" },
+      );
+      if (!data?.ok) throw new Error(String(data?.error || `A sincronização terminou com ${data?.errors ?? 1} falha(s)`));
       if (data?.apiVersion !== "gc-auvo-v2") {
         throw new Error(
           "A Edge Function rh-clientes-sync-gc publicada está desatualizada. O GC foi lido, mas a integração GC → Auvo não foi executada. Implante a versão atual da função e tente novamente.",
