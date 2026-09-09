@@ -163,7 +163,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false })
-      .order("id")
+      .order("mirror_key")
       .range(from, to));
 
     for (const row of data ?? []) {
@@ -237,7 +237,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
       .in("gc_os_tarefa_exec", taskIds.slice(index, index + 500))
       .not("gc_os_codigo", "is", null)
-      .order("id")
+      .order("mirror_key")
       .range(from, to));
       
     if (vinculosRelacionados.length > 0) {
