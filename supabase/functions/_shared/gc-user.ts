@@ -34,6 +34,16 @@ function isNetworkFailure(error: unknown): boolean {
     /fetch failed|failed to fetch|network.?error|network request failed|error sending request|connection (?:reset|refused|closed)/i.test(error.message);
 }
 
+// Limite de saída da plataforma: a requisição nem chega a ser enviada,
+// portanto é seguro repetir mesmo em gravações.
+function rateLimitDelayMs(error: unknown): number | null {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
+  if (!/rate.?limit/i.test(message)) return null;
+  const match = message.match(/retry after (\d+)\s*ms/i);
+  const suggested = match ? Number(match[1]) : 1_000;
+  return Math.min(Math.max(suggested + 250, 500), 45_000);
+}
+
 async function fetchBroker(
   originalFetch: typeof fetch,
   init: RequestInit,
@@ -41,7 +51,8 @@ async function fetchBroker(
 ): Promise<Response> {
   // The broker uses POST even for reads. Retry based on the logical GC method,
   // never on the broker's HTTP method, to avoid repeating business writes.
-  const maxAttempts = ["GET", "HEAD"].includes(method.toUpperCase()) ? 3 : 1;
+  const isSafe = ["GET", "HEAD"].includes(method.toUpperCase());
+  const maxAttempts = isSafe ? 4 : 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     init.signal?.throwIfAborted();
     try {
@@ -50,7 +61,12 @@ async function fetchBroker(
       if (init.signal?.aborted || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) {
         throw error;
       }
-      if (!isNetworkFailure(error) || attempt === maxAttempts - 1) {
+      const rateWait = rateLimitDelayMs(error);
+      if (rateWait !== null && attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, rateWait));
+        continue;
+      }
+      if (!isSafe || !isNetworkFailure(error) || attempt === maxAttempts - 1) {
         throw new Error("Falha no transporte do broker GestãoClick", { cause: error });
       }
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
@@ -58,6 +74,7 @@ async function fetchBroker(
   }
   throw new Error("Falha no transporte do broker GestãoClick");
 }
+
 
 async function unpackBrokerResponse(response: Response, method: string): Promise<Response> {
   if (!response.ok) return response;
