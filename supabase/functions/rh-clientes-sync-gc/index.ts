@@ -1117,7 +1117,7 @@ async function processCustomerJobWithDeadline(supabase: any, job: Job): Promise<
   try {
     // Background work is also bounded. The next invocation resumes the stored
     // cursor; waitUntil never wraps the original unbounded whole-catalog scan.
-    for (let steps = 0; steps < 20 && Date.now() - started < 35_000; steps++) {
+    for (let steps = 0; steps < 20 && Date.now() - started < 18_000; steps++) {
       await runRhCustomerStep({
         payload: { ...job.payload, kind: job.payload.kind },
         state: { ...job.state, phase: job.state.phase },
