@@ -2,8 +2,24 @@ import { act, createElement, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Database } from "@/integrations/supabase/types";
+
+type CentralTaskFixture = Partial<Database["public"]["Tables"]["tarefas_central"]["Row"]>;
 
 const db = vi.hoisted(() => ({
+  // Columns used for ordering, checked against the production schema. The
+  // central mirror has mirror_key as its primary key and has NO id column.
+  orderColumns: {
+    agenda_agendamentos: ["id", "data", "hora_inicio"],
+    agenda_veiculo_dia: ["id", "data"],
+    agenda_veiculos: ["id", "ordem"],
+    rh_clientes: ["id"],
+    tarefas_central: ["mirror_key", "atualizado_em"],
+    contratos_visitas_config: ["id"],
+    contratos: ["id"],
+    contrato_tipos: ["id"],
+    contratos_visitas_execucoes: ["id"],
+  } as Record<string, string[]>,
   tables: {} as Record<string, Record<string, any>[]>,
   calls: [] as Array<{ table: string; from: number; to: number; order: string[] }>,
   failure: null as { table: string; from: number; message: string } | null,
@@ -30,6 +46,9 @@ vi.mock("@/integrations/supabase/client", () => ({
         in: (key: string, values: unknown[]) => { filters.push(row => values.includes(row[key])); return query; },
         not: (key: string, _operator: string, value: unknown) => { filters.push(row => row[key] !== value); return query; },
         order: (key: string, options?: { ascending?: boolean }) => {
+          if (!db.orderColumns[table]?.includes(key)) {
+            throw new Error(`column ${table}.${key} does not exist`);
+          }
           orders.push({ key, ascending: options?.ascending !== false }); return query;
         },
         range: (start: number, end: number) => { from = start; to = end; return query; },
@@ -165,15 +184,53 @@ describe("carregamento completo da grade Agendamento Equipe", () => {
   it("enriquece uma tarefa cuja OS só está depois do milésimo snapshot central", async () => {
     db.tables.agenda_agendamentos = [{ ...schedule(1), auvo_task_id: "123", origem: "AUVO" }];
     db.tables.tarefas_central = Array.from({ length: 1245 }, (_, i) => ({
-      id: String(i).padStart(6, "0"), auvo_task_id: "123", atualizado_em: "2026-09-09T12:00:00Z",
+      mirror_key: `123::os:${String(i).padStart(6, "0")}:orc:`, auvo_task_id: "123", atualizado_em: "2026-09-09T12:00:00Z",
       gc_os_id: i === 1244 ? "os-ultima" : null, gc_os_codigo: i === 1244 ? "OS-1245" : null,
       gc_os_tarefa_exec: null, gc_os_cliente: "Cliente teste",
-    }));
+    } satisfies CentralTaskFixture));
     const { wrapper } = setup();
     const { result } = renderHook(() => useAgendaSemana(days), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.agendamentos[0].gc_os_id).toBe("os-ultima");
     expect(result.current.data?.agendamentos[0].gc_os_codigo).toBe("OS-1245");
+  });
+
+  it("carrega cartões Auvo com status, horas e OS vinculada pela própria tarefa e pela tarefa de execução", async () => {
+    db.tables.agenda_agendamentos = [
+      { ...schedule(1), auvo_task_id: "123", origem: "AUVO" },
+      { ...schedule(2), auvo_task_id: "456", origem: "AUVO" },
+    ];
+    db.tables.tarefas_central = [
+      {
+        mirror_key: "123::os:100:orc:", auvo_task_id: "123", atualizado_em: "2026-09-09T12:00:00Z",
+        gc_os_id: "100", gc_os_codigo: "OS-100", gc_os_cliente: "Cliente teste",
+        gc_os_tarefa_exec: "123", status_auvo: "FINALIZADA", task_type_id: "7", descricao: "Manutenção",
+        check_in_iso: "2026-09-09T08:00:00-03:00", check_out_iso: "2026-09-09T09:30:00-03:00", duracao_decimal: 1.5,
+      } satisfies CentralTaskFixture,
+      {
+        mirror_key: "456::os:::orc:", auvo_task_id: "456", atualizado_em: "2026-09-09T12:00:00Z",
+        status_auvo: "AGENDADA", gc_os_codigo: null,
+      } satisfies CentralTaskFixture,
+      {
+        mirror_key: "789::os:200:orc:", auvo_task_id: "789", atualizado_em: "2026-09-09T12:00:00Z",
+        gc_os_id: "200", gc_os_codigo: "OS-200", gc_os_cliente: "Cliente teste", gc_os_tarefa_exec: "456",
+      } satisfies CentralTaskFixture,
+    ];
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useAgendaSemana(days), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.agendamentos).toEqual([
+      expect.objectContaining({
+        auvo_task_id: "123", gc_os_id: "100", gc_os_codigo: "OS-100", status_auvo: "FINALIZADA",
+        check_in_iso: "2026-09-09T08:00:00-03:00", check_out_iso: "2026-09-09T09:30:00-03:00",
+        duracao_decimal: 1.5, tipo_tarefa_auvo_id: "7", tipo_tarefa_auvo_descricao: "Manutenção",
+      }),
+      expect.objectContaining({ auvo_task_id: "456", gc_os_id: "200", gc_os_codigo: "OS-200", status_auvo: "AGENDADA" }),
+    ]);
+    const mirrorReads = db.calls.filter(call => call.table === "tarefas_central");
+    expect(mirrorReads).toHaveLength(2);
+    expect(mirrorReads.map(call => call.order)).toEqual([["atualizado_em", "mirror_key"], ["mirror_key"]]);
   });
 
   it.each(["insert", "update"])("só confirma %s depois de receber a linha salva e atualiza os logs", async (operation) => {
