@@ -20,6 +20,7 @@ const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
 const AUVO_TASKS_TIMEOUT_MS = 30_000;
+const BUDGET_SYNC_VERSION = "20260909.2";
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
@@ -861,6 +862,7 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({
+            version: BUDGET_SYNC_VERSION,
             run_id: null,
             status: "legacy",
             started_at: null,
@@ -879,6 +881,7 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({
+          version: BUDGET_SYNC_VERSION,
           run_id: meta?.sync_run_id || null,
           status: meta?.sync_status || "idle",
           started_at: meta?.sync_started_at || null,
@@ -1119,8 +1122,30 @@ Deno.serve(async (req) => {
       throw startError;
     }
 
+    const onProgress = async (phase: string): Promise<void> => {
+      console.log(`[budget-kanban] Progresso (${runId}, ${BUDGET_SYNC_VERSION}): ${phase}`);
+      if (!syncTrackingEnabled) return;
+      try {
+        const { error: progressError } = await sbClient
+          .from("kanban_sync_meta")
+          .update({
+            sync_progress: {
+              phase,
+              updated_at: new Date().toISOString(),
+              version: BUDGET_SYNC_VERSION,
+            },
+          })
+          .eq("id", "default")
+          .eq("sync_run_id", runId);
+        if (progressError) throw progressError;
+      } catch (error) {
+        console.warn(`[budget-kanban] Não foi possível registrar progresso (${runId}):`, error);
+      }
+    };
+
     const backgroundSync = async () => {
       try {
+        await onProgress("auvo_login");
         const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
         await runBudgetKanbanSync({
           sbClient,
@@ -1129,6 +1154,7 @@ Deno.serve(async (req) => {
           gcSecretToken,
           startDate,
           endDate,
+          onProgress,
         });
 
         const finishedAt = new Date().toISOString();
@@ -1183,6 +1209,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         ok: true,
+        version: BUDGET_SYNC_VERSION,
         background: true,
         run_id: syncTrackingEnabled ? runId : null,
         tracking: syncTrackingEnabled ? "status" : "legacy",
@@ -1212,8 +1239,17 @@ async function runBudgetKanbanSync(opts: {
   gcSecretToken: string;
   startDate: string;
   endDate: string;
+  onProgress?: (phase: string) => Promise<void>;
 }): Promise<void> {
   const { sbClient, bearerToken, gcAccessToken, gcSecretToken, startDate, endDate } = opts;
+  const reportProgress = async (phase: string): Promise<void> => {
+    try {
+      await opts.onProgress?.(phase);
+    } catch (error) {
+      console.warn(`[budget-kanban] Falha no diagnóstico de progresso (${phase}):`, error);
+    }
+  };
+  await reportProgress("loading_local_context");
 
   const gcH: Record<string, string> = {
     "access-token": gcAccessToken,
@@ -1280,10 +1316,20 @@ async function runBudgetKanbanSync(opts: {
   }
 
   // Sempre busca Auvo + GC em paralelo. Auvo é fonte de verdade.
+  await reportProgress("parallel_api_reads");
   const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
-    fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
-    fetchGcOrcamentosMap(gcH),
-    fetchGcOsMap(gcH),
+    fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate).then(async (result) => {
+      await reportProgress("auvo_reads_done");
+      return result;
+    }),
+    fetchGcOrcamentosMap(gcH).then(async (result) => {
+      await reportProgress("gc_budget_reads_done");
+      return result;
+    }),
+    fetchGcOsMap(gcH).then(async (result) => {
+      await reportProgress("gc_os_reads_done");
+      return result;
+    }),
   ]);
 
   let auvoTasks = auvoPrimary.tasks;
@@ -1293,6 +1339,7 @@ async function runBudgetKanbanSync(opts: {
   // Se o Auvo retornou erro (ex.: 502), NÃO dispara busca 2020-2030 — isso piora timeout e cancela a sync.
   if (!auvoPrimary.hadError && auvoTasks.length === 0 && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
     console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
+    await reportProgress("auvo_fallback_reads");
     const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
     if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
 
@@ -1434,6 +1481,7 @@ async function runBudgetKanbanSync(opts: {
   const items = [...itemsFromCentral, ...itemsFromAuvo];
 
   // === RESOLUÇÃO ASYNC: customerId → Auvo /customers/{id} ===
+  await reportProgress("client_lookups");
   const needsCustomerLookup = items.filter((i: any) => i._customerId);
   if (needsCustomerLookup.length > 0) {
     console.log(`[budget-kanban] Resolvendo ${needsCustomerLookup.length} clientes via Auvo /customers/{id}`);
@@ -1519,6 +1567,7 @@ async function runBudgetKanbanSync(opts: {
   }
 
   // Merge persisted equipment/serial data from central table
+  await reportProgress("equipment_enrichment");
   const persistedEquipmentMap = await loadPersistedEquipmentMap(
     sbClient,
     items.map((item: any) => String(item.auvo_task_id || "")),
@@ -1541,6 +1590,7 @@ async function runBudgetKanbanSync(opts: {
   }
 
   await resolveAndPersistMissingEquipment(sbClient, bearerToken, items as any[], auvoTaskById);
+  await reportProgress("equipment_enrichment_done");
 
   // Sort: pendentes primeiro, depois por data desc
   items.sort((a: any, b: any) => {
@@ -1551,6 +1601,7 @@ async function runBudgetKanbanSync(opts: {
   });
 
   // === UPSERT TO CACHE ===
+  await reportProgress("persist_start");
   // A função SQL decide a coluna usando o estado atual do banco no instante do
   // UPDATE. Assim uma sincronização iniciada antes da ação do operador não
   // consegue retirar um card que acabou de ser marcado como resolvido.
@@ -1635,6 +1686,7 @@ async function runBudgetKanbanSync(opts: {
   if (!legacyFallbackUsed) {
     console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
   }
+  await reportProgress("persist_done");
 
   console.log(
     `[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`,
