@@ -1,4 +1,5 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { fetchCompleteGcCollection } from "../_shared/gc-pagination.ts";
 installGcUsuarioId();
 
 // Lovable Cloud deploy trigger: legacy-compatible Kanban sync.
@@ -483,34 +484,6 @@ async function fetchGcOrcamentosMap(
   endDate?: string,
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
-  const MAX_PAGES = 30;
-  const CONCURRENCY = 5;
-
-  const fetchPage = async (page: number): Promise<{ records: any[]; totalPages: number } | null> => {
-    let url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    if (startDate) url += `&data_inicio=${startDate}`;
-    if (endDate) url += `&data_fim=${endDate}`;
-    const RATE_BACKOFF = [5000, 5000, 10000]; // 1ª espera + 2 retries extras
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (response.status === 429) {
-        const wait = RATE_BACKOFF[attempt];
-        console.warn(`[budget-kanban] GC orcamentos page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
-      }
-      if (!response.ok) {
-        console.error(`[budget-kanban] GC orcamentos page ${page} error: ${response.status}`);
-        return null;
-      }
-      const data = await response.json();
-      return {
-        records: Array.isArray(data?.data) ? data.data : [],
-        totalPages: data?.meta?.total_paginas || 1,
-      };
-    }
-    return null;
-  };
 
   const ingest = (records: any[]) => {
     for (const orc of records) {
@@ -540,25 +513,13 @@ async function fetchGcOrcamentosMap(
     }
   };
 
-  // Fetch page 1 to discover totalPages
-  const first = await fetchPage(1);
-  if (!first) return map;
-  ingest(first.records);
-  const totalPages = Math.min(first.totalPages, MAX_PAGES);
-  if (first.totalPages > MAX_PAGES) {
-    console.warn(
-      `[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${first.totalPages}), possível perda de dados`,
-    );
-  }
-  console.log(`[budget-kanban] GC orçamentos: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
-
-  // Fetch remaining pages in parallel batches
-  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
-    const batch: number[] = [];
-    for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
-    const results = await Promise.all(batch.map(fetchPage));
-    for (const r of results) if (r) ingest(r.records);
-  }
+  const url = new URL(`${GC_BASE_URL}/api/orcamentos?limite=100`);
+  if (startDate) url.searchParams.set("data_inicio", startDate);
+  if (endDate) url.searchParams.set("data_fim", endDate);
+  await fetchCompleteGcCollection({
+    url: url.toString(), headers: gcHeaders, ingest,
+    fetcher: (pageUrl, options) => rateLimitedFetch(pageUrl, options, "gc"),
+  });
   console.log(`[budget-kanban] GC orçamentos done: ${Object.keys(map).length} com tarefa`);
   return map;
 }
@@ -570,34 +531,6 @@ async function fetchGcOsMap(
   endDate?: string,
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
-  const MAX_PAGES = 30;
-  const CONCURRENCY = 5;
-
-  const fetchPage = async (page: number): Promise<{ records: any[]; totalPages: number } | null> => {
-    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
-    if (startDate) url += `&data_inicio=${startDate}`;
-    if (endDate) url += `&data_fim=${endDate}`;
-    const RATE_BACKOFF = [5000, 5000, 10000];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (response.status === 429) {
-        const wait = RATE_BACKOFF[attempt];
-        console.warn(`[budget-kanban] GC OS page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
-      }
-      if (!response.ok) {
-        console.error(`[budget-kanban] GC OS page ${page} error: ${response.status}`);
-        return null;
-      }
-      const data = await response.json();
-      return {
-        records: Array.isArray(data?.data) ? data.data : [],
-        totalPages: data?.meta?.total_paginas || 1,
-      };
-    }
-    return null;
-  };
 
   const ingest = (records: any[]) => {
     for (const os of records) {
@@ -637,23 +570,13 @@ async function fetchGcOsMap(
     }
   };
 
-  const first = await fetchPage(1);
-  if (!first) return map;
-  ingest(first.records);
-  const totalPages = Math.min(first.totalPages, MAX_PAGES);
-  if (first.totalPages > MAX_PAGES) {
-    console.warn(
-      `[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${first.totalPages}), possível perda de dados`,
-    );
-  }
-  console.log(`[budget-kanban] GC OS: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
-
-  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
-    const batch: number[] = [];
-    for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
-    const results = await Promise.all(batch.map(fetchPage));
-    for (const r of results) if (r) ingest(r.records);
-  }
+  const url = new URL(`${GC_BASE_URL}/api/ordens_servicos?limite=100`);
+  if (startDate) url.searchParams.set("data_inicio", startDate);
+  if (endDate) url.searchParams.set("data_fim", endDate);
+  await fetchCompleteGcCollection({
+    url: url.toString(), headers: gcHeaders, ingest,
+    fetcher: (pageUrl, options) => rateLimitedFetch(pageUrl, options, "gc"),
+  });
   console.log(`[budget-kanban] GC OS done: ${Object.keys(map).length} com tarefa`);
   return map;
 }
