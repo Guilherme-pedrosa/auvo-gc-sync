@@ -19,7 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (taskId: string | null) => void;
+  onSuccess?: (taskId: string | null, taskDate: string) => void | Promise<void>;
   /** Data pré-selecionada (linha/coluna da escala) */
   initialDate?: string | null;
   /** Técnico dono da linha clicada (userID do Auvo) */
@@ -181,7 +181,7 @@ export default function CriarTarefaGeralDialog({
           } : undefined,
         });
         if (data?.warning) toast.warning(data.warning);
-        onSuccess?.(tid);
+        await onSuccess?.(tid, dateISO);
         // Após criar a tarefa, invalidamos os caches para forçar a atualização da escala
         const qc = (window as any).queryClient;
         if (qc) {
