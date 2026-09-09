@@ -9,6 +9,7 @@ const files = [
   'src/test/criar-tarefa-agenda-sync.test.tsx',
   'src/test/agenda-auvo-reconciliation.test.ts',
   'src/test/agenda-forecast-link-guard.test.ts',
+  'src/test/auvo-task-status-source.test.ts',
 ];
 for (const file of files) accessSync(file);
 const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', ...files], { stdio: 'inherit' });
