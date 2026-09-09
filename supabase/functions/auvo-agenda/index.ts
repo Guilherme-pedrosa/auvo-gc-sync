@@ -1,3 +1,4 @@
+// Auvo status 6 = Pausada
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 import { auvoTaskStatus } from "../_shared/auvo-task-status.ts";
 import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
