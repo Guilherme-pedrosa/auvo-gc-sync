@@ -2,7 +2,9 @@
 // técnico da API. O chamador nunca pode substituir esse usuário pelo perfil
 // humano que está usando a interface.
 import {
+  forceGcApiUserInHeaders,
   forceGcApiUserInRequest,
+  forceGcApiUserInUrl,
   isGestaoClickApiUrl,
   isGestaoClickMcpUrl,
 } from "./gc-user-core.ts";
@@ -111,11 +113,33 @@ export function createGcFetch(originalFetch: typeof fetch): typeof fetch {
       if (requestSignal?.aborted || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) {
         throw error;
       }
-      // Only request/identity preparation errors belong to this stage.
-      throw new Error("Chamada ao GestãoClick bloqueada: não foi possível garantir o usuário da API GC", {
-        cause: error,
-      });
+      // Plano B: garante o usuário técnico ao menos na URL e no cabeçalho.
+      // O corpo de gravações ainda é protegido pelo broker (protectWritePayload).
+      console.error(
+        `[gc-user] proteção completa falhou, aplicando fallback URL+header: ${(error as Error)?.message ?? error}`,
+      );
+      try {
+        const base = new Request(input as RequestInfo, init);
+        const headers = forceGcApiUserInHeaders(base.headers, GC_API_USER_ID);
+        headers.delete("content-length");
+        const method = base.method.toUpperCase();
+        const body = ["GET", "HEAD"].includes(method) ? undefined : await base.clone().text();
+        protectedRequest = new Request(forceGcApiUserInUrl(base.url, GC_API_USER_ID), {
+          method: base.method,
+          headers,
+          body,
+          redirect: base.redirect,
+        });
+      } catch (fallbackError) {
+        throw new Error(
+          `Chamada ao GestãoClick bloqueada: não foi possível garantir o usuário da API GC (${
+            (fallbackError as Error)?.message ?? fallbackError
+          })`,
+          { cause: error },
+        );
+      }
     }
+
 
     // MCP usa JSON-RPC/SSE e não pode atravessar o broker de endpoints /api/.
     // A identificação técnica já foi aplicada à URL e aos dados de chamar_api.
