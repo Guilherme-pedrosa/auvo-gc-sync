@@ -71,6 +71,7 @@ import {
   summarizeAgendaOsPlannedVsActual,
 } from "@/lib/agendaPlannedVsActual";
 import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
+import { fetchAgendaPages } from "@/lib/agendaPagination";
 import {
   contractMonthlyHoursAreFulfilled,
   sortAgendaItemsWithContractPlanFirst,
@@ -805,7 +806,7 @@ export default function AgendamentoEquipePage() {
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data: rhClientes = [] } = useRhClientes();
-  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(diasTodos);
+  const { data, isLoading, isFetching, isError: agendaReadFailed, refetch: refetchLocal } = useAgendaSemana(diasTodos);
   const possuiPrevisaoComDocumento = useMemo(
     () => (data?.agendamentos ?? []).some((item) => item.previsao_continuidade && (item.gc_orcamento_codigo || item.gc_os_codigo)),
     [data?.agendamentos],
@@ -940,49 +941,33 @@ export default function AgendamentoEquipePage() {
       // Reconsulta somente as tarefas retornadas. Isso captura previsões que a
       // edge function acabou de promover sem varrer toda a tarefas_central.
       const lineTaskIds = [...new Set(linhas.map((line) => String(line.auvo_task_id)).filter(Boolean))];
-      const { data: existingTaskRows, error: existingReadError } = lineTaskIds.length
-        ? await supabase
+      const existingTaskRows = lineTaskIds.length
+        ? await fetchAgendaPages((from, to) => supabase
           .from("agenda_agendamentos")
           .select("id,auvo_task_id,data,hora_inicio,hora_fim,duracao_planejada_minutos,colaborador_id,colaborador_nome,cliente,descricao,status,origem,gc_os_codigo,gc_orcamento_codigo,previsao_continuidade,previsao_tipo,conversao_status")
           .in("auvo_task_id", lineTaskIds)
-        : { data: [], error: null };
-      if (existingReadError) throw existingReadError;
+          .order("id").range(from, to))
+        : [];
 
       // Ausência só é conclusiva quando a edge function terminou todas as
       // páginas do período. Uma resposta parcial nunca autoriza exclusão local.
-      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete && permitirRemocao
-        ? await supabase
+      const reconciliationRows = syncComplete && permitirRemocao
+        ? await fetchAgendaPages((from, to) => supabase
           .from("agenda_agendamentos")
           .select("id,auvo_task_id,data,origem,gc_os_codigo,gc_orcamento_codigo,previsao_tipo,conversao_status")
           .gte("data", startDate)
           .lte("data", endDate)
           .not("auvo_task_id", "is", null)
-        : { data: [], error: null };
-      if (reconciliationReadError) throw reconciliationReadError;
+          .order("id").range(from, to))
+        : [];
 
       const taskIdKey = (row: { auvo_task_id?: string | null }) => String(row.auvo_task_id || "").trim();
-      const slotKey = (row: { data: string; colaborador_id?: string | null }) =>
-        `${row.data}|${String(row.colaborador_id || "")}`;
-      const occupiedSlots = new Set(linhas.map(slotKey));
       const existingByTaskId = new Map<string, any>();
       for (const row of existingTaskRows || []) {
         const taskId = taskIdKey(row);
         if (taskId && !existingByTaskId.has(taskId)) existingByTaskId.set(taskId, row);
       }
 
-      const protectedForecast = (row: any) =>
-        row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
-      const previousRows = permitirRemocao ? (data?.agendamentos ?? []) : [];
-      const replacedManualIds = previousRows
-        .filter((row: any) => {
-          if (protectedForecast(row)) return false;
-          return !row.auvo_task_id
-            && row.origem === "MANUAL"
-            && !row.previsao_continuidade
-            && occupiedSlots.has(slotKey(row));
-        })
-        .map((row: any) => String(row.id))
-        .filter(Boolean);
       const removedAuvoIds = missingAuvoAgendaIds(
         reconciliationRows ?? [],
         returnedTaskIds,
@@ -992,10 +977,10 @@ export default function AgendamentoEquipePage() {
           endDate,
         },
       );
-      const deleteIds = [...new Set([...replacedManualIds, ...removedAuvoIds])];
+      const deleteIds = [...new Set(removedAuvoIds)];
 
-      // Remove rascunhos substituídos e espelhos confirmadamente ausentes no
-      // Auvo. Vínculos GC e respostas parciais já foram barrados acima.
+      // Mesmo dia/técnico não prova que uma tarefa substitui uma previsão ou
+      // anotação manual. Somente espelhos Auvo confirmadamente ausentes saem.
       for (let i = 0; i < deleteIds.length; i += 500) {
         const { error: deleteError } = await supabase
           .from("agenda_agendamentos")
@@ -1026,7 +1011,7 @@ export default function AgendamentoEquipePage() {
         if (upsertError) throw upsertError;
       }
 
-      return { linhas: linhas.length, tarefas: tarefas.length, removedAuvoIds, semTecnico, syncComplete };
+      return { linhas: linhas.length, tarefas: tarefas.length, importedTaskIds: lineTaskIds, removedAuvoIds, semTecnico, syncComplete };
   };
 
   const DIAS_JANELA_RAPIDA = 21;
@@ -1046,7 +1031,8 @@ export default function AgendamentoEquipePage() {
       const { linhas, tarefas, removedAuvoIds, semTecnico, syncComplete } =
         await sincronizarJanela(diasFuturos[0], fimRapido);
 
-      await refetchLocal();
+      const refreshed = await refetchLocal();
+      if (refreshed.error) throw refreshed.error;
       const syncDetails: string[] = [];
       if (removedAuvoIds.length > 0) {
         syncDetails.push(`${removedAuvoIds.length} tarefa(s) excluída(s) no Auvo removida(s) da agenda.`);
@@ -1077,7 +1063,8 @@ export default function AgendamentoEquipePage() {
           if (inicioPassado && fimPassado) {
             await sincronizarJanela(inicioPassado, fimPassado, { permitirRemocao: false });
           }
-          await refetchLocal();
+          const refreshed = await refetchLocal();
+          if (refreshed.error) throw refreshed.error;
           toast.message("Períodos futuros e passado recente também atualizados.");
         } catch (err) {
           console.error("[agendamento-equipe] falha na janela em segundo plano:", err);
@@ -1398,6 +1385,7 @@ export default function AgendamentoEquipePage() {
           <div className="hidden md:flex items-center bg-muted rounded-md p-1 gap-1">
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
+          <LastSyncBadge />
           <Button variant="outline" size="sm" onClick={() => {
             document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
               const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
@@ -1502,6 +1490,14 @@ export default function AgendamentoEquipePage() {
       </header>
 
       <div className="flex-1 overflow-auto p-3 md:p-6 space-y-4 md:space-y-6">
+        {agendaReadFailed && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-destructive p-3 text-sm text-destructive">
+            <p>Não foi possível carregar a agenda completa. {data ? "Os dados exibidos são da última leitura concluída." : "Tente carregar novamente."}</p>
+            <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetchLocal()}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <AgendaFilters
             filtroTexto={filtroTexto}
@@ -2014,11 +2010,13 @@ export default function AgendamentoEquipePage() {
         initialDate={createTaskPrefill.data}
         initialUserAuvoId={createTaskPrefill.auvoUserId}
         initialUserNome={createTaskPrefill.nome}
-        onSuccess={() => {
-          refetchLocal();
-          // Além do refetch local, forçamos o refresh do queryClient para garantir sincronia em todos os componentes
-          qc.invalidateQueries({ queryKey: ["agenda_semana"] });
-          qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        onSuccess={async (taskId, taskDate) => {
+          const result = await sincronizarJanela(taskDate, taskDate, { permitirRemocao: false });
+          if (taskId && !result.importedTaskIds.includes(taskId)) {
+            throw new Error("A tarefa ainda não foi retornada pelo Auvo ou o técnico não possui vínculo no RH.");
+          }
+          const refreshed = await refetchLocal();
+          if (refreshed.error) throw refreshed.error;
         }}
       />
 
