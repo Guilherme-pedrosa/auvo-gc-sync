@@ -1738,6 +1738,7 @@ export type Database = {
           periodo_inicio: string | null
           sync_error: string | null
           sync_finished_at: string | null
+          sync_progress: Json | null
           sync_run_id: string | null
           sync_started_at: string | null
           sync_status: string
@@ -1749,6 +1750,7 @@ export type Database = {
           periodo_inicio?: string | null
           sync_error?: string | null
           sync_finished_at?: string | null
+          sync_progress?: Json | null
           sync_run_id?: string | null
           sync_started_at?: string | null
           sync_status?: string
@@ -1760,6 +1762,7 @@ export type Database = {
           periodo_inicio?: string | null
           sync_error?: string | null
           sync_finished_at?: string | null
+          sync_progress?: Json | null
           sync_run_id?: string | null
           sync_started_at?: string | null
           sync_status?: string
@@ -2884,6 +2887,80 @@ export type Database = {
           },
         ]
       }
+      rh_customer_sync_jobs: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          mutation_in_flight: boolean
+          payload: Json
+          request_key: string
+          result: Json | null
+          state: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          mutation_in_flight?: boolean
+          payload: Json
+          request_key: string
+          result?: Json | null
+          state?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          mutation_in_flight?: boolean
+          payload?: Json
+          request_key?: string
+          result?: Json | null
+          state?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rh_customer_sync_pages: {
+        Row: {
+          data: Json
+          job_id: string
+          page: number
+          source: string
+        }
+        Insert: {
+          data: Json
+          job_id: string
+          page: number
+          source: string
+        }
+        Update: {
+          data?: Json
+          job_id?: string
+          page?: number
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_customer_sync_pages_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "rh_customer_sync_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rh_document_types: {
         Row: {
           ativo: boolean
@@ -3898,6 +3975,30 @@ export type Database = {
           posicao: number
           resolvido_em: string
         }[]
+      }
+      rh_customer_sync_claim_job: { Args: { p_job_id?: string }; Returns: Json }
+      rh_customer_sync_save_page: {
+        Args: {
+          p_data: Json
+          p_job_id: string
+          p_lease_token: string
+          p_page: number
+          p_source: string
+        }
+        Returns: boolean
+      }
+      rh_customer_sync_start_job: {
+        Args: { p_initial_state?: Json; p_payload: Json; p_request_key: string }
+        Returns: Json
+      }
+      rh_customer_sync_update_job: {
+        Args: {
+          p_job_id: string
+          p_lease_token: string
+          p_operation: string
+          p_value?: Json
+        }
+        Returns: Json
       }
       save_budget_kanban_positions: {
         Args: { p_custom_columns?: Json; p_positions: Json }
