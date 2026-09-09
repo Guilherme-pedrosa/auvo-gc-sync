@@ -1098,7 +1098,9 @@ function jsonResponse(value: Record<string, unknown>, status = 200) {
 }
 
 async function processCustomerJob(supabase: any, job: Job): Promise<void> {
-  return requestDeadline.run(AbortSignal.timeout(55_000), () => processCustomerJobWithDeadline(supabase, job));
+  // Lotes curtos liberam o isolate rapidamente: um lote longo em segundo plano
+  // segura o worker e faz as próximas chamadas da tela estourarem em 504.
+  return requestDeadline.run(AbortSignal.timeout(30_000), () => processCustomerJobWithDeadline(supabase, job));
 }
 
 async function processCustomerJobWithDeadline(supabase: any, job: Job): Promise<void> {
