@@ -1,20 +1,13 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 import { auvoTaskStatus } from "../_shared/auvo-task-status.ts";
 import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
-import {
-  auvoCheckInDate,
-  auvoCheckOutDate,
-  computeAuvoWorkedHours,
-} from "../_shared/auvo-worked-time.ts";
+import { auvoCheckInDate, auvoCheckOutDate, computeAuvoWorkedHours } from "../_shared/auvo-worked-time.ts";
 import {
   auvoTaskTypeDescription,
   auvoTaskTypeId,
   isConcreteAuvoTaskTypeDescription,
 } from "../_shared/auvo-task-type.ts";
-import {
-  isOsEligibleForBudgetForecast,
-  normalizeGcDocumentCode,
-} from "../_shared/agenda-forecast-promotion.ts";
+import { isOsEligibleForBudgetForecast, normalizeGcDocumentCode } from "../_shared/agenda-forecast-promotion.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 installGcUsuarioId();
 
@@ -49,13 +42,13 @@ function plannedWindowMinutes(start: string, end: string): number {
   const startMinutes = timeToMinutes(start);
   const endMinutes = timeToMinutes(end);
   if (startMinutes < 0 || endMinutes < 0 || startMinutes === endMinutes) return 0;
-  return endMinutes > startMinutes
-    ? endMinutes - startMinutes
-    : (24 * 60 - startMinutes) + endMinutes;
+  return endMinutes > startMinutes ? endMinutes - startMinutes : 24 * 60 - startMinutes + endMinutes;
 }
 
 function managedDescriptionDurationMinutes(value: unknown): number {
-  const match = String(value ?? "").trim().match(/^\[WEDO:\d+:(\d+)\]/i);
+  const match = String(value ?? "")
+    .trim()
+    .match(/^\[WEDO:\d+:(\d+)\]/i);
   const minutes = Number(match?.[1] ?? 0);
   return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
 }
@@ -74,34 +67,40 @@ async function fetchMissingTaskTypes(
   const concurrency = 6;
   for (let index = 0; index < uniqueIds.length; index += concurrency) {
     const batch = uniqueIds.slice(index, index + concurrency);
-    await Promise.all(batch.map(async (id) => {
-      try {
-        for (const path of ["tasktypes", "taskTypes"]) {
-          const response = await fetchWithRetry(`${AUVO_BASE_URL}/${path}/${encodeURIComponent(id)}`, { headers }, {
-            retryStatuses: [502, 503],
-            delaysMs: [1500, 3000],
-            label: `Auvo task type ${id}`,
-          });
-          if (response.status === 404) continue;
-          if (!response.ok) break;
-          const json = await response.json().catch(() => ({}));
-          const item = json?.result || json?.data || json;
-          const description = String(item?.description ?? item?.name ?? "").trim();
-          const durationMinutes = parseAuvoDurationMinutes(
-            item?.standartTime ?? item?.standardTime ?? item?.defaultTime,
-          );
-          if (description || durationMinutes > 0) {
-            result.set(id, {
-              description: description.substring(0, 500),
-              durationMinutes,
-            });
+    await Promise.all(
+      batch.map(async (id) => {
+        try {
+          for (const path of ["tasktypes", "taskTypes"]) {
+            const response = await fetchWithRetry(
+              `${AUVO_BASE_URL}/${path}/${encodeURIComponent(id)}`,
+              { headers },
+              {
+                retryStatuses: [502, 503],
+                delaysMs: [1500, 3000],
+                label: `Auvo task type ${id}`,
+              },
+            );
+            if (response.status === 404) continue;
+            if (!response.ok) break;
+            const json = await response.json().catch(() => ({}));
+            const item = json?.result || json?.data || json;
+            const description = String(item?.description ?? item?.name ?? "").trim();
+            const durationMinutes = parseAuvoDurationMinutes(
+              item?.standartTime ?? item?.standardTime ?? item?.defaultTime,
+            );
+            if (description || durationMinutes > 0) {
+              result.set(id, {
+                description: description.substring(0, 500),
+                durationMinutes,
+              });
+            }
+            break;
           }
-          break;
+        } catch (error) {
+          console.warn(`[auvo-agenda] tipo ${id} não resolvido: ${(error as Error).message}`);
         }
-      } catch (error) {
-        console.warn(`[auvo-agenda] tipo ${id} não resolvido: ${(error as Error).message}`);
-      }
-    }));
+      }),
+    );
   }
   return result;
 }
@@ -120,7 +119,7 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  opts: { retryStatuses: number[]; delaysMs: number[]; label: string }
+  opts: { retryStatuses: number[]; delaysMs: number[]; label: string },
 ): Promise<Response> {
   let lastResp: Response | null = null;
   const attempts = opts.delaysMs.length + 1;
@@ -129,8 +128,10 @@ async function fetchWithRetry(
     if (!opts.retryStatuses.includes(resp.status)) return resp;
     lastResp = resp;
     if (i < opts.delaysMs.length) {
-      console.warn(`[auvo-agenda] ${opts.label} got ${resp.status}, retrying in ${opts.delaysMs[i]}ms (attempt ${i + 1}/${attempts - 1})`);
-      await new Promise(r => setTimeout(r, opts.delaysMs[i]));
+      console.warn(
+        `[auvo-agenda] ${opts.label} got ${resp.status}, retrying in ${opts.delaysMs[i]}ms (attempt ${i + 1}/${attempts - 1})`,
+      );
+      await new Promise((r) => setTimeout(r, opts.delaysMs[i]));
     }
   }
   return lastResp!;
@@ -146,15 +147,19 @@ async function fetchGcOsMap(
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 120;
-  const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
+  const dateQs = startDate && endDate ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}${dateQs}`;
-    const response = await fetchWithRetry(url, { headers: gcHeaders }, {
-      retryStatuses: [429],
-      delaysMs: [5000, 10000],
-      label: `GC OS page ${page}`,
-    });
+    const response = await fetchWithRetry(
+      url,
+      { headers: gcHeaders },
+      {
+        retryStatuses: [429],
+        delaysMs: [5000, 10000],
+        label: `GC OS page ${page}`,
+      },
+    );
     if (!response.ok) break;
 
     const data = await response.json();
@@ -229,15 +234,19 @@ async function fetchGcOrcMap(
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 120;
-  const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
+  const dateQs = startDate && endDate ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}${dateQs}`;
-    const response = await fetchWithRetry(url, { headers: gcHeaders }, {
-      retryStatuses: [429],
-      delaysMs: [5000, 10000],
-      label: `GC Orc page ${page}`,
-    });
+    const response = await fetchWithRetry(
+      url,
+      { headers: gcHeaders },
+      {
+        retryStatuses: [429],
+        delaysMs: [5000, 10000],
+        label: `GC Orc page ${page}`,
+      },
+    );
     if (!response.ok) break;
 
     const data = await response.json();
@@ -282,10 +291,10 @@ Deno.serve(async (req) => {
     const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
 
     if (!apiKey || !apiToken) {
-      return new Response(
-        JSON.stringify({ error: "Credenciais Auvo não configuradas" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Credenciais Auvo não configuradas" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const body = await req.json();
@@ -296,10 +305,10 @@ Deno.serve(async (req) => {
     const fastMode = body.fast === true;
 
     if (!startDate || !endDate) {
-      return new Response(
-        JSON.stringify({ error: "startDate e endDate são obrigatórios (YYYY-MM-DD)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "startDate e endDate são obrigatórios (YYYY-MM-DD)" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const bearerToken = await auvoLogin(apiKey, apiToken);
@@ -313,7 +322,10 @@ Deno.serve(async (req) => {
       while (page <= MAX) {
         const url = `${AUVO_BASE_URL}/users/?page=${page}&pageSize=100`;
         const resp = await fetch(url, { headers });
-        if (resp.status === 404 || !resp.ok) { await resp.text(); break; }
+        if (resp.status === 404 || !resp.ok) {
+          await resp.text();
+          break;
+        }
         const json = await resp.json();
         const users = json?.result?.entityList || json?.result || [];
         if (!Array.isArray(users) || users.length === 0) break;
@@ -327,11 +339,14 @@ Deno.serve(async (req) => {
     }
 
     // Fetch Auvo tasks + GC data in parallel
-    const gcHeaders: Record<string, string> = gcAccessToken && gcSecretToken ? {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
-    } : {};
+    const gcHeaders: Record<string, string> =
+      gcAccessToken && gcSecretToken
+        ? {
+            "access-token": gcAccessToken,
+            "secret-access-token": gcSecretToken,
+            "Content-Type": "application/json",
+          }
+        : {};
     const hasGc = !fastMode && !!gcAccessToken && !!gcSecretToken;
 
     const fetchTasks = async () => {
@@ -346,11 +361,15 @@ Deno.serve(async (req) => {
       while (page <= MAX_PAGES) {
         const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
         const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
-        const response = await fetchWithRetry(url, { headers }, {
-          retryStatuses: [502, 503],
-          delaysMs: [3000, 6000, 9000],
-          label: `Auvo tasks page ${page}`,
-        });
+        const response = await fetchWithRetry(
+          url,
+          { headers },
+          {
+            retryStatuses: [502, 503],
+            delaysMs: [3000, 6000, 9000],
+            label: `Auvo tasks page ${page}`,
+          },
+        );
         if (response.status === 404) {
           // 404 na primeira página não é uma listagem vazia confiável. Sem essa
           // trava, uma indisponibilidade do endpoint poderia apagar a agenda.
@@ -407,37 +426,45 @@ Deno.serve(async (req) => {
 
     // A mesma fonte do Controle OS é a autoridade para o vínculo tarefa → OS principal.
     // O documento pode ser antigo e não aparecer na janela consultada na API do GC.
-    const localDocumentMap = new Map<string, {
-      mirror_key: string | null;
-      gc_os_codigo: string | null;
-      gc_orcamento_codigo: string | null;
-      gc_os_tarefa_exec: string | null;
-      gc_os_tarefa_os: string | null;
-      gc_os_data: string | null;
-      gc_os_situacao: string | null;
-      gc_os_valor_total: number | null;
-      gc_os_link: string | null;
-      gc_orc_situacao: string | null;
-      gc_orc_valor_total: number | null;
-      gc_orc_link: string | null;
-      task_type_id: string | null;
-      task_type_description: string | null;
-    }>();
+    const localDocumentMap = new Map<
+      string,
+      {
+        mirror_key: string | null;
+        gc_os_codigo: string | null;
+        gc_orcamento_codigo: string | null;
+        gc_os_tarefa_exec: string | null;
+        gc_os_tarefa_os: string | null;
+        gc_os_data: string | null;
+        gc_os_situacao: string | null;
+        gc_os_valor_total: number | null;
+        gc_os_link: string | null;
+        gc_orc_situacao: string | null;
+        gc_orc_valor_total: number | null;
+        gc_orc_link: string | null;
+        task_type_id: string | null;
+        task_type_description: string | null;
+      }
+    >();
     const backendUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const backend = backendUrl && serviceRoleKey
-      ? createClient(backendUrl, serviceRoleKey, { auth: { persistSession: false } })
-      : null;
-    const taskIds = [...new Set(allTasks
-      .map((task: any) => String(task.taskID || task.taskId || task.id || "").trim())
-      .filter(Boolean))];
+    const backend =
+      backendUrl && serviceRoleKey
+        ? createClient(backendUrl, serviceRoleKey, { auth: { persistSession: false } })
+        : null;
+    const taskIds = [
+      ...new Set(
+        allTasks.map((task: any) => String(task.taskID || task.taskId || task.id || "").trim()).filter(Boolean),
+      ),
+    ];
 
     if (backend && taskIds.length > 0) {
       for (let index = 0; index < taskIds.length; index += 500) {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
           .from("tarefas_central")
-          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_tarefa_os,gc_os_data,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link,task_type_id,descricao")
+          .select(
+            "mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_tarefa_os,gc_os_data,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link,task_type_id,descricao",
+          )
           .in("auvo_task_id", batch);
 
         if (localError) {
@@ -501,21 +528,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
+    console.log(
+      `[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`,
+    );
 
     // A listagem costuma omitir checkInDate/checkOutDate. Busca o detalhe apenas
     // das tarefas que já começaram/finalizaram e estão sem esses horários. Assim
     // o modo rápido continua seletivo e o total diário não depende de cache velho.
-    const snapshotMap = new Map<string, {
-      checkInDate: string;
-      checkOutDate: string;
-      duration: unknown;
-      durationDecimal: unknown;
-      timeControl: unknown;
-      estimatedDuration: unknown;
-      taskTypeId: string;
-      taskTypeDescription: string;
-    }>();
+    const snapshotMap = new Map<
+      string,
+      {
+        checkInDate: string;
+        checkOutDate: string;
+        duration: unknown;
+        durationDecimal: unknown;
+        timeControl: unknown;
+        estimatedDuration: unknown;
+        taskTypeId: string;
+        taskTypeDescription: string;
+      }
+    >();
     const detailTaskIds = new Set<string>();
     for (const t of allTasks) {
       const tid = String(t.taskID || t.taskId || t.id || "");
@@ -524,19 +556,20 @@ Deno.serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
       const isFinished = !!t.finished || normalizedStatus.includes("finaliz") || normalizedStatus.includes("conclui");
-      const hasStarted = t.checkIn === true
-        || normalizedStatus.includes("andamento")
-        || normalizedStatus.includes("pausad")
-        || isFinished;
+      const hasStarted =
+        t.checkIn === true ||
+        normalizedStatus.includes("andamento") ||
+        normalizedStatus.includes("pausad") ||
+        isFinished;
       const hasCheckInDate = !!auvoCheckInDate(t);
       const hasCheckOutDate = !!auvoCheckOutDate(t);
       if (hasStarted && tid && (!hasCheckInDate || (isFinished && !hasCheckOutDate))) {
         detailTaskIds.add(tid);
       }
       if (
-        tid
-        && !auvoTaskTypeDescription(t)
-        && !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(tid)?.task_type_description)
+        tid &&
+        !auvoTaskTypeDescription(t) &&
+        !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(tid)?.task_type_description)
       ) {
         detailTaskIds.add(tid);
       }
@@ -545,31 +578,41 @@ Deno.serve(async (req) => {
     const CONCURRENCY = 5;
     for (let i = 0; i < detailIds.length; i += CONCURRENCY) {
       const batch = detailIds.slice(i, i + CONCURRENCY);
-      await Promise.all(batch.map(async (tid) => {
-        try {
-          const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
-          const resp = await fetchWithRetry(url, { headers }, {
-            retryStatuses: [502, 503],
-            delaysMs: [1500, 3000],
-            label: `Auvo task ${tid} snapshot`,
-          });
-          if (!resp.ok) return;
-          const json = await resp.json().catch(() => ({}));
-          const r = json?.result || json || {};
-          snapshotMap.set(tid, {
-            checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
-            checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
-            duration: r.duration ?? r.Duration ?? null,
-            durationDecimal: r.durationDecimal ?? r.DurationDecimal ?? null,
-            timeControl: r.timeControl ?? r.TimeControl ?? null,
-            estimatedDuration: r.estimatedDuration ?? r.estimated_duration ?? null,
-            taskTypeId: auvoTaskTypeId(r),
-            taskTypeDescription: auvoTaskTypeDescription(r),
-          });
-        } catch (_) { /* ignore */ }
-      }));
+      await Promise.all(
+        batch.map(async (tid) => {
+          try {
+            const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
+            const resp = await fetchWithRetry(
+              url,
+              { headers },
+              {
+                retryStatuses: [502, 503],
+                delaysMs: [1500, 3000],
+                label: `Auvo task ${tid} snapshot`,
+              },
+            );
+            if (!resp.ok) return;
+            const json = await resp.json().catch(() => ({}));
+            const r = json?.result || json || {};
+            snapshotMap.set(tid, {
+              checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
+              checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
+              duration: r.duration ?? r.Duration ?? null,
+              durationDecimal: r.durationDecimal ?? r.DurationDecimal ?? null,
+              timeControl: r.timeControl ?? r.TimeControl ?? null,
+              estimatedDuration: r.estimatedDuration ?? r.estimated_duration ?? null,
+              taskTypeId: auvoTaskTypeId(r),
+              taskTypeDescription: auvoTaskTypeDescription(r),
+            });
+          } catch (_) {
+            /* ignore */
+          }
+        }),
+      );
     }
-    console.log(`[auvo-agenda] task detail fetched for ${snapshotMap.size}/${detailIds.length} tasks missing work/type data`);
+    console.log(
+      `[auvo-agenda] task detail fetched for ${snapshotMap.size}/${detailIds.length} tasks missing work/type data`,
+    );
 
     // Consulta cada tipo necessário uma única vez. Além do nome, o cadastro do
     // tipo é a fonte oficial do tempo planejado quando a listagem rápida omite
@@ -578,20 +621,18 @@ Deno.serve(async (req) => {
       .filter((task: any) => {
         const id = String(task.taskID || task.taskId || task.id || "").trim();
         const detail = snapshotMap.get(id);
-        const missingDescription = !auvoTaskTypeDescription(task)
-          && !detail?.taskTypeDescription
-          && !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(id)?.task_type_description);
-        const missingDuration = parseAuvoDurationMinutes(
-          task?.estimatedDuration ?? task?.estimated_duration ?? detail?.estimatedDuration,
-        ) <= 0;
+        const missingDescription =
+          !auvoTaskTypeDescription(task) &&
+          !detail?.taskTypeDescription &&
+          !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(id)?.task_type_description);
+        const missingDuration =
+          parseAuvoDurationMinutes(task?.estimatedDuration ?? task?.estimated_duration ?? detail?.estimatedDuration) <=
+          0;
         return missingDescription || missingDuration;
       })
       .map((task: any) => {
         const id = String(task.taskID || task.taskId || task.id || "").trim();
-        return auvoTaskTypeId(task)
-          || snapshotMap.get(id)?.taskTypeId
-          || localDocumentMap.get(id)?.task_type_id
-          || "";
+        return auvoTaskTypeId(task) || snapshotMap.get(id)?.taskTypeId || localDocumentMap.get(id)?.task_type_id || "";
       });
     const taskTypesMap = await fetchMissingTaskTypes(headers, requiredTaskTypeIds);
 
@@ -600,7 +641,9 @@ Deno.serve(async (req) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
 
       const custDesc = String(t.customerDescription || "").trim();
-      const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || t.customer?.legalName || "").trim();
+      const custName = String(
+        t.customerName || t.customer?.tradeName || t.customer?.companyName || t.customer?.legalName || "",
+      ).trim();
       const cliente = custDesc || custName || "Sem cliente";
 
       const rawTecnico = String(t.userToName || t.userTo?.name || t.userTo?.login || "").trim();
@@ -620,28 +663,25 @@ Deno.serve(async (req) => {
       const rawEndTime = String(t.endTime || t.endHour || "").trim();
       const snap = snapshotMap.get(taskId);
       const localDocument = localDocumentMap.get(taskId);
-      const resolvedTaskTypeId = auvoTaskTypeId(t)
-        || snap?.taskTypeId
-        || localDocument?.task_type_id
-        || "";
+      const resolvedTaskTypeId = auvoTaskTypeId(t) || snap?.taskTypeId || localDocument?.task_type_id || "";
       const taskTypeMetadata = taskTypesMap.get(resolvedTaskTypeId);
-      const taskTypeDescription = auvoTaskTypeDescription(t)
-        || snap?.taskTypeDescription
-        || taskTypeMetadata?.description
-        || (isConcreteAuvoTaskTypeDescription(localDocument?.task_type_description)
+      const taskTypeDescription =
+        auvoTaskTypeDescription(t) ||
+        snap?.taskTypeDescription ||
+        taskTypeMetadata?.description ||
+        (isConcreteAuvoTaskTypeDescription(localDocument?.task_type_description)
           ? localDocument?.task_type_description
-          : "")
-        || (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
+          : "") ||
+        (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
       const scheduledStartTime = rawStartTime || taskDateTime;
       const scheduledEndTime = taskEndDateTime || rawEndTime;
-      const estimatedDurationMinutes = parseAuvoDurationMinutes(
-        t.estimatedDuration ?? t.estimated_duration ?? snap?.estimatedDuration,
-      )
-        || taskTypeMetadata?.durationMinutes
-        || managedDescriptionDurationMinutes(taskTypeDescription)
-        || plannedWindowMinutes(scheduledStartTime, scheduledEndTime);
+      const estimatedDurationMinutes =
+        parseAuvoDurationMinutes(t.estimatedDuration ?? t.estimated_duration ?? snap?.estimatedDuration) ||
+        taskTypeMetadata?.durationMinutes ||
+        managedDescriptionDurationMinutes(taskTypeDescription) ||
+        plannedWindowMinutes(scheduledStartTime, scheduledEndTime);
       const isFinished = status === "Finalizada";
-      
+
       // Real check-in/check-out timestamps (when technician actually started/finished)
       const workedSource = {
         ...t,
@@ -660,14 +700,15 @@ Deno.serve(async (req) => {
       // For finished tasks, show effective time spent (check-in → check-out).
       // For other tasks, fall back to scheduled window.
       const startTime = isFinished
-        ? (checkInTime || rawStartTime || taskDateTime || "")
-        : (rawStartTime || taskDateTime || "");
-      const estimatedEndTime = estimatedDurationMinutes > 0 && timeToMinutes(startTime) >= 0
-        ? minutesToClock(timeToMinutes(startTime) + estimatedDurationMinutes)
-        : "";
+        ? checkInTime || rawStartTime || taskDateTime || ""
+        : rawStartTime || taskDateTime || "";
+      const estimatedEndTime =
+        estimatedDurationMinutes > 0 && timeToMinutes(startTime) >= 0
+          ? minutesToClock(timeToMinutes(startTime) + estimatedDurationMinutes)
+          : "";
       const endTime = isFinished
-        ? (checkOutTime || rawEndTime || taskEndDateTime || "")
-        : (taskEndDateTime || rawEndTime || estimatedEndTime || "");
+        ? checkOutTime || rawEndTime || taskEndDateTime || ""
+        : taskEndDateTime || rawEndTime || estimatedEndTime || "";
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
       const description = String(t.orientation || t.description || "").substring(0, 500);
@@ -707,10 +748,8 @@ Deno.serve(async (req) => {
         gc_os_tarefa_os: os?.gc_os_tarefa_os ?? localDocument?.gc_os_tarefa_os ?? null,
         gc_os_data: os?.gc_os_data ?? localDocument?.gc_os_data ?? null,
         // O orçamento continua sendo a chave histórica mesmo depois que a OS existe.
-        gc_orcamento_codigo: localDocument?.gc_orcamento_codigo
-          ?? os?.gc_os_orcamento_codigo
-          ?? orc?.gc_orcamento_codigo
-          ?? null,
+        gc_orcamento_codigo:
+          localDocument?.gc_orcamento_codigo ?? os?.gc_os_orcamento_codigo ?? orc?.gc_orcamento_codigo ?? null,
         gc_orc_situacao: orc?.gc_orc_situacao ?? localDocument?.gc_orc_situacao ?? null,
         gc_orc_valor_total: orc?.gc_orc_valor_total ?? localDocument?.gc_orc_valor_total ?? null,
         gc_orc_link: orc?.gc_orc_link ?? localDocument?.gc_orc_link ?? null,
@@ -770,13 +809,11 @@ Deno.serve(async (req) => {
       const CENTRAL_WRITE_BATCH_SIZE = 8;
       for (let index = 0; index < centralRows.length; index += CENTRAL_WRITE_BATCH_SIZE) {
         const batch = centralRows.slice(index, index + CENTRAL_WRITE_BATCH_SIZE);
-        const { error: persistError } = await backend
-          .from("tarefas_central")
-          .upsert(batch, {
-            onConflict: "mirror_key",
-            ignoreDuplicates: false,
-            defaultToNull: false,
-          });
+        const { error: persistError } = await backend.from("tarefas_central").upsert(batch, {
+          onConflict: "mirror_key",
+          ignoreDuplicates: false,
+          defaultToNull: false,
+        });
         if (persistError) {
           throw new Error(`Falha ao gravar tarefas na base: ${persistError.message}`);
         }
@@ -809,8 +846,12 @@ Deno.serve(async (req) => {
         // Verifica se a OS é elegível (não é de lote anterior e não é terminal)
         if (!isOsEligibleForBudgetForecast(task, forecast.criado_em)) return false;
 
-        const execIds = String(task.gc_os_tarefa_exec || "").split(/\D+/).filter(Boolean);
-        const osTaskIds = String(task.gc_os_tarefa_os || "").split(/\D+/).filter(Boolean);
+        const execIds = String(task.gc_os_tarefa_exec || "")
+          .split(/\D+/)
+          .filter(Boolean);
+        const osTaskIds = String(task.gc_os_tarefa_os || "")
+          .split(/\D+/)
+          .filter(Boolean);
 
         // O motor falha se exigir que a tarefa seja EXCLUSIVAMENTE de execução (execIds e não osTaskIds).
         // Na prática, muitos fluxos usam a mesma tarefa para OS e Execução.
@@ -821,17 +862,19 @@ Deno.serve(async (req) => {
       const concurrency = 3;
       for (let index = 0; index < candidates.length; index += concurrency) {
         const batch = candidates.slice(index, index + concurrency);
-        const results = await Promise.all(batch.map(async (task: any) => {
-          const { data, error } = await backend.functions.invoke("auvo-task-update", {
-            body: {
-              action: "promote-budget-forecast",
-              gcOrcamentoCodigo: task.gc_orcamento_codigo,
-              gcOsCodigo: task.gc_os_codigo,
-              execTaskId: task.auvo_task_id,
-            },
-          });
-          return { task, data, error };
-        }));
+        const results = await Promise.all(
+          batch.map(async (task: any) => {
+            const { data, error } = await backend.functions.invoke("auvo-task-update", {
+              body: {
+                action: "promote-budget-forecast",
+                gcOrcamentoCodigo: task.gc_orcamento_codigo,
+                gcOsCodigo: task.gc_os_codigo,
+                execTaskId: task.auvo_task_id,
+              },
+            });
+            return { task, data, error };
+          }),
+        );
         for (const result of results) {
           promotionResults.push({
             taskId: result.task.auvo_task_id,
@@ -863,13 +906,13 @@ Deno.serve(async (req) => {
         sync_truncated: taskFetch.truncated,
         sync_pages: taskFetch.pagesFetched,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[auvo-agenda] Erro:", error);
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
