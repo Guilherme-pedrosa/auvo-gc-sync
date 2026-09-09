@@ -8,7 +8,6 @@ import {
   resolveClientLinkStatus,
 } from "@/lib/clientLinkStatus";
 import { attachContractVisitProgress } from "@/lib/agendaContractVisits";
-import { fetchAgendaPages } from "@/lib/agendaPagination";
 
 /**
  * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
@@ -17,11 +16,19 @@ import { fetchAgendaPages } from "@/lib/agendaPagination";
  * em clientes já vinculados.
  */
 async function carregarIndiceVinculos() {
-  const rows = await fetchAgendaPages((from, to) => sb
-    .from("rh_clientes")
-    .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
-    .order("id")
-    .range(from, to));
+  const rows: any[] = [];
+  const pageSize = 1000;
+  // Aumentamos o limite para 50.000 para cobrir bases maiores e evitar truncagem
+  for (let from = 0; from < 50000; from += pageSize) {
+    const { data, error } = await sb
+      .from("rh_clientes")
+      .select("nome,nome_gc,nome_auvo,nome_fantasia,vinculo_status,auvo_cliente_id")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
   return buildClientLinkIndex(rows);
 }
 
@@ -158,13 +165,12 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     ? candidate || null
     : current || candidate || null;
   for (let index = 0; index < taskIds.length; index += 500) {
-    const data = await fetchAgendaPages((from, to) => sb
+    const { data, error } = await sb
       .from("tarefas_central")
       .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
-      .order("atualizado_em", { ascending: false })
-      .order("mirror_key")
-      .range(from, to));
+      .order("atualizado_em", { ascending: false });
+    if (error) throw error;
 
     for (const row of data ?? []) {
       const taskId = String(row.auvo_task_id || "").trim();
@@ -231,16 +237,14 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   }
 
   // Reduzimos a varredura para os IDs que realmente precisamos, evitando timeouts
-  for (let index = 0; index < taskIds.length; index += 500) {
-    const vinculosRelacionados = await fetchAgendaPages((from, to) => sb
+  if (taskIds.length > 0) {
+    const { data: vinculosRelacionados, error: errorVinculos } = await sb
       .from("tarefas_central")
       .select("auvo_task_id,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo,gc_os_situacao,gc_os_cliente,gc_os_tarefa_exec,gc_os_tarefa_os")
-      .in("gc_os_tarefa_exec", taskIds.slice(index, index + 500))
-      .not("gc_os_codigo", "is", null)
-      .order("mirror_key")
-      .range(from, to));
+      .in("gc_os_tarefa_exec", taskIds)
+      .not("gc_os_codigo", "is", null);
       
-    if (vinculosRelacionados.length > 0) {
+    if (!errorVinculos && vinculosRelacionados) {
       for (const row of vinculosRelacionados) {
         const idsExecucao = String(row.gc_os_tarefa_exec || "")
           .split("/")
@@ -333,12 +337,12 @@ async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendame
 
   let configs: Array<{ id: string; contrato_id: string; qtd_visitas: number }> = [];
   if (configIds.length > 0) {
-    configs = await fetchAgendaPages((from, to) => sb
+    const result = await sb
       .from("contratos_visitas_config")
       .select("id,contrato_id,qtd_visitas")
-      .in("id", configIds)
-      .order("id")
-      .range(from, to));
+      .in("id", configIds);
+    if (result.error) throw result.error;
+    configs = result.data ?? [];
   }
 
   const contractIds = [...new Set([
@@ -353,12 +357,12 @@ async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendame
     horas_mes_contratadas: number | null;
   }> = [];
   if (contractIds.length > 0) {
-    contracts = await fetchAgendaPages((from, to) => sb
+    const result = await sb
       .from("contratos")
       .select("id,nome,tipo_id,horas_mes_contratadas")
-      .in("id", contractIds)
-      .order("id")
-      .range(from, to));
+      .in("id", contractIds);
+    if (result.error) throw result.error;
+    contracts = result.data ?? [];
   }
 
   const contractTypeIds = [...new Set(contracts
@@ -366,12 +370,12 @@ async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendame
     .filter((id): id is string => Boolean(id)))];
   let contractTypes: Array<{ id: string; nome: string }> = [];
   if (contractTypeIds.length > 0) {
-    contractTypes = await fetchAgendaPages((from, to) => sb
+    const result = await sb
       .from("contrato_tipos")
       .select("id,nome")
-      .in("id", contractTypeIds)
-      .order("id")
-      .range(from, to));
+      .in("id", contractTypeIds);
+    if (result.error) throw result.error;
+    contractTypes = result.data ?? [];
   }
 
   let executions: Array<{
@@ -383,13 +387,13 @@ async function preencherProgressoVisitasContratuais(agendamentos: AgendaAgendame
     horas_trabalhadas: number;
   }> = [];
   if (configIds.length > 0 && competencias.length > 0) {
-    executions = await fetchAgendaPages((from, to) => sb.from("contratos_visitas_execucoes")
+    const result = await sb.from("contratos_visitas_execucoes")
       .select("id,contrato_visita_config_id,competencia,visita_numero,data_realizada,horas_trabalhadas")
       .in("contrato_visita_config_id", configIds)
       .gte("competencia", `${competencias[0]}-01`)
-      .lte("competencia", `${competencias[competencias.length - 1]}-01`)
-      .order("id")
-      .range(from, to));
+      .lte("competencia", `${competencias[competencias.length - 1]}-01`);
+    if (result.error) throw result.error;
+    executions = result.data ?? [];
   }
 
   return attachContractVisitProgress(
@@ -422,13 +426,12 @@ export function useAgendamentos(dataISO: string) {
   return useQuery({
     queryKey: ["agenda_agendamentos", dataISO],
     queryFn: async () => {
-      const data = await fetchAgendaPages((from, to) => sb
+      const { data, error } = await sb
         .from("agenda_agendamentos")
         .select("*")
         .eq("data", dataISO)
-        .order("hora_inicio")
-        .order("id")
-        .range(from, to));
+        .order("hora_inicio");
+      if (error) throw error;
       const preenchidos = await preencherDocumentosGc((data ?? []) as AgendaAgendamento[]);
       return preencherProgressoVisitasContratuais(preenchidos);
     },
@@ -442,20 +445,18 @@ export function useSaveAgendamento() {
       // O usuário solicitou remover a validação de conflito de agenda, 
       // pois o Auvo permite tarefas sobrepostas.
       
-      const operation = payload.id
-        ? sb.from("agenda_agendamentos").update(payload as never).eq("id", payload.id)
-        : sb.from("agenda_agendamentos").insert(payload as never);
-      const { data, error } = await operation.select("id").single();
-      if (error) throw error;
-      if (!data?.id) throw new Error("O agendamento não foi salvo. Atualize a agenda e tente novamente.");
-      return data;
+      if (payload.id) {
+        const { error } = await sb.from("agenda_agendamentos").update(payload as never).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("agenda_agendamentos").insert(payload as never);
+        if (error) throw error;
+      }
     },
     onSuccess: (_data, variables) => {
       toast.success(variables.previsao_continuidade ? "Previsão salva" : "Agendamento salvo");
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
       qc.invalidateQueries({ queryKey: ["agenda_semana"] });
-      qc.invalidateQueries({ queryKey: ["agenda_agendamentos_logs"] });
-      qc.invalidateQueries({ queryKey: ["agenda_agendamentos_logs_equipe"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -507,18 +508,16 @@ export function useAgendaSemana(dias: string[]) {
     placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const [ag, vd] = await Promise.all([
-        fetchAgendaPages((from, to) => sb.from("agenda_agendamentos").select("*")
-          .gte("data", inicio).lte("data", fim)
-          .order("data").order("hora_inicio").order("id").range(from, to)),
-        fetchAgendaPages((from, to) => sb.from("agenda_veiculo_dia").select("*")
-          .gte("data", inicio).lte("data", fim)
-          .order("data").order("id").range(from, to)),
+        sb.from("agenda_agendamentos").select("*").gte("data", inicio).lte("data", fim),
+        sb.from("agenda_veiculo_dia").select("*").gte("data", inicio).lte("data", fim),
       ]);
+      if (ag.error) throw ag.error;
+      if (vd.error) throw vd.error;
       return {
         agendamentos: await preencherProgressoVisitasContratuais(
-          await preencherDocumentosGc(ag as AgendaAgendamento[]),
+          await preencherDocumentosGc((ag.data ?? []) as AgendaAgendamento[]),
         ),
-        veiculoDias: vd as AgendaVeiculoDia[],
+        veiculoDias: (vd.data ?? []) as AgendaVeiculoDia[],
       };
     },
   });

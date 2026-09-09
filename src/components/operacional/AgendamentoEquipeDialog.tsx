@@ -78,7 +78,6 @@ export default function AgendamentoEquipeDialog({
   const { data: veiculos = [] } = useAgendaVeiculos();
   const save = useSaveAgendamento();
   const del = useDeleteAgendamento();
-  const ehPrevisao = !agendamento || Boolean(agendamento.previsao_continuidade);
 
   const [data, setData] = useState("");
   const [horaInicio, setHoraInicio] = useState("08:00");
@@ -232,7 +231,7 @@ export default function AgendamentoEquipeDialog({
       setGcDocEndpoint(null);
 
     }
-  }, [open, agendamento, initialDate, initialColaboradorId]);
+  }, [open, agendamento, initialDate]);
 
   const tecnicos = colaboradores.filter((c) => c.ativo && isTecnico(c));
   const lista = tecnicos.length > 0 ? tecnicos : colaboradores.filter((c) => c.ativo);
@@ -240,14 +239,7 @@ export default function AgendamentoEquipeDialog({
   const handleSave = async () => {
     const nome = lista.find((c) => c.id === colaboradorId)?.nome ?? "";
     const colab = lista.find((c) => c.id === colaboradorId);
-    if (!data || !colaboradorId || !cliente.trim()) {
-      toast.error("Preencha a data, o técnico e o cliente.");
-      return;
-    }
-    if (!horaInicio || duracaoMin < 1 || duracaoMin > 10080) {
-      toast.error("Informe a hora de início e uma duração válida.");
-      return;
-    }
+    if (!data || !colaboradorId || !cliente.trim()) return;
 
     try {
       // 1. Se for AUVO, atualiza primeiro agenda/duração e depois os metadados.
@@ -335,20 +327,18 @@ export default function AgendamentoEquipeDialog({
         cliente: cliente.trim(),
         descricao: descricao.trim() || null,
         // Preserva os campos técnicos se for edição
-        auvo_task_id: agendamento?.auvo_task_id ?? null,
-        origem: agendamento ? agendamento.origem : "MANUAL",
-        status: agendamento ? agendamento.status : "PREVISAO",
-        previsao_tipo: agendamento ? agendamento.previsao_tipo : "CONTINUACAO",
+        auvo_task_id: agendamento?.auvo_task_id,
+        origem: agendamento?.origem,
         gc_os_codigo: agendamento?.gc_os_codigo,
         gc_orcamento_codigo: agendamento?.gc_orcamento_codigo,
-        previsao_continuidade: ehPrevisao,
+        previsao_continuidade: agendamento?.previsao_continuidade,
         previsao_detalhes: previsaoDetalhes.trim() || null,
       });
 
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      toast.error(err.message || (ehPrevisao ? "Erro ao salvar previsão" : "Erro ao salvar agendamento"));
+      toast.error(err.message || (agendamento?.previsao_continuidade ? "Erro ao salvar previsão" : "Erro ao salvar agendamento"));
     }
   };
 
@@ -388,7 +378,7 @@ export default function AgendamentoEquipeDialog({
               ? "Editar previsão"
               : agendamento
                 ? "Editar agendamento"
-                : "Adicionar nova previsão"}
+                : "Adicionar novo agendamento"}
           </DialogTitle>
         </DialogHeader>
         
@@ -520,7 +510,7 @@ export default function AgendamentoEquipeDialog({
             <AgendaTagsEditor agendamentoId={agendamento.id} />
           )}
 
-          {ehPrevisao && (
+          {agendamento?.previsao_continuidade && (
             <div className="space-y-3 p-3 bg-primary/5 rounded-md border border-primary/20">
               {ehPrevisaoOrcamento && (
                   <div className={cn(
@@ -755,7 +745,7 @@ export default function AgendamentoEquipeDialog({
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={save.isPending || !data || !colaboradorId || !cliente.trim()}>
-              {save.isPending ? "Salvando..." : ehPrevisao ? "Salvar previsão" : "Salvar agendamento"}
+              {save.isPending ? "Salvando..." : agendamento?.previsao_continuidade ? "Salvar previsão" : "Salvar agendamento"}
             </Button>
           </div>
         </DialogFooter>

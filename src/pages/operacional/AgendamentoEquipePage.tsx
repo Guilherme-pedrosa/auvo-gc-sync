@@ -72,6 +72,7 @@ import {
 } from "@/lib/agendaPlannedVsActual";
 import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
 import { fetchAgendaPages } from "@/lib/agendaPagination";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import {
   contractMonthlyHoursAreFulfilled,
   sortAgendaItemsWithContractPlanFirst,
@@ -1385,6 +1386,7 @@ export default function AgendamentoEquipePage() {
           <div className="hidden md:flex items-center bg-muted rounded-md p-1 gap-1">
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
+          <LastSyncBadge />
           <Button variant="outline" size="sm" onClick={() => {
             document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
               const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");

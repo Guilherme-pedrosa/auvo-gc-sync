@@ -1,5 +1,5 @@
 import { useLastSync } from "@/hooks/useLastSync";
-import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Database } from "lucide-react";
 
@@ -9,6 +9,21 @@ interface LastSyncBadgeProps {
   overrideTimestamp?: string | null;
 }
 
+const BR_TIMEZONE = "America/Sao_Paulo";
+
+/** Data e hora sempre no fuso de Brasília, independente do fuso do navegador. */
+export function formatBrasilia(date: Date): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BR_TIMEZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 export default function LastSyncBadge({ className = "", overrideTimestamp }: LastSyncBadgeProps) {
   const { data: dbSync } = useLastSync();
   const lastSync = overrideTimestamp ?? dbSync;
@@ -16,16 +31,18 @@ export default function LastSyncBadge({ className = "", overrideTimestamp }: Las
   if (!lastSync) return null;
 
   const date = parseISO(lastSync);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const absolute = formatBrasilia(date);
   const relative = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
-  const absolute = format(date, "dd/MM/yyyy HH:mm");
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[10px] text-muted-foreground ${className}`}
-      title={`Última sincronização: ${absolute}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground ${className}`}
+      title={`Última atualização: ${absolute} (horário de Brasília) · ${relative}`}
     >
       <Database className="h-3 w-3" />
-      Sinc: {relative}
+      Última atualização: {absolute}
     </span>
   );
 }
