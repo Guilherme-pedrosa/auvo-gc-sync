@@ -1098,7 +1098,9 @@ function jsonResponse(value: Record<string, unknown>, status = 200) {
 }
 
 async function processCustomerJob(supabase: any, job: Job): Promise<void> {
-  return requestDeadline.run(AbortSignal.timeout(55_000), () => processCustomerJobWithDeadline(supabase, job));
+  // Lotes curtos liberam o isolate rapidamente: um lote longo em segundo plano
+  // segura o worker e faz as próximas chamadas da tela estourarem em 504.
+  return requestDeadline.run(AbortSignal.timeout(30_000), () => processCustomerJobWithDeadline(supabase, job));
 }
 
 async function processCustomerJobWithDeadline(supabase: any, job: Job): Promise<void> {
@@ -1115,7 +1117,7 @@ async function processCustomerJobWithDeadline(supabase: any, job: Job): Promise<
   try {
     // Background work is also bounded. The next invocation resumes the stored
     // cursor; waitUntil never wraps the original unbounded whole-catalog scan.
-    for (let steps = 0; steps < 20 && Date.now() - started < 35_000; steps++) {
+    for (let steps = 0; steps < 20 && Date.now() - started < 18_000; steps++) {
       await runRhCustomerStep({
         payload: { ...job.payload, kind: job.payload.kind },
         state: { ...job.state, phase: job.state.phase },
