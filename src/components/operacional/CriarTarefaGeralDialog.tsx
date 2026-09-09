@@ -1,6 +1,6 @@
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useState, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Send, X } from "lucide-react";
@@ -19,7 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (taskId: string | null) => void;
+  onSuccess?: (taskId: string | null, dateISO: string) => Promise<void> | void;
   /** Data pré-selecionada (linha/coluna da escala) */
   initialDate?: string | null;
   /** Técnico dono da linha clicada (userID do Auvo) */
@@ -37,6 +37,7 @@ export default function CriarTarefaGeralDialog({
   open, onOpenChange, onSuccess, initialDate, initialUserAuvoId, initialUserNome,
 }: Props) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const [taskTypeId, setTaskTypeId] = useState("");
   const [idUserTo, setIdUserTo] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -181,13 +182,19 @@ export default function CriarTarefaGeralDialog({
           } : undefined,
         });
         if (data?.warning) toast.warning(data.warning);
-        onSuccess?.(tid);
-        // Após criar a tarefa, invalidamos os caches para forçar a atualização da escala
-        const qc = (window as any).queryClient;
-        if (qc) {
-          qc.invalidateQueries({ queryKey: ["agenda_semana"] });
-          qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        // O POST no Auvo já foi confirmado. Falha ao importar a agenda não
+        // transforma a criação em falha nem pode levar a repetir esse POST.
+        try {
+          await onSuccess?.(tid, dateISO);
+        } catch (syncError) {
+          toast.warning(`Tarefa criada no Auvo${tid ? ` (#${tid})` : ""}, mas a agenda ainda não foi atualizada.`, {
+            description: "Use Sincronizar Auvo para importar a tarefa. Não crie a mesma tarefa novamente.",
+            duration: 12000,
+          });
+          console.warn("Tarefa criada; importação da agenda pendente:", syncError);
         }
+        void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
+        void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
         onOpenChange(false);
       } else {
         const statusPrefix = data?.status ? `HTTP ${data.status} · ` : "";
