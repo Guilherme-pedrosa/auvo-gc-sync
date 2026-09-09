@@ -72,6 +72,7 @@ import {
 } from "@/lib/agendaPlannedVsActual";
 import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
 import { fetchAgendaPages } from "@/lib/agendaPagination";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import {
   contractMonthlyHoursAreFulfilled,
   sortAgendaItemsWithContractPlanFirst,
