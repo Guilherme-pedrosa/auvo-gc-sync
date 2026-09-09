@@ -34,8 +34,24 @@ type AuvoFetchResult = {
 type EquipmentPair = { nome: string | null; id: string | null };
 
 function syncErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error || "falha desconhecida");
-  return message.slice(0, 1000);
+  const details: string[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && !seen.has(current) && details.length < 4) {
+    seen.add(current);
+    details.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  let message = details.join("; causa: ") || "falha desconhecida";
+  // Preserve transport diagnostics without exposing credentials in sync_status.
+  for (const name of ["GC_ACCESS_TOKEN", "GC_SECRET_TOKEN", "AUVO_APP_KEY", "AUVO_TOKEN", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    const secret = Deno.env.get(name);
+    if (secret) message = message.replaceAll(secret, "[redigido]");
+  }
+  return message
+    .replace(/https?:\/\/[^\s)]+/gi, "[URL]")
+    .replace(/Bearer\s+[^\s,;]+/gi, "Bearer [redigido]")
+    .slice(0, 1000);
 }
 
 function databaseErrorText(error: any): string {
