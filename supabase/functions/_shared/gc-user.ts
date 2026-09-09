@@ -2,7 +2,9 @@
 // técnico da API. O chamador nunca pode substituir esse usuário pelo perfil
 // humano que está usando a interface.
 import {
+  forceGcApiUserInHeaders,
   forceGcApiUserInRequest,
+  forceGcApiUserInUrl,
   isGestaoClickApiUrl,
   isGestaoClickMcpUrl,
 } from "./gc-user-core.ts";
