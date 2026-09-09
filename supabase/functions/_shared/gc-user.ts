@@ -4,6 +4,7 @@
 import {
   forceGcApiUserInRequest,
   isGestaoClickApiUrl,
+  isGestaoClickMcpUrl,
 } from "./gc-user-core.ts";
 import { GC_BROKER_URL, normalizeSource } from "./gc-broker-core.ts";
 
@@ -45,6 +46,12 @@ export function installGcUsuarioId() {
     try {
       const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
       const protectedRequest = await forceGcApiUserInRequest(input, init, GC_API_USER_ID);
+
+      // MCP usa JSON-RPC/SSE e não pode atravessar o broker de endpoints /api/.
+      // A identificação técnica já foi aplicada à URL e aos dados de chamar_api.
+      if (isGestaoClickMcpUrl(protectedRequest.url)) {
+        return originalFetch(protectedRequest, requestSignal ? { signal: requestSignal } : undefined);
+      }
 
       // Somente o broker pode atravessar esta fronteira diretamente. Todas as
       // demais funções deste projeto entram no mesmo orçamento/cache global.

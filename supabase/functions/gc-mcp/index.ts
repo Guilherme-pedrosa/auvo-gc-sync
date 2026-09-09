@@ -1,3 +1,6 @@
+import { installGcUsuarioId } from "../_shared/gc-user.ts";
+installGcUsuarioId();
+
 // Proxy para o servidor MCP oficial do GestãoClick (https://api.gestaoclick.com/mcp)
 // Encaminha chamadas JSON-RPC do MCP usando as credenciais guardadas no backend.
 

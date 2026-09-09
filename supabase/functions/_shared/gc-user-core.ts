@@ -45,6 +45,39 @@ export function forceGcApiUserInBody(body: unknown, apiUserId: string): unknown 
   return body;
 }
 
+export function isGestaoClickMcpUrl(rawUrl: string): boolean {
+  return isGestaoClickApiUrl(rawUrl) && new URL(rawUrl).pathname.replace(/\/$/, "") === "/mcp";
+}
+
+/** Mantém o envelope JSON-RPC; o campo REST pertence aos dados de chamar_api. */
+export function forceGcApiUserInMcpBody(body: string, apiUserId: string): string {
+  const requiredApiUserId = requireApiUserId(apiUserId);
+  const protectMessage = (message: unknown): unknown => {
+    if (!message || typeof message !== "object" || Array.isArray(message)) return message;
+    const rpc = message as Record<string, unknown>;
+    if (rpc.method !== "tools/call") return message;
+    const params = rpc.params as Record<string, unknown> | undefined;
+    if (params?.name !== "chamar_api") return message;
+    const args = params.arguments as Record<string, unknown> | undefined;
+    if (!args || typeof args !== "object" || Array.isArray(args)) {
+      throw new Error("Argumentos inválidos para chamar_api");
+    }
+    const data = args.dados;
+    if (data != null && (typeof data !== "object" || Array.isArray(data))) {
+      throw new Error("Dados inválidos para chamar_api");
+    }
+    return {
+      ...rpc,
+      params: {
+        ...params,
+        arguments: { ...args, dados: { ...(data as Record<string, unknown> ?? {}), usuario_id: requiredApiUserId } },
+      },
+    };
+  };
+  const parsed = JSON.parse(body);
+  return JSON.stringify(Array.isArray(parsed) ? parsed.map(protectMessage) : protectMessage(parsed));
+}
+
 export async function forceGcApiUserInRequest(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -58,7 +91,9 @@ export async function forceGcApiUserInRequest(
 
   if (method !== "GET" && method !== "HEAD") {
     const text = await request.clone().text();
-    body = forceGcApiUserInBody(text, apiUserId) as BodyInit;
+    body = isGestaoClickMcpUrl(request.url)
+      ? forceGcApiUserInMcpBody(text, apiUserId)
+      : forceGcApiUserInBody(text, apiUserId) as BodyInit;
   }
 
   const headers = forceGcApiUserInHeaders(request.headers, apiUserId);
