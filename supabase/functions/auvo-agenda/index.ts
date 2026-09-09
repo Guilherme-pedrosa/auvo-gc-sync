@@ -1,4 +1,5 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { auvoTaskStatus } from "../_shared/auvo-task-status.ts";
 import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
 import {
   auvoCheckInDate,
@@ -609,8 +610,7 @@ Deno.serve(async (req) => {
       const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
 
-      const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
-      const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
+      const status = auvoTaskStatus(t);
 
       // Extract time from taskDate and taskEndDate (format: 2025-03-16T08:00:00)
       const taskDateTime = rawDate.length >= 16 ? rawDate.substring(11, 16) : "";
@@ -640,7 +640,7 @@ Deno.serve(async (req) => {
         || taskTypeMetadata?.durationMinutes
         || managedDescriptionDurationMinutes(taskTypeDescription)
         || plannedWindowMinutes(scheduledStartTime, scheduledEndTime);
-      const isFinished = !!t.finished || statusDesc === "Finalizada";
+      const isFinished = status === "Finalizada";
       
       // Real check-in/check-out timestamps (when technician actually started/finished)
       const workedSource = {

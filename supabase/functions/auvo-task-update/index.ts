@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { auvoTaskStatus } from "../_shared/auvo-task-status.ts";
 import {
   isManagedTaskType,
   managedBaseTaskTypeId,
@@ -796,7 +797,7 @@ Deno.serve(async (req) => {
       const taskEndDate = String(task?.taskEndDate ?? task?.endDate ?? "");
       const checkInDate = auvoCheckInDate(task) || "";
       const checkOutDate = auvoCheckOutDate(task) || "";
-      const status = String(task?.taskStatus?.description ?? task?.status?.description ?? task?.status ?? "").trim();
+      const status = auvoTaskStatus(task);
       const customer = String(task?.customerDescription ?? task?.customerName ?? task?.customer?.tradeName ?? "").trim();
       const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
