@@ -36,7 +36,7 @@ test("broker retries transient network failures only for logical GET/HEAD and ke
   }
 });
 
-test("persistent read network failure stops after three broker attempts and reports transport", async () => {
+test("persistent read network failure stops after four broker attempts and reports transport", async () => {
   let calls = 0;
   const cause = new TypeError("fetch failed");
   await withGcWrapper(async () => { calls++; throw cause; }, async (gcFetch) => {
@@ -46,7 +46,7 @@ test("persistent read network failure stops after three broker attempts and repo
       assert.equal(error.cause, cause);
       return true;
     });
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
   });
 });
 
@@ -67,6 +67,48 @@ test("network failures never repeat business writes and preserve commercial fiel
       assert.deepEqual(envelope.payload, { usuario_id: API_USER, vendedor_id: "55", tecnico_id: "66" });
     });
   }
+});
+
+test("rate-limit transport messages never repeat business writes", async () => {
+  for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+    let calls = 0;
+    const cause = new Error("Rate limit reached; retry after 1ms");
+    await withGcWrapper(async () => { calls++; throw cause; }, async (gcFetch) => {
+      await assert.rejects(gcFetch("https://api.gestaoclick.com/api/orcamentos/7", {
+        method,
+        body: JSON.stringify({ usuario_id: "1023771" }),
+      }), (error) => {
+        assert.match(error.message, /transporte do broker/);
+        assert.equal(error.cause, cause);
+        return true;
+      });
+      assert.equal(calls, 1, "a rate-limit message does not prove that the write was never sent");
+    });
+  }
+});
+
+test("MCP protection failures stop malformed requests before any transport", async () => {
+  const invalidBodies = [
+    "not JSON",
+    JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "chamar_api" } }),
+    ...["{\"usuario_id\":\"1023771\"}", []].map((dados) => JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "chamar_api", arguments: { recurso: "vendas", acao: "editar", dados } },
+    })),
+  ];
+  let calls = 0;
+  await withGcWrapper(async () => { calls++; return Response.json({}); }, async (gcFetch) => {
+    for (const body of invalidBodies) {
+      await assert.rejects(gcFetch("https://api.gestaoclick.com/mcp?usuario_id=1023771", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body,
+      }), (error) => {
+        assert.match(error.message, /garantir o usuário/);
+        assert.ok(error.cause instanceof Error);
+        return true;
+      });
+    }
+    assert.equal(calls, 0, "neither the MCP endpoint nor the broker may receive unprotected bodies");
+  });
 });
 
 test("header errors are not retried or mistaken for temporary network failures", async () => {

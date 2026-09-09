@@ -34,8 +34,8 @@ function isNetworkFailure(error: unknown): boolean {
     /fetch failed|failed to fetch|network.?error|network request failed|error sending request|connection (?:reset|refused|closed)/i.test(error.message);
 }
 
-// Limite de saída da plataforma: a requisição nem chega a ser enviada,
-// portanto é seguro repetir mesmo em gravações.
+// A mensagem pode indicar limite de saída, mas não prova que uma gravação
+// deixou de ser enviada. O atraso só é usado para repetir leituras.
 function rateLimitDelayMs(error: unknown): number | null {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
   if (!/rate.?limit/i.test(message)) return null;
@@ -52,7 +52,7 @@ async function fetchBroker(
   // The broker uses POST even for reads. Retry based on the logical GC method,
   // never on the broker's HTTP method, to avoid repeating business writes.
   const isSafe = ["GET", "HEAD"].includes(method.toUpperCase());
-  const maxAttempts = isSafe ? 4 : 3;
+  const maxAttempts = isSafe ? 4 : 1;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     init.signal?.throwIfAborted();
     try {
@@ -62,7 +62,7 @@ async function fetchBroker(
         throw error;
       }
       const rateWait = rateLimitDelayMs(error);
-      if (rateWait !== null && attempt < maxAttempts - 1) {
+      if (isSafe && rateWait !== null && attempt < maxAttempts - 1) {
         await new Promise((resolve) => setTimeout(resolve, rateWait));
         continue;
       }
@@ -129,6 +129,13 @@ export function createGcFetch(originalFetch: typeof fetch): typeof fetch {
     } catch (error) {
       if (requestSignal?.aborted || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) {
         throw error;
+      }
+      // MCP não passa pelo broker: sem proteger o corpo JSON-RPC, não há
+      // outra camada capaz de garantir o usuário técnico antes do envio.
+      if (isGestaoClickMcpUrl(rawUrl)) {
+        throw new Error("Chamada ao GestãoClick bloqueada: não foi possível garantir o usuário da API GC", {
+          cause: error,
+        });
       }
       // Plano B: garante o usuário técnico ao menos na URL e no cabeçalho.
       // O corpo de gravações ainda é protegido pelo broker (protectWritePayload).
