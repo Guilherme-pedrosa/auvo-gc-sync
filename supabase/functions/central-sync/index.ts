@@ -4,7 +4,7 @@ installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
-import { persistGcShells, persistReportTasks } from "./report-persistence.ts";
+import { assertCompleteAuvoReport, persistGcShells, persistReportTasks } from "./report-persistence.ts";
 import { runBoundedReportStep } from "./report-steps.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
@@ -2535,6 +2535,7 @@ async function runReportsOnlySync(
   }
 
   const auvoFetch = await fetchAuvoTasks(bearerToken, startDate, endDate);
+  assertCompleteAuvoReport(auvoFetch, startDate, endDate);
   const auvoTasks = auvoFetch.tasks;
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
 

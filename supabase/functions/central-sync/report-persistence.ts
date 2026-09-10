@@ -1,4 +1,10 @@
 // GC refreshes must not reset the technician, schedule, execution or questionnaire.
+export function assertCompleteAuvoReport(result: { complete: boolean; windows?: { error?: string }[] }, start: string, end: string): void {
+  if (result.complete) return;
+  const reason = result.windows?.find(window => window.error)?.error || "consulta incompleta";
+  throw new Error(`Auvo não confirmou as tarefas de ${start} a ${end}: ${reason}. Os registros existentes foram preservados.`);
+}
+
 export async function persistGcShells(sb: any, shells: any[]): Promise<number> {
   let saved = 0;
   for (let from = 0; from < shells.length; from += 5) {
