@@ -41,6 +41,9 @@ export async function syncReportsInSteps(
     const { data, error } = await invoke("central-sync", { body: { ...body, wait: true } });
     options.signal?.throwIfAborted();
     if (error) throw new Error(`${label}: ${await describeSyncError(error)}`);
+    if (body.reports_only && data?.auvo_paginacao_completa === false) {
+      throw new Error(`${label}: ${data?.error || "O Auvo não confirmou a consulta completa desta data. Os registros existentes foram preservados."}`);
+    }
     if (data?.success !== true || data?.background || Number(data?.errors || 0) > 0 || data?.auvo_error) {
       throw new Error(`${label}: ${data?.error || data?.auvo_error || "O servidor não confirmou a gravação completa deste lote."}`);
     }

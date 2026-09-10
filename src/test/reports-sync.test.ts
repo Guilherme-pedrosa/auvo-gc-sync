@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { transferableAbortController } from "node:util";
 import { describeSyncError, syncReportsInSteps } from "../lib/reportsSync";
-import { persistGcShells, persistReportTasks } from "../../supabase/functions/central-sync/report-persistence";
+import { assertCompleteAuvoReport, persistGcShells, persistReportTasks } from "../../supabase/functions/central-sync/report-persistence";
 import { runBoundedReportStep } from "../../supabase/functions/central-sync/report-steps";
 
 // jsdom 20 lacks the standard abort APIs supported by the browser and Deno.
@@ -77,6 +77,17 @@ describe("Controle OS — sincronização em lotes", () => {
     expect(await describeSyncError({ context: Response.json({ error: "Sessão expirada" }, { status: 401 }) })).toBe("Sessão expirada");
     expect(await describeSyncError({ context: new Response("indisponível", { status: 503 }) })).toContain("HTTP 503");
   });
+
+  it("não anuncia sucesso nem avança a data após uma consulta Auvo incompleta", async () => {
+    const invoke = vi.fn(async (_name, { body }) => ({ data: body.reports_only
+      ? { success: true, auvo_tarefas: 0, upserted: 0, errors: 0, auvo_paginacao_completa: false }
+      : { success: true, report_step: body.report_step, next_page: null, next_after: null }, error: null }));
+    const progress = vi.fn();
+    await expect(syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress,
+      days: [{ start: "2026-09-06", end: "2026-09-06" }, { start: "2026-09-07", end: "2026-09-07" }] })).rejects.toThrow(/Auvo não confirmou/);
+    expect(invoke.mock.calls.filter(([, { body }]) => body.reports_only)).toHaveLength(1);
+    expect(progress).not.toHaveBeenCalledWith("Todos os lotes foram concluídos e gravados.", expect.anything());
+  });
 });
 
 function database(existing: any[] = [], writeError: any = null) {
@@ -90,6 +101,11 @@ function database(existing: any[] = [], writeError: any = null) {
 }
 
 describe("persistência do Controle OS", () => {
+  it("recusa a resposta real de falha 500 do Auvo antes de gravar ou conferir exclusões", () => {
+    expect(() => assertCompleteAuvoReport({ complete: false, windows: [{ error: "página 1 respondeu 500" }] }, "2026-09-06", "2026-09-06"))
+      .toThrow("Auvo não confirmou as tarefas de 2026-09-06 a 2026-09-06: página 1 respondeu 500. Os registros existentes foram preservados.");
+    expect(() => assertCompleteAuvoReport({ complete: true }, "2026-09-05", "2026-09-05")).not.toThrow();
+  });
   it("atualiza só os campos GC e preserva um espelho Auvo vinculado a orçamento", async () => {
     const sb = database([{ gc_os_id: "77", mirror_key: "42::os:77::orc:88" }]);
     await persistGcShells(sb, [{ gc_os_id: "77", gc_os_codigo: "1000", mirror_key: "42::os:77::orc:",
