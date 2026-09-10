@@ -1,3 +1,4 @@
+// Controle OS: bounded report steps preserve Auvo assignments and report confirmed progress.
 import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
@@ -10,24 +11,19 @@ import {
   normalizeGcDocumentCode,
   selectOsForBudgetForecast,
 } from "../_shared/agenda-forecast-promotion.ts";
-import {
-  auvoTaskTypeDescription,
-  auvoTaskTypeId,
-} from "../_shared/auvo-task-type.ts";
+import { auvoTaskTypeDescription, auvoTaskTypeId } from "../_shared/auvo-task-type.ts";
 import {
   extractAuvoEquipmentIds,
   extractAuvoInlineEquipmentInfo,
   joinAuvoEquipmentInfo,
   type AuvoEquipmentInfo,
 } from "../_shared/auvo-equipment.ts";
-import {
-  findMissingAuvoTaskIds,
-  isConfirmedDeletedAuvoStatus,
-} from "../_shared/auvo-deleted-task-reconciliation.ts";
+import { findMissingAuvoTaskIds, isConfirmedDeletedAuvoStatus } from "../_shared/auvo-deleted-task-reconciliation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
@@ -84,19 +80,22 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
     const queued = gcRateQueue.then(async () => {
       const elapsed = Date.now() - lastGcCall;
       if (elapsed < MIN_DELAY_MS) {
-        await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+        await new Promise((r) => setTimeout(r, MIN_DELAY_MS - elapsed));
       }
       lastGcCall = Date.now();
       return fetch(requestUrl.toString(), protectedOptions);
     });
-    gcRateQueue = queued.then(() => undefined, () => undefined);
+    gcRateQueue = queued.then(
+      () => undefined,
+      () => undefined,
+    );
     return queued;
   }
 
   const now = Date.now();
   const last = lastAuvoCall;
   const elapsed = now - last;
-  if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+  if (elapsed < MIN_DELAY_MS) await new Promise((r) => setTimeout(r, MIN_DELAY_MS - elapsed));
   lastAuvoCall = Date.now();
   return fetch(url, options);
 }
@@ -294,7 +293,9 @@ function chooseBestExistingMirror(current: any | undefined, candidate: any): str
   const candScore = taskRowQuality(candidate);
   const curScore = taskRowQuality(current);
   if (candScore !== curScore) return candScore > curScore ? candidate.mirror_key : current.mirror_key;
-  return String(candidate?.atualizado_em || "") > String(current?.atualizado_em || "") ? candidate.mirror_key : current.mirror_key;
+  return String(candidate?.atualizado_em || "") > String(current?.atualizado_em || "")
+    ? candidate.mirror_key
+    : current.mirror_key;
 }
 
 function resolveTaskType(task: any): string {
@@ -320,10 +321,14 @@ function extractAddress(addr: unknown): string {
       a.state || a.estado || a.uf || "",
       a.zipCode || a.cep || a.zip || "",
       a.country || a.pais || "",
-    ].map(v => String(v || "").trim()).filter(Boolean);
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
     if (parts.length > 0) return parts.join(", ").substring(0, 300);
     // Last resort: stringify non-empty keys
-    const vals = Object.values(a).map(v => String(v || "").trim()).filter(Boolean);
+    const vals = Object.values(a)
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
     return vals.join(", ").substring(0, 300);
   }
   return String(addr).substring(0, 300);
@@ -341,12 +346,12 @@ function normalizeComparable(text: unknown): string {
 function resolveTaskAddress(task: any): string {
   return extractAddress(
     task?.address ||
-    task?.customerAddress ||
-    task?.addressDescription ||
-    task?.customer?.address ||
-    task?.customer?.fullAddress ||
-    task?.customer?.location ||
-    ""
+      task?.customerAddress ||
+      task?.addressDescription ||
+      task?.customer?.address ||
+      task?.customer?.fullAddress ||
+      task?.customer?.location ||
+      "",
   );
 }
 
@@ -388,7 +393,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   for (let attempt = 1; attempt <= 3; attempt++) {
     response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
     if (response.status === 502 || response.status === 503) {
-      await new Promise(r => setTimeout(r, attempt * 2000));
+      await new Promise((r) => setTimeout(r, attempt * 2000));
       continue;
     }
     break;
@@ -400,12 +405,12 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
 
   const address = extractAddress(
     result?.address ||
-    result?.customerAddress ||
-    result?.addressDescription ||
-    result?.customer?.address ||
-    result?.customer?.fullAddress ||
-    result?.customer?.location ||
-    ""
+      result?.customerAddress ||
+      result?.addressDescription ||
+      result?.customer?.address ||
+      result?.customer?.fullAddress ||
+      result?.customer?.location ||
+      "",
   );
   const orientation = String(result?.orientation || "").substring(0, 500);
   const technicianName = resolveAuvoTechnicianName(result);
@@ -416,12 +421,12 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
   const taskEndDate = String(
     result?.taskEndDate ||
-    result?.taskEndDateTime ||
-    result?.endDate ||
-    result?.endDateTime ||
-    result?.scheduledEndDate ||
-    result?.scheduledEndDateTime ||
-    ""
+      result?.taskEndDateTime ||
+      result?.endDate ||
+      result?.endDateTime ||
+      result?.scheduledEndDate ||
+      result?.scheduledEndDateTime ||
+      "",
   ).trim();
   const startTime = String(result?.startTime || result?.startHour || result?.scheduledStartTime || "").trim();
   const endTime = String(result?.endTime || result?.endHour || result?.scheduledEndTime || "").trim();
@@ -438,7 +443,27 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const equipmentSerial = inlineEquipment.identifier;
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
-  return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires, duration, durationDecimal, timeControl };
+  return {
+    address,
+    orientation,
+    technicianName,
+    technicianId,
+    taskDate,
+    displacementStart,
+    checkInDate,
+    checkOutDate,
+    taskEndDate,
+    startTime,
+    endTime,
+    estimatedDuration,
+    equipmentName,
+    equipmentSerial,
+    equipmentIds: equipIds,
+    questionnaires,
+    duration,
+    durationDecimal,
+    timeControl,
+  };
 }
 
 async function loadAuvoEquipmentCatalog(
@@ -446,7 +471,14 @@ async function loadAuvoEquipmentCatalog(
   bearerToken: string,
   equipmentIds: string[],
 ): Promise<Map<string, AuvoEquipmentInfo>> {
-  const uniqueIds = [...new Set(equipmentIds.map(String).map((id) => id.trim()).filter(Boolean))];
+  const uniqueIds = [
+    ...new Set(
+      equipmentIds
+        .map(String)
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ];
   const catalog = new Map<string, AuvoEquipmentInfo>();
 
   for (let i = 0; i < uniqueIds.length; i += 200) {
@@ -475,24 +507,26 @@ async function loadAuvoEquipmentCatalog(
   const rowsToPersist: any[] = [];
   for (let i = 0; i < missingIds.length; i += 8) {
     const batch = missingIds.slice(i, i + 8);
-    const details = await Promise.all(batch.map(async (equipmentId) => {
-      try {
-        const response = await rateLimitedFetch(
-          `${AUVO_BASE_URL}/equipments/${encodeURIComponent(equipmentId)}`,
-          { headers: auvoHeaders(bearerToken) },
-          "auvo",
-        );
-        if (!response.ok) return null;
-        const json = await response.json().catch(() => ({}));
-        const entity = json?.result?.entity || json?.result || json || null;
-        const joined = joinAuvoEquipmentInfo(extractAuvoInlineEquipmentInfo(entity));
-        if (!joined.name) return null;
-        return { id: equipmentId, name: joined.name, identifier: joined.identifier } as AuvoEquipmentInfo;
-      } catch (error) {
-        console.warn(`[central-sync] Falha ao buscar equipamento ${equipmentId}:`, error);
-        return null;
-      }
-    }));
+    const details = await Promise.all(
+      batch.map(async (equipmentId) => {
+        try {
+          const response = await rateLimitedFetch(
+            `${AUVO_BASE_URL}/equipments/${encodeURIComponent(equipmentId)}`,
+            { headers: auvoHeaders(bearerToken) },
+            "auvo",
+          );
+          if (!response.ok) return null;
+          const json = await response.json().catch(() => ({}));
+          const entity = json?.result?.entity || json?.result || json || null;
+          const joined = joinAuvoEquipmentInfo(extractAuvoInlineEquipmentInfo(entity));
+          if (!joined.name) return null;
+          return { id: equipmentId, name: joined.name, identifier: joined.identifier } as AuvoEquipmentInfo;
+        } catch (error) {
+          console.warn(`[central-sync] Falha ao buscar equipamento ${equipmentId}:`, error);
+          return null;
+        }
+      }),
+    );
 
     for (const info of details) {
       if (!info) continue;
@@ -555,13 +589,15 @@ async function fetchAuvoTasksForPeriod(
       response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
       if (response.status === 502 || response.status === 503) {
         const waitMs = attempt * 3000; // 3s, 6s, 9s
-        console.warn(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${response.status} — retry ${attempt}/${MAX_RETRIES} em ${waitMs}ms`);
-        await new Promise(r => setTimeout(r, waitMs));
+        console.warn(
+          `[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${response.status} — retry ${attempt}/${MAX_RETRIES} em ${waitMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
       break;
     }
-    
+
     if (!response) {
       complete = false;
       error = `sem resposta na página ${page}`;
@@ -580,7 +616,9 @@ async function fetchAuvoTasksForPeriod(
     }
     if (!response.ok) {
       const text = await response.text();
-      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status} (após ${MAX_RETRIES} tentativas): ${text.substring(0, 200)}`);
+      console.error(
+        `[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status} (após ${MAX_RETRIES} tentativas): ${text.substring(0, 200)}`,
+      );
       complete = false;
       error = `página ${page} respondeu ${response.status}`;
       break;
@@ -647,7 +685,9 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
       if (taskId) seenTaskIds.add(taskId);
       allTasks.push(task);
     }
-    console.log(`[central-sync] Janela ${chunkStart}: ${result.tasks.length} tarefas (${allTasks.length} únicas acumuladas), completa=${result.complete}`);
+    console.log(
+      `[central-sync] Janela ${chunkStart}: ${result.tasks.length} tarefas (${allTasks.length} únicas acumuladas), completa=${result.complete}`,
+    );
 
     current.setTime(chunkEndDate.getTime());
     current.setDate(current.getDate() + 1);
@@ -702,10 +742,7 @@ async function loadLocalAuvoTaskCandidates(
 
 type AuvoTaskExistence = "exists" | "deleted" | "unknown";
 
-async function requestAuvoTaskForExistence(
-  bearerToken: string,
-  taskId: string,
-): Promise<Response | null> {
+async function requestAuvoTaskForExistence(bearerToken: string, taskId: string): Promise<Response | null> {
   const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
   let response: Response | null = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -724,10 +761,7 @@ async function requestAuvoTaskForExistence(
   return response;
 }
 
-async function inspectAuvoTaskExistence(
-  bearerToken: string,
-  taskId: string,
-): Promise<AuvoTaskExistence> {
+async function inspectAuvoTaskExistence(bearerToken: string, taskId: string): Promise<AuvoTaskExistence> {
   const first = await requestAuvoTaskForExistence(bearerToken, taskId);
   if (first?.ok) return "exists";
   if (!first || ![404, 410].includes(first.status)) return "unknown";
@@ -780,9 +814,11 @@ async function reconcileDeletedAuvoTasks(
     return summary;
   }
 
-  const observed = new Set(fetchResult.tasks
-    .map((task) => String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim())
-    .filter((taskId) => isValidAuvoTaskId(taskId)));
+  const observed = new Set(
+    fetchResult.tasks
+      .map((task) => String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim())
+      .filter((taskId) => isValidAuvoTaskId(taskId)),
+  );
   const candidateIds = findMissingAuvoTaskIds(localRows, observed, completeWindows);
 
   summary.candidates = candidateIds.length;
@@ -836,7 +872,7 @@ async function reconcileDeletedAuvoTasks(
   ].reduce((total, value) => total + Number(value || 0), 0);
   console.log(
     `[central-sync] tarefas excluídas: ${summary.archived} arquivadas, ` +
-    `${summary.activeRowsRemoved} espelhos ativos removidos (${confirmedDeleted.join(",")})`,
+      `${summary.activeRowsRemoved} espelhos ativos removidos (${confirmedDeleted.join(",")})`,
   );
   return summary;
 }
@@ -869,7 +905,14 @@ type FetchGcOrcamentosOptions = {
 async function fetchGcOrcamentos(
   gcHeaders: Record<string, string>,
   options: FetchGcOrcamentosOptions = {},
-): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number; nextPage: number | null; totalPagesByTipo: Record<string, number> }> {
+): Promise<{
+  byTaskId: Record<string, any>;
+  byCodigo: Record<string, any>;
+  pagesFetched: number;
+  totalPages: number;
+  nextPage: number | null;
+  totalPagesByTipo: Record<string, number>;
+}> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
   let pagesFetched = 0;
@@ -893,8 +936,10 @@ async function fetchGcOrcamentos(
       for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
         response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
         if (response.status !== 429) break;
-        console.warn(`[central-sync] GC orcamentos(${tipo}) page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
-        await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+        console.warn(
+          `[central-sync] GC orcamentos(${tipo}) page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`,
+        );
+        await new Promise((r) => setTimeout(r, RATE_BACKOFF[attempt]));
       }
       if (!response || response.status === 429) {
         console.error(`[central-sync] GC orcamentos(${tipo}) page ${page}: 429 persistente — pulando restante`);
@@ -933,21 +978,29 @@ async function fetchGcOrcamentos(
   return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal, nextPage, totalPagesByTipo };
 }
 
-async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
-  const unique = [...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOrcResult.byCodigo[c]))];
+async function hydrateMissingOrcamentosByCodigo(
+  gcHeaders: Record<string, string>,
+  gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> },
+  codigos: string[],
+) {
+  const unique = [
+    ...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOrcResult.byCodigo[c])),
+  ];
   if (unique.length === 0) return 0;
   let hydrated = 0;
   const PARALLEL = 8;
   for (let i = 0; i < unique.length; i += PARALLEL) {
     const batch = unique.slice(i, i + PARALLEL);
-    const results = await Promise.all(batch.map(async (codigo) => {
-      const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`;
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (!response.ok) return null;
-      const data = await response.json().catch(() => ({}));
-      const records: any[] = Array.isArray(data?.data) ? data.data : [];
-      return records.find((orc) => String(orc?.codigo || "").trim() === codigo) || null;
-    }));
+    const results = await Promise.all(
+      batch.map(async (codigo) => {
+        const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`;
+        const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (!response.ok) return null;
+        const data = await response.json().catch(() => ({}));
+        const records: any[] = Array.isArray(data?.data) ? data.data : [];
+        return records.find((orc) => String(orc?.codigo || "").trim() === codigo) || null;
+      }),
+    );
     for (const orc of results) {
       if (!orc?.id) continue;
       // Detecta o tipo: se possuir array `produtos` com itens => produto, `servicos` => servico
@@ -978,11 +1031,13 @@ async function fetchGcOrcamentosByOsCodigos(
   strict = false,
 ): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
   const acc = { byTaskId: {} as Record<string, any>, byCodigo: {} as Record<string, any> };
-  let codigos = [...new Set(
-    Object.values(gcOsResult?.byCodigo || {})
-      .map((os: any) => String(os?.gc_os_orcamento_codigo || "").trim())
-      .filter((c) => /^\d{1,7}$/.test(c)),
-  )];
+  let codigos = [
+    ...new Set(
+      Object.values(gcOsResult?.byCodigo || {})
+        .map((os: any) => String(os?.gc_os_orcamento_codigo || "").trim())
+        .filter((c) => /^\d{1,7}$/.test(c)),
+    ),
+  ];
   // Só consulta o GC dos orçamentos que ainda NÃO estão amarrados a uma tarefa real
   // (economiza cota da API — o broker limita o volume diário de chamadas).
   if (sbClient && codigos.length > 0) {
@@ -1049,20 +1104,24 @@ async function hydrateMissingOsByCodigo(
   },
   codigos: string[],
 ) {
-  const unique = [...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOsResult.byCodigo[c]))];
+  const unique = [
+    ...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOsResult.byCodigo[c])),
+  ];
   if (unique.length === 0) return 0;
   let hydrated = 0;
   const PARALLEL = 8;
   for (let i = 0; i < unique.length; i += PARALLEL) {
     const batch = unique.slice(i, i + PARALLEL);
-    const results = await Promise.all(batch.map(async (codigo) => {
-      const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codigo)}&limite=5`;
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (!response.ok) return null;
-      const data = await response.json().catch(() => ({}));
-      const records: any[] = Array.isArray(data?.data) ? data.data : [];
-      return records.find((os) => String(os?.codigo || "").trim() === codigo) || null;
-    }));
+    const results = await Promise.all(
+      batch.map(async (codigo) => {
+        const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codigo)}&limite=5`;
+        const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (!response.ok) return null;
+        const data = await response.json().catch(() => ({}));
+        const records: any[] = Array.isArray(data?.data) ? data.data : [];
+        return records.find((os) => String(os?.codigo || "").trim() === codigo) || null;
+      }),
+    );
     for (const os of results) {
       if (!os?.id) continue;
       const atributos: any[] = os.atributos || [];
@@ -1110,7 +1169,9 @@ async function hydrateMissingOsByCodigo(
           gcOsResult.byTaskIdAll[taskId] = bucket;
         }
       }
-      const tarefaExecIds = String(gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      const tarefaExecIds = String(gc_os_tarefa_exec || "")
+        .split("/")
+        .filter(Boolean);
       for (const execId of tarefaExecIds) {
         const bucket = gcOsResult.byExecTaskId[execId] || [];
         if (!bucket.some((existing: any) => existing?.gc_os_id === osPayload.gc_os_id)) {
@@ -1149,7 +1210,17 @@ function extractReferencedCodes(text: string): { osCodigos: string[]; orcCodigos
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string; reportPage?: number }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any>; nextPage: number | null }> {
+async function fetchGcOs(
+  gcHeaders: Record<string, string>,
+  options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string; reportPage?: number },
+): Promise<{
+  byTaskId: Record<string, any>;
+  byTaskIdAll: Record<string, any[]>;
+  byExecTaskId: Record<string, any[]>;
+  byCodigo: Record<string, any>;
+  byOrcNumero: Record<string, any>;
+  nextPage: number | null;
+}> {
   const map: Record<string, any> = {};
   const byTaskIdAll: Record<string, any[]> = {};
   const byExecTaskId: Record<string, any[]> = {};
@@ -1174,14 +1245,22 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       let response: Response | null = null;
       const RATE_BACKOFF = [3000, 6000, 12000];
       for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
-        response = await rateLimitedFetch(url, { headers: gcHeaders, ...(options?.reportPage ? { signal: AbortSignal.timeout(20_000) } : {}) }, "gc");
+        response = await rateLimitedFetch(
+          url,
+          { headers: gcHeaders, ...(options?.reportPage ? { signal: AbortSignal.timeout(20_000) } : {}) },
+          "gc",
+        );
         if (response.status !== 429) break;
-        console.warn(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
-        await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+        console.warn(
+          `[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`,
+        );
+        await new Promise((r) => setTimeout(r, RATE_BACKOFF[attempt]));
       }
       if (!response || response.status === 429) {
         if (options?.reportPage) throw new Error("GestãoClick limitou a consulta de OS. O lote não foi concluído.");
-        console.error(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""}: 429 persistente após retries — retornando mapa parcial`);
+        console.error(
+          `[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""}: 429 persistente após retries — retornando mapa parcial`,
+        );
         break;
       }
       if (!response.ok) {
@@ -1190,7 +1269,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       }
 
       const data = await response.json();
-      if (options?.reportPage && !Array.isArray(data?.data)) throw new Error("GestãoClick retornou uma lista de OS inválida.");
+      if (options?.reportPage && !Array.isArray(data?.data))
+        throw new Error("GestãoClick retornou uma lista de OS inválida.");
       const records: any[] = Array.isArray(data?.data) ? data.data : [];
       totalPages = data?.meta?.total_paginas || 1;
 
@@ -1215,7 +1295,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
           gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
-        gc_os_local_reparo: getGcAttrValue(atributos, GC_ATRIBUTO_LOCAL_REPARO) || null,
+          gc_os_local_reparo: getGcAttrValue(atributos, GC_ATRIBUTO_LOCAL_REPARO) || null,
           gc_os_orcamento_codigo: null as string | null,
         };
 
@@ -1252,7 +1332,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
         // Index by 73344 (TAREFA EXECUÇÃO) — usado APENAS para casar com orçamento (73341),
         // nunca para criar/atualizar vínculo de OS no Kanban.
-        const tarefaExecIds = String(gc_os_tarefa_exec || "").split("/").filter(Boolean);
+        const tarefaExecIds = String(gc_os_tarefa_exec || "")
+          .split("/")
+          .filter(Boolean);
         for (const execId of tarefaExecIds) {
           const bucket = byExecTaskId[execId] || [];
           if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
@@ -1262,7 +1344,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
         }
       }
 
-      console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+      console.log(
+        `[central-sync] GC OS${sitId ? ` sit=${sitId}` : ""} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`,
+      );
       if (options?.reportPage) {
         nextPage = page < Number(totalPages) ? page + 1 : null;
         break;
@@ -1270,7 +1354,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       page++;
     }
     if (page > 500 && page <= totalPages) {
-      console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
+      console.warn(
+        `[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ""} (totalPages=${totalPages})`,
+      );
     }
   }
   return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero, nextPage };
@@ -1285,7 +1371,9 @@ async function upsertGcOsShellRows(
   const seen = new Set<string>();
 
   for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
-    const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
+    const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os)
+      .split("/")
+      .filter(Boolean);
     // Só 73343 (TAREFA OS) pode criar/atualizar vínculo de OS.
     const realTaskId = taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
@@ -1364,7 +1452,9 @@ async function backlinkGcDocsToExistingTasks(
   const osByTask = new Map<string, any>();
   for (const os of Object.values(gcOsResult?.byCodigo || {})) {
     if (!(os as any)?.gc_os_id) continue;
-    const ids = normalizeTaskIdList((os as any).gc_os_tarefa_os).split("/").filter(Boolean);
+    const ids = normalizeTaskIdList((os as any).gc_os_tarefa_os)
+      .split("/")
+      .filter(Boolean);
     for (const taskId of ids) if (!osByTask.has(taskId)) osByTask.set(taskId, os);
   }
 
@@ -1487,7 +1577,7 @@ async function backlinkGcDocsToExistingTasks(
   if (summary.os_linked || summary.orc_linked) {
     console.log(
       `[central-sync] backlink GC→tarefa: ${summary.os_linked} OS e ${summary.orc_linked} orçamentos religados, ` +
-      `${summary.shells_removed} linhas gc-only removidas`,
+        `${summary.shells_removed} linhas gc-only removidas`,
     );
   }
   return summary;
@@ -1546,11 +1636,13 @@ async function reconcileBudgetExecutionForecasts(
   // (a data da OS é herdada do orçamento). Sem esta busca dirigida a previsão
   // ficava presa em "Aguardando geração da OS" mesmo com a OS já criada.
   if (gcHeaders) {
-    const pendentes = [...new Set(
-      (forecasts || [])
-        .map((f: any) => normalizeGcDocumentCode(f.gc_orcamento_codigo))
-        .filter((code) => code && !osByBudget.has(code)),
-    )];
+    const pendentes = [
+      ...new Set(
+        (forecasts || [])
+          .map((f: any) => normalizeGcDocumentCode(f.gc_orcamento_codigo))
+          .filter((code) => code && !osByBudget.has(code)),
+      ),
+    ];
     for (const budgetCode of pendentes) {
       try {
         const orcResp = await rateLimitedFetch(
@@ -1560,8 +1652,9 @@ async function reconcileBudgetExecutionForecasts(
         );
         if (!orcResp.ok) continue;
         const orcJson = await orcResp.json().catch(() => ({}));
-        const orc = (Array.isArray(orcJson?.data) ? orcJson.data : [])
-          .find((row: any) => String(row?.codigo || "").trim() === budgetCode);
+        const orc = (Array.isArray(orcJson?.data) ? orcJson.data : []).find(
+          (row: any) => String(row?.codigo || "").trim() === budgetCode,
+        );
         const clienteId = String(orc?.cliente_id || "").trim();
         if (!clienteId) continue;
         const osResp = await rateLimitedFetch(
@@ -1571,7 +1664,7 @@ async function reconcileBudgetExecutionForecasts(
         );
         if (!osResp.ok) continue;
         const osJson = await osResp.json().catch(() => ({}));
-        for (const os of (Array.isArray(osJson?.data) ? osJson.data : [])) {
+        for (const os of Array.isArray(osJson?.data) ? osJson.data : []) {
           const atributos: any[] = os?.atributos || [];
           const attrOrcNum = atributos.find((a: any) => {
             const nested = a?.atributo || a;
@@ -1591,7 +1684,9 @@ async function reconcileBudgetExecutionForecasts(
           });
         }
       } catch (hydrationError) {
-        console.warn(`[central-sync] previsão orçamento ${budgetCode}: busca dirigida falhou: ${String(hydrationError)}`);
+        console.warn(
+          `[central-sync] previsão orçamento ${budgetCode}: busca dirigida falhou: ${String(hydrationError)}`,
+        );
       }
     }
   }
@@ -1635,8 +1730,16 @@ async function reconcileBudgetExecutionForecasts(
 
     const os = osMatches[0];
     const osCode = normalizeGcDocumentCode(os.gc_os_codigo);
-    const osTaskIds = String(os.gc_os_tarefa_os || "").split(/\D+/).filter((id) => id.length >= 4);
-    const execTaskIds = [...new Set(String(os.gc_os_tarefa_exec || "").split(/\D+/).filter((id) => id.length >= 4))];
+    const osTaskIds = String(os.gc_os_tarefa_os || "")
+      .split(/\D+/)
+      .filter((id) => id.length >= 4);
+    const execTaskIds = [
+      ...new Set(
+        String(os.gc_os_tarefa_exec || "")
+          .split(/\D+/)
+          .filter((id) => id.length >= 4),
+      ),
+    ];
     if (execTaskIds.length === 0 || (execTaskIds.length === 1 && osTaskIds.includes(execTaskIds[0]))) {
       summary.waitingTask += 1;
       await mark(forecast.id, {
@@ -1661,17 +1764,19 @@ async function reconcileBudgetExecutionForecasts(
   const concurrency = 3;
   for (let index = 0; index < candidates.length; index += concurrency) {
     const batch = candidates.slice(index, index + concurrency);
-    const results = await Promise.all(batch.map(async (candidate) => {
-      const { data, error: invokeError } = await sbClient.functions.invoke("auvo-task-update", {
-        body: {
-          action: "promote-budget-forecast",
-          gcOrcamentoCodigo: candidate.budgetCode,
-          gcOsCodigo: candidate.osCode,
-          execTaskId: candidate.execTaskId,
-        },
-      });
-      return { candidate, data, invokeError };
-    }));
+    const results = await Promise.all(
+      batch.map(async (candidate) => {
+        const { data, error: invokeError } = await sbClient.functions.invoke("auvo-task-update", {
+          body: {
+            action: "promote-budget-forecast",
+            gcOrcamentoCodigo: candidate.budgetCode,
+            gcOsCodigo: candidate.osCode,
+            execTaskId: candidate.execTaskId,
+          },
+        });
+        return { candidate, data, invokeError };
+      }),
+    );
     for (const result of results) {
       if (result.invokeError) {
         summary.errors += 1;
@@ -1694,7 +1799,6 @@ async function reconcileBudgetExecutionForecasts(
   console.log(`[central-sync] promoção de previsões: ${JSON.stringify(summary)}`);
   return summary;
 }
-
 
 type CentralSyncBody = {
   report_step?: unknown;
@@ -1767,7 +1871,10 @@ async function refreshOrcamentosOnly(
       if (batch.length === 0) continue;
       const { count, error } = await sbClient
         .from("tarefas_central")
-        .update({ gc_orc_tipo: tipo, orcamento_realizado: true, atualizado_em: new Date().toISOString() }, { count: "exact" })
+        .update(
+          { gc_orc_tipo: tipo, orcamento_realizado: true, atualizado_em: new Date().toISOString() },
+          { count: "exact" },
+        )
         .in("gc_orcamento_id", batch);
       if (error) console.error(`[central-sync] refreshOrcamentosOnly tipo=${tipo}:`, error.message);
       else countTotal += count || 0;
@@ -1838,7 +1945,9 @@ async function refreshOrcamentosOnly(
   const matchedOrcamentos = new Set([...produtoIds, ...servicoIds]).size;
   const produto = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "produto").length;
   const servico = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "servico").length;
-  console.log(`[central-sync] Orçamentos-only: ${matchedOrcamentos}/${dbOrcIds.size} orçamentos do banco encontrados no GC, ${updatedRows} linhas atualizadas, ${insertedMissing} orçamentos GC-only inseridos (${produto} produto, ${servico} serviço no GC)`);
+  console.log(
+    `[central-sync] Orçamentos-only: ${matchedOrcamentos}/${dbOrcIds.size} orçamentos do banco encontrados no GC, ${updatedRows} linhas atualizadas, ${insertedMissing} orçamentos GC-only inseridos (${produto} produto, ${servico} serviço no GC)`,
+  );
 
   return {
     success: true,
@@ -1938,11 +2047,7 @@ async function refreshSingleTasks(
     try {
       const snap = await fetchAuvoTaskSnapshot(bearerToken, taskId);
       if (snap) {
-        const equipmentCatalog = await loadAuvoEquipmentCatalog(
-          sbClient,
-          bearerToken,
-          snap.equipmentIds,
-        );
+        const equipmentCatalog = await loadAuvoEquipmentCatalog(sbClient, bearerToken, snap.equipmentIds);
         const resolvedEquipment = joinAuvoEquipmentInfo([
           ...extractAuvoInlineEquipmentInfo(snap),
           ...snap.equipmentIds
@@ -1981,8 +2086,10 @@ async function refreshSingleTasks(
           .from("tarefas_central")
           .update(auvoUpdate, { count: "exact" })
           .eq("auvo_task_id", taskId);
-        if (upErr) { summary.errors++; console.error(`[central-sync] single-task ${taskId} auvo: ${upErr.message}`); }
-        else summary.auvo_updated += count || 0;
+        if (upErr) {
+          summary.errors++;
+          console.error(`[central-sync] single-task ${taskId} auvo: ${upErr.message}`);
+        } else summary.auvo_updated += count || 0;
 
         if (snap.equipmentIds.length > 0) {
           const relationshipRows = snap.equipmentIds.map((equipmentId) => ({
@@ -2015,7 +2122,10 @@ async function refreshSingleTasks(
       summary.gc_os_checked++;
       try {
         const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
-        if (!resp.ok) { summary.errors++; continue; }
+        if (!resp.ok) {
+          summary.errors++;
+          continue;
+        }
         const json = await resp.json().catch(() => null);
         const os = json?.data || json;
         if (!os?.id) continue;
@@ -2023,8 +2133,10 @@ async function refreshSingleTasks(
           .from("tarefas_central")
           .update(mirrorUpdateFromGcPayload(mapGcOsToMirrorPayload(os)), { count: "exact" })
           .eq("gc_os_id", osId);
-        if (osErr) { summary.errors++; console.error(`[central-sync] single-task OS ${osId}: ${osErr.message}`); }
-        else summary.gc_os_updated += count || 0;
+        if (osErr) {
+          summary.errors++;
+          console.error(`[central-sync] single-task OS ${osId}: ${osErr.message}`);
+        } else summary.gc_os_updated += count || 0;
       } catch (e) {
         summary.errors++;
         console.error(`[central-sync] single-task OS ${osId}: ${(e as Error).message}`);
@@ -2037,7 +2149,10 @@ async function refreshSingleTasks(
       summary.gc_orc_checked++;
       try {
         const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/orcamentos/${orcId}`, { headers: gcHeaders }, "gc");
-        if (!resp.ok) { summary.errors++; continue; }
+        if (!resp.ok) {
+          summary.errors++;
+          continue;
+        }
         const json = await resp.json().catch(() => null);
         const orc = json?.data || json;
         if (!orc?.id) continue;
@@ -2048,8 +2163,10 @@ async function refreshSingleTasks(
           .from("tarefas_central")
           .update(payload, { count: "exact" })
           .eq("gc_orcamento_id", orcId);
-        if (orcErr) { summary.errors++; console.error(`[central-sync] single-task ORC ${orcId}: ${orcErr.message}`); }
-        else summary.gc_orc_updated += count || 0;
+        if (orcErr) {
+          summary.errors++;
+          console.error(`[central-sync] single-task ORC ${orcId}: ${orcErr.message}`);
+        } else summary.gc_orc_updated += count || 0;
       } catch (e) {
         summary.errors++;
         console.error(`[central-sync] single-task ORC ${orcId}: ${(e as Error).message}`);
@@ -2070,10 +2187,7 @@ async function refreshSingleTasks(
 // Depois de atualizar o espelho, reflete os vínculos GC no card do Kanban de
 // orçamentos (o cache guarda um snapshot próprio em `dados`).
 async function syncBudgetKanbanCardFromMirror(sbClient: any, taskId: string) {
-  const { data: rows } = await sbClient
-    .from("tarefas_central")
-    .select("*")
-    .eq("auvo_task_id", taskId);
+  const { data: rows } = await sbClient.from("tarefas_central").select("*").eq("auvo_task_id", taskId);
   const row = (rows || []).find((r: any) => r.gc_orcamento_id || r.gc_os_id) || (rows || [])[0];
   if (!row) return false;
 
@@ -2209,40 +2323,48 @@ async function reconcileOpenOsMirror(
   for (let i = 0; i < transitionedIds.length; i += PARALLEL) {
     if (Date.now() - startedAt >= HARD_BUDGET_MS) break;
     const batch = transitionedIds.slice(i, i + PARALLEL);
-    const freshList = await Promise.all(batch.map(async (osId) => {
-      try {
-        const response = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
-        if (!response.ok) {
-          if ([400, 404, 410].includes(response.status)) {
-            console.log(`[central-sync] OS ${osId} não existe mais no GC (HTTP ${response.status}) — marcando como excluída`);
+    const freshList = await Promise.all(
+      batch.map(async (osId) => {
+        try {
+          const response = await rateLimitedFetch(
+            `${GC_BASE_URL}/api/ordens_servicos/${osId}`,
+            { headers: gcHeaders },
+            "gc",
+          );
+          if (!response.ok) {
+            if ([400, 404, 410].includes(response.status)) {
+              console.log(
+                `[central-sync] OS ${osId} não existe mais no GC (HTTP ${response.status}) — marcando como excluída`,
+              );
+              if (await markMissing(osId)) transitionedMissing++;
+              return "missing" as const;
+            }
+            console.warn(`[central-sync] OS ${osId} ausente do retrato aberto retornou HTTP ${response.status}`);
+            return null;
+          }
+          const data = await response.json().catch(() => null);
+          const os = data?.data || data;
+          if (!os?.id) {
             if (await markMissing(osId)) transitionedMissing++;
             return "missing" as const;
           }
-          console.warn(`[central-sync] OS ${osId} ausente do retrato aberto retornou HTTP ${response.status}`);
+          return mapGcOsToMirrorPayload(os);
+        } catch (error) {
+          console.error(`[central-sync] Falha ao reconciliar OS ${osId}: ${(error as Error).message}`);
           return null;
         }
-        const data = await response.json().catch(() => null);
-        const os = data?.data || data;
-        if (!os?.id) {
-          if (await markMissing(osId)) transitionedMissing++;
-          return "missing" as const;
-        }
-        return mapGcOsToMirrorPayload(os);
-      } catch (error) {
-        console.error(`[central-sync] Falha ao reconciliar OS ${osId}: ${(error as Error).message}`);
-        return null;
-      }
-    }));
-    transitionedChecked += batch.length;
-    const results = await Promise.all(
-      freshList.filter((f) => f && f !== "missing").map((f) => applyPayload(f)),
+      }),
     );
+    transitionedChecked += batch.length;
+    const results = await Promise.all(freshList.filter((f) => f && f !== "missing").map((f) => applyPayload(f)));
     transitionedReconciled += results.filter(Boolean).length;
     errors += freshList.filter((fresh) => !fresh).length;
   }
 
   const remaining = transitionedIds.length - transitionedReconciled - transitionedMissing;
-  console.log(`[central-sync] Conciliação OS abertas: ${currentById.size} atuais, ${transitionedChecked}/${transitionedIds.length} saídas verificadas, ${transitionedReconciled} conciliadas, ${transitionedMissing} excluídas no GC, ${updated} linhas atualizadas, ${remaining} pendentes`);
+  console.log(
+    `[central-sync] Conciliação OS abertas: ${currentById.size} atuais, ${transitionedChecked}/${transitionedIds.length} saídas verificadas, ${transitionedReconciled} conciliadas, ${transitionedMissing} excluídas no GC, ${updated} linhas atualizadas, ${remaining} pendentes`,
+  );
   return {
     checked: currentById.size + transitionedChecked,
     updated,
@@ -2253,7 +2375,12 @@ async function reconcileOpenOsMirror(
   };
 }
 
-async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
+async function refreshGcOsFieldsForPeriod(
+  sbClient: any,
+  gcHeaders: Record<string, string>,
+  startDate: string,
+  endDate: string,
+) {
   const osIds = new Set<string>();
   for (let from = 0; ; from += 1000) {
     const { data: chunk, error } = await sbClient
@@ -2288,32 +2415,32 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
 
   for (let i = 0; i < ids.length; i += PARALLEL) {
     const batch = ids.slice(i, i + PARALLEL);
-    const freshList = batch
-      .map((osId) => gcOsById.get(osId) || null)
-      .filter(Boolean);
+    const freshList = batch.map((osId) => gcOsById.get(osId) || null).filter(Boolean);
 
-    const counts = await Promise.all(freshList.filter(Boolean).map(async (fresh: any) => {
-      const updatePayload: any = {
-        gc_os_cliente: fresh.gc_os_cliente,
-        gc_os_situacao: fresh.gc_os_situacao,
-        gc_os_situacao_id: fresh.gc_os_situacao_id,
-        gc_os_cor_situacao: fresh.gc_os_cor_situacao,
-        gc_os_valor_total: fresh.gc_os_valor_total,
-        gc_os_vendedor: fresh.gc_os_vendedor,
-        gc_os_data_saida: fresh.gc_os_data_saida,
-        gc_os_link: fresh.gc_os_link,
-        gc_os_link_cobranca: fresh.gc_os_link_cobranca || null,
-        gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
-        gc_os_tarefa_os: fresh.gc_os_tarefa_os,
-        atualizado_em: new Date().toISOString(),
-      };
-      const { count, error } = await sbClient
-        .from("tarefas_central")
-        .update(updatePayload, { count: "exact" })
-        .eq("gc_os_id", fresh.gc_os_id);
-      if (error) console.error("[central-sync] gc_status_only update error:", error.message);
-      return count || 0;
-    }));
+    const counts = await Promise.all(
+      freshList.filter(Boolean).map(async (fresh: any) => {
+        const updatePayload: any = {
+          gc_os_cliente: fresh.gc_os_cliente,
+          gc_os_situacao: fresh.gc_os_situacao,
+          gc_os_situacao_id: fresh.gc_os_situacao_id,
+          gc_os_cor_situacao: fresh.gc_os_cor_situacao,
+          gc_os_valor_total: fresh.gc_os_valor_total,
+          gc_os_vendedor: fresh.gc_os_vendedor,
+          gc_os_data_saida: fresh.gc_os_data_saida,
+          gc_os_link: fresh.gc_os_link,
+          gc_os_link_cobranca: fresh.gc_os_link_cobranca || null,
+          gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+          gc_os_tarefa_os: fresh.gc_os_tarefa_os,
+          atualizado_em: new Date().toISOString(),
+        };
+        const { count, error } = await sbClient
+          .from("tarefas_central")
+          .update(updatePayload, { count: "exact" })
+          .eq("gc_os_id", fresh.gc_os_id);
+        if (error) console.error("[central-sync] gc_status_only update error:", error.message);
+        return count || 0;
+      }),
+    );
     updated += counts.reduce((sum, count) => sum + count, 0);
   }
 
@@ -2325,7 +2452,9 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
     const execEntries: Array<[string, any]> = [];
     for (const osPayload of Object.values(gcOsList.byCodigo || {}) as any[]) {
       if (!osPayload?.gc_os_id) continue;
-      const execIds = String(osPayload.gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      const execIds = String(osPayload.gc_os_tarefa_exec || "")
+        .split("/")
+        .filter(Boolean);
       for (const execId of execIds) {
         if (execId) execEntries.push([execId, osPayload]);
       }
@@ -2333,32 +2462,34 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
     const PAR = 10;
     for (let i = 0; i < execEntries.length; i += PAR) {
       const slice = execEntries.slice(i, i + PAR);
-      const results = await Promise.all(slice.map(async ([execTaskId, osPayload]: any) => {
-        const updatePayload: any = {
-          gc_os_id: osPayload.gc_os_id,
-          gc_os_codigo: osPayload.gc_os_codigo,
-          gc_os_cliente: osPayload.gc_os_cliente,
-          gc_os_situacao: osPayload.gc_os_situacao,
-          gc_os_situacao_id: osPayload.gc_os_situacao_id,
-          gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
-          gc_os_valor_total: osPayload.gc_os_valor_total,
-          gc_os_vendedor: osPayload.gc_os_vendedor,
-          gc_os_data: osPayload.gc_os_data,
-          gc_os_data_saida: osPayload.gc_os_data_saida,
-          gc_os_link: osPayload.gc_os_link,
-          gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
-          gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
-          gc_os_tarefa_os: osPayload.gc_os_tarefa_os || null,
-          os_realizada: true,
-          atualizado_em: new Date().toISOString(),
-        };
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update(updatePayload, { count: "exact" })
-          .eq("auvo_task_id", execTaskId)
-          .is("gc_os_id", null);
-        return count || 0;
-      }));
+      const results = await Promise.all(
+        slice.map(async ([execTaskId, osPayload]: any) => {
+          const updatePayload: any = {
+            gc_os_id: osPayload.gc_os_id,
+            gc_os_codigo: osPayload.gc_os_codigo,
+            gc_os_cliente: osPayload.gc_os_cliente,
+            gc_os_situacao: osPayload.gc_os_situacao,
+            gc_os_situacao_id: osPayload.gc_os_situacao_id,
+            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+            gc_os_valor_total: osPayload.gc_os_valor_total,
+            gc_os_vendedor: osPayload.gc_os_vendedor,
+            gc_os_data: osPayload.gc_os_data,
+            gc_os_data_saida: osPayload.gc_os_data_saida,
+            gc_os_link: osPayload.gc_os_link,
+            gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
+            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+            gc_os_tarefa_os: osPayload.gc_os_tarefa_os || null,
+            os_realizada: true,
+            atualizado_em: new Date().toISOString(),
+          };
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("auvo_task_id", execTaskId)
+            .is("gc_os_id", null);
+          return count || 0;
+        }),
+      );
       execLinked += results.reduce((s, c) => s + c, 0);
     }
     if (execLinked > 0) {
@@ -2395,7 +2526,9 @@ async function runReportsOnlySync(
       gcShellUpserted = await upsertGcOsShellRows(sbClient, gcOsOpen);
       const gcOrcDirigido = await fetchGcOrcamentosByOsCodigos(gcHeaders, gcOsOpen, sbClient);
       await backlinkGcDocsToExistingTasks(sbClient, gcOsOpen, gcOrcDirigido);
-      console.log(`[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`);
+      console.log(
+        `[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`,
+      );
     } catch (e) {
       console.error(`[central-sync] Reports-only GC shell fetch falhou: ${(e as Error).message}`);
     }
@@ -2405,23 +2538,26 @@ async function runReportsOnlySync(
   const auvoTasks = auvoFetch.tasks;
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
 
-  const taskIds = auvoTasks
-    .map((task: any) => String(task.taskID || "").trim())
-    .filter(Boolean);
+  const taskIds = auvoTasks.map((task: any) => String(task.taskID || "").trim()).filter(Boolean);
 
   const existingBestByTaskId = new Map<string, any>();
   for (let i = 0; i < taskIds.length; i += 200) {
     const batch = taskIds.slice(i, i + 200);
     const { data: existingRows } = await sbClient
       .from("tarefas_central")
-      .select("auvo_task_id, mirror_key, status_auvo, duracao_decimal, check_in, check_out, check_in_iso, check_out_iso, tecnico, data_conclusao, atualizado_em")
+      .select(
+        "auvo_task_id, mirror_key, status_auvo, duracao_decimal, check_in, check_out, check_in_iso, check_out_iso, tecnico, data_conclusao, atualizado_em",
+      )
       .in("auvo_task_id", batch);
 
     for (const row of existingRows || []) {
       const taskId = String(row.auvo_task_id || "").trim();
       const mirrorKey = String(row.mirror_key || "").trim();
       if (taskId && mirrorKey) {
-        const chosenMirror = chooseBestExistingMirror(existingBestByTaskId.get(taskId), { ...row, mirror_key: mirrorKey });
+        const chosenMirror = chooseBestExistingMirror(existingBestByTaskId.get(taskId), {
+          ...row,
+          mirror_key: mirrorKey,
+        });
         existingBestByTaskId.set(taskId, { ...row, mirror_key: chosenMirror });
       }
     }
@@ -2448,118 +2584,138 @@ async function runReportsOnlySync(
     const taskId = String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim();
     if (!taskId) continue;
     const snapshot = taskSnapshotById.get(taskId);
-    const equipmentIds = [...new Set([
-      ...extractAuvoEquipmentIds(task),
-      ...(snapshot?.equipmentIds || []),
-    ].map(String).map((id) => id.trim()).filter(Boolean))];
+    const equipmentIds = [
+      ...new Set(
+        [...extractAuvoEquipmentIds(task), ...(snapshot?.equipmentIds || [])]
+          .map(String)
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
     reportTaskEquipmentIds.set(taskId, equipmentIds);
     equipmentIds.forEach((id) => reportEquipmentIds.add(id));
   }
-  const reportEquipmentCatalog = await loadAuvoEquipmentCatalog(
-    sbClient,
-    bearerToken,
-    [...reportEquipmentIds],
-  );
+  const reportEquipmentCatalog = await loadAuvoEquipmentCatalog(sbClient, bearerToken, [...reportEquipmentIds]);
 
-  const rows = auvoTasks.map((task: any) => {
-    const taskId = String(task.taskID || "").trim();
-    if (!taskId) return null;
-    const snapshot = taskSnapshotById.get(taskId) || null;
-    const taskWithDetail = snapshot
-      ? {
-          ...task,
-          duration: snapshot.duration || task.duration,
-          durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
-          timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
-          checkInDate: snapshot.checkInDate || task.checkInDate,
-          checkOutDate: snapshot.checkOutDate || task.checkOutDate,
-          displacementStart: snapshot.displacementStart || task.displacementStart,
-          estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
-        }
-      : task;
-    const resolvedEquipment = joinAuvoEquipmentInfo([
-      ...extractAuvoInlineEquipmentInfo(taskWithDetail),
-      ...(reportTaskEquipmentIds.get(taskId) || [])
-        .map((equipmentId) => reportEquipmentCatalog.get(equipmentId))
-        .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment),
-    ]);
+  const rows = auvoTasks
+    .map((task: any) => {
+      const taskId = String(task.taskID || "").trim();
+      if (!taskId) return null;
+      const snapshot = taskSnapshotById.get(taskId) || null;
+      const taskWithDetail = snapshot
+        ? {
+            ...task,
+            duration: snapshot.duration || task.duration,
+            durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
+            timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
+            checkInDate: snapshot.checkInDate || task.checkInDate,
+            checkOutDate: snapshot.checkOutDate || task.checkOutDate,
+            displacementStart: snapshot.displacementStart || task.displacementStart,
+            estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
+          }
+        : task;
+      const resolvedEquipment = joinAuvoEquipmentInfo([
+        ...extractAuvoInlineEquipmentInfo(taskWithDetail),
+        ...(reportTaskEquipmentIds.get(taskId) || [])
+          .map((equipmentId) => reportEquipmentCatalog.get(equipmentId))
+          .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment),
+      ]);
 
-    const questionnaire = resolveQuestionnaireData(
-      QUESTIONNAIRE_ID,
-      task.questionnaires,
-      snapshot?.questionnaires,
-    );
-    const answers = questionnaire.answers;
-    const hasFilledQ = questionnaire.filled;
+      const questionnaire = resolveQuestionnaireData(QUESTIONNAIRE_ID, task.questionnaires, snapshot?.questionnaires);
+      const answers = questionnaire.answers;
+      const hasFilledQ = questionnaire.filled;
 
-    const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
-      : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
-      : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
+      const statusCode =
+        typeof task.taskStatus === "number"
+          ? task.taskStatus
+          : typeof task.taskStatus?.id === "number"
+            ? task.taskStatus.id
+            : typeof task.taskStatus === "object"
+              ? Number(task.taskStatus?.id || task.taskStatus?.status || 0)
+              : 0;
 
-    const checkOutDateRaw = String(taskWithDetail.checkOutDate || taskWithDetail.checkoutDate || taskWithDetail.taskEndDate || taskWithDetail.taskEndDateTime || "").trim();
-    const checkInDateRaw = String(taskWithDetail.checkInDate || taskWithDetail.checkinDate || "").trim();
-    const checkInIso = normalizeDateTime(checkInDateRaw);
-    const checkOutIso = normalizeDateTime(checkOutDateRaw);
-    const displacementStartRaw = String(taskWithDetail.displacementStart || taskWithDetail.displacement_start || "").trim();
-    const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw);
-    const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
-    // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
-    // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
-    // de "Sem janela de trabalho" quando o técnico chegou bem antes/depois do agendado.
-    const startTimeResolved =
-      extractTimeFromDateStr(checkInDateRaw) ||
-      String(taskWithDetail.startTime || taskWithDetail.startHour || snapshot?.startTime || "").trim() ||
-      extractTimeFromDateStr(String(taskWithDetail.taskDate || snapshot?.taskDate || ""));
-    let endTimeResolved =
-      extractTimeFromDateStr(checkOutDateRaw) ||
-      String(taskWithDetail.endTime || taskWithDetail.endHour || snapshot?.endTime || "").trim();
-    const durationDecimalResolved = computeAuvoWorkedHours(taskWithDetail) || parseDurationToHours(taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "");
+      const checkOutDateRaw = String(
+        taskWithDetail.checkOutDate ||
+          taskWithDetail.checkoutDate ||
+          taskWithDetail.taskEndDate ||
+          taskWithDetail.taskEndDateTime ||
+          "",
+      ).trim();
+      const checkInDateRaw = String(taskWithDetail.checkInDate || taskWithDetail.checkinDate || "").trim();
+      const checkInIso = normalizeDateTime(checkInDateRaw);
+      const checkOutIso = normalizeDateTime(checkOutDateRaw);
+      const displacementStartRaw = String(
+        taskWithDetail.displacementStart || taskWithDetail.displacement_start || "",
+      ).trim();
+      const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw);
+      const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
+      // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
+      // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
+      // de "Sem janela de trabalho" quando o técnico chegou bem antes/depois do agendado.
+      const startTimeResolved =
+        extractTimeFromDateStr(checkInDateRaw) ||
+        String(taskWithDetail.startTime || taskWithDetail.startHour || snapshot?.startTime || "").trim() ||
+        extractTimeFromDateStr(String(taskWithDetail.taskDate || snapshot?.taskDate || ""));
+      let endTimeResolved =
+        extractTimeFromDateStr(checkOutDateRaw) ||
+        String(taskWithDetail.endTime || taskWithDetail.endHour || snapshot?.endTime || "").trim();
+      const durationDecimalResolved =
+        computeAuvoWorkedHours(taskWithDetail) ||
+        parseDurationToHours(taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "");
 
-    if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
-      const startMinutes = parseClockToMinutes(startTimeResolved);
-      if (startMinutes >= 0) endTimeResolved = minutesToClock(startMinutes + Math.round(durationDecimalResolved * 60));
-    }
+      if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
+        const startMinutes = parseClockToMinutes(startTimeResolved);
+        if (startMinutes >= 0)
+          endTimeResolved = minutesToClock(startMinutes + Math.round(durationDecimalResolved * 60));
+      }
 
-    return {
-      auvo_task_id: taskId,
-      cliente: String(task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || "Cliente não identificado").trim(),
-      tecnico: resolveAuvoTechnicianName(task),
-      tecnico_id: resolveAuvoTechnicianId(task),
-      data_tarefa: normalizeDate(task.taskDate) || null,
-      data_conclusao: normalizeDate(checkOutDateRaw) || null,
-      check_in_iso: checkInIso,
-      check_out_iso: checkOutIso,
-      deslocamento_inicio: displacementStartRaw || null,
-      duracao_deslocamento: duracaoDeslocamento || null,
-      task_type_id: auvoTaskTypeId(task) || null,
-      status_auvo: (() => {
-        if (statusCode === 6) return "Pausada";
-        if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
-        if (statusCode === 3) return "Em andamento";
-        if (statusCode === 2) return "Em deslocamento";
-        return "Aberta";
-      })(),
-      orientacao: String(task.orientation || "").substring(0, 500),
-      pendencia: String(task.pendency ?? "").trim(),
-      descricao: resolveTaskType(task),
-      duracao_decimal: durationDecimalResolved,
-      hora_inicio: startTimeResolved,
-      hora_fim: endTimeResolved,
-      check_in: !!(task.checkIn || task.checkInDate || task.checkinDate),
-      check_out: hasCheckOut,
-      endereco: resolveTaskAddress(task),
-      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-      auvo_task_url: String(task.taskUrl || ""),
-      auvo_survey_url: String(task.survey || ""),
-      questionario_id: questionnaire.questionnaireId,
-      questionario_respostas: answers,
-      questionario_preenchido: hasFilledQ,
-      equipamento_nome: resolvedEquipment.name || null,
-      equipamento_id_serie: resolvedEquipment.identifier || null,
-      atualizado_em: new Date().toISOString(),
-      mirror_key: existingBestByTaskId.get(taskId)?.mirror_key || `${taskId}::os:::orc:`,
-    };
-  }).filter(Boolean);
+      return {
+        auvo_task_id: taskId,
+        cliente: String(
+          task.customerDescription ||
+            task.customerName ||
+            task.customer?.tradeName ||
+            task.customer?.companyName ||
+            "Cliente não identificado",
+        ).trim(),
+        tecnico: resolveAuvoTechnicianName(task),
+        tecnico_id: resolveAuvoTechnicianId(task),
+        data_tarefa: normalizeDate(task.taskDate) || null,
+        data_conclusao: normalizeDate(checkOutDateRaw) || null,
+        check_in_iso: checkInIso,
+        check_out_iso: checkOutIso,
+        deslocamento_inicio: displacementStartRaw || null,
+        duracao_deslocamento: duracaoDeslocamento || null,
+        task_type_id: auvoTaskTypeId(task) || null,
+        status_auvo: (() => {
+          if (statusCode === 6) return "Pausada";
+          if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
+          if (statusCode === 3) return "Em andamento";
+          if (statusCode === 2) return "Em deslocamento";
+          return "Aberta";
+        })(),
+        orientacao: String(task.orientation || "").substring(0, 500),
+        pendencia: String(task.pendency ?? "").trim(),
+        descricao: resolveTaskType(task),
+        duracao_decimal: durationDecimalResolved,
+        hora_inicio: startTimeResolved,
+        hora_fim: endTimeResolved,
+        check_in: !!(task.checkIn || task.checkInDate || task.checkinDate),
+        check_out: hasCheckOut,
+        endereco: resolveTaskAddress(task),
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        auvo_task_url: String(task.taskUrl || ""),
+        auvo_survey_url: String(task.survey || ""),
+        questionario_id: questionnaire.questionnaireId,
+        questionario_respostas: answers,
+        questionario_preenchido: hasFilledQ,
+        equipamento_nome: resolvedEquipment.name || null,
+        equipamento_id_serie: resolvedEquipment.identifier || null,
+        atualizado_em: new Date().toISOString(),
+        mirror_key: existingBestByTaskId.get(taskId)?.mirror_key || `${taskId}::os:::orc:`,
+      };
+    })
+    .filter(Boolean);
 
   const upserted = await persistReportTasks(sbClient, rows);
   let errors = 0;
@@ -2594,26 +2750,27 @@ async function runReportsOnlySync(
     }
   }
 
-  const deletedTaskReconciliation = errors === 0
-    ? await reconcileDeletedAuvoTasks(
-        sbClient,
-        bearerToken,
-        startDate,
-        endDate,
-        auvoFetch,
-        "central-sync:reports-only",
-      )
-    : {
-        candidates: 0,
-        checked: 0,
-        confirmedDeleted: 0,
-        preserved: 0,
-        unknown: 0,
-        skipped: 1,
-        archived: 0,
-        activeRowsRemoved: 0,
-        error: "gravação atual teve erro; exclusão desativada",
-      } satisfies DeletedTaskReconciliation;
+  const deletedTaskReconciliation =
+    errors === 0
+      ? await reconcileDeletedAuvoTasks(
+          sbClient,
+          bearerToken,
+          startDate,
+          endDate,
+          auvoFetch,
+          "central-sync:reports-only",
+        )
+      : ({
+          candidates: 0,
+          checked: 0,
+          confirmedDeleted: 0,
+          preserved: 0,
+          unknown: 0,
+          skipped: 1,
+          archived: 0,
+          activeRowsRemoved: 0,
+          error: "gravação atual teve erro; exclusão desativada",
+        } satisfies DeletedTaskReconciliation);
   if (deletedTaskReconciliation.error) {
     console.warn(`[central-sync] reconciliação de excluídas ignorada: ${deletedTaskReconciliation.error}`);
   }
@@ -2646,7 +2803,8 @@ async function runReportsOnlySync(
     auvo_excluidas_confirmadas: deletedTaskReconciliation.confirmedDeleted,
     auvo_excluidas_arquivadas: deletedTaskReconciliation.archived,
     auvo_excluidas_espelhos_removidos: deletedTaskReconciliation.activeRowsRemoved,
-    auvo_excluidas_preservadas: deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
+    auvo_excluidas_preservadas:
+      deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
     auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
     auvo_paginacao_completa: auvoFetch.complete,
     errors: errors + gcStatusRefresh.errors,
@@ -2654,249 +2812,256 @@ async function runReportsOnlySync(
 }
 
 async function runCentralSync(body: CentralSyncBody = {}) {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sbClient = createClient(supabaseUrl, supabaseKey);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const sbClient = createClient(supabaseUrl, supabaseKey);
 
-    const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
-    const auvoApiToken = Deno.env.get("AUVO_TOKEN");
-    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
-    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+  const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
+  const auvoApiToken = Deno.env.get("AUVO_TOKEN");
+  const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+  const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
 
-    if (!auvoApiKey || !auvoApiToken || !gcAccessToken || !gcSecretToken) {
-      throw new Error("Credenciais não configuradas");
-    }
+  if (!auvoApiKey || !auvoApiToken || !gcAccessToken || !gcSecretToken) {
+    throw new Error("Credenciais não configuradas");
+  }
 
-    // Calculate period (request body overrides default 6-month + future window)
-    const now = new Date();
-    const sixMonthsAgo = new Date(now);
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const futureDate = new Date(now);
-    futureDate.setDate(futureDate.getDate() + FUTURE_DAYS_WINDOW);
+  // Calculate period (request body overrides default 6-month + future window)
+  const now = new Date();
+  const sixMonthsAgo = new Date(now);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const futureDate = new Date(now);
+  futureDate.setDate(futureDate.getDate() + FUTURE_DAYS_WINDOW);
 
-    const bodyStart = normalizeDate(body?.start_date);
-    const bodyEnd = normalizeDate(body?.end_date);
-    const situacaoIds: string[] = Array.isArray(body?.situacao_ids) ? body.situacao_ids.filter((s: any) => s) : [];
+  const bodyStart = normalizeDate(body?.start_date);
+  const bodyEnd = normalizeDate(body?.end_date);
+  const situacaoIds: string[] = Array.isArray(body?.situacao_ids) ? body.situacao_ids.filter((s: any) => s) : [];
 
-    const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
-    const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
-    const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
+  const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
+  const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
+  const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
 
-    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff}), situações: ${situacaoIds.length || 'todas'}`);
+  console.log(
+    `[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff}), situações: ${situacaoIds.length || "todas"}`,
+  );
 
-    const gcH: Record<string, string> = {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
-    };
+  const gcH: Record<string, string> = {
+    "access-token": gcAccessToken,
+    "secret-access-token": gcSecretToken,
+    "Content-Type": "application/json",
+  };
 
-    if (body?.report_step) return await runBoundedReportStep(sbClient, gcH, body, {
-      fetchOs: fetchGcOs, saveOs: upsertGcOsShellRows, backlink: backlinkGcDocsToExistingTasks,
+  if (body?.report_step)
+    return await runBoundedReportStep(sbClient, gcH, body, {
+      fetchOs: fetchGcOs,
+      saveOs: upsertGcOsShellRows,
+      backlink: backlinkGcDocsToExistingTasks,
       fetchBudgets: fetchGcOrcamentosByOsCodigos,
-      getOs: id => rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${id}`, { headers: gcH, signal: AbortSignal.timeout(15_000) }, "gc"),
-      mapOs: mapGcOsToMirrorPayload, mirrorPatch: mirrorUpdateFromGcPayload,
+      getOs: (id) =>
+        rateLimitedFetch(
+          `${GC_BASE_URL}/api/ordens_servicos/${id}`,
+          { headers: gcH, signal: AbortSignal.timeout(15_000) },
+          "gc",
+        ),
+      mapOs: mapGcOsToMirrorPayload,
+      mirrorPatch: mirrorUpdateFromGcPayload,
     });
 
-    if (body?.orcamentos_only === true) {
-      const rawTipo = String(body?.orcamentos_tipo || "").trim();
-      const tipo = rawTipo === "produto" || rawTipo === "servico" ? rawTipo : undefined;
-      const page = Math.max(1, Number(body?.orcamentos_page || 1));
-      const maxPages = body?.orcamentos_max_pages ? Math.max(1, Number(body.orcamentos_max_pages)) : undefined;
-      return await refreshOrcamentosOnly(sbClient, gcH, { tipo, page, maxPages });
-    }
+  if (body?.orcamentos_only === true) {
+    const rawTipo = String(body?.orcamentos_tipo || "").trim();
+    const tipo = rawTipo === "produto" || rawTipo === "servico" ? rawTipo : undefined;
+    const page = Math.max(1, Number(body?.orcamentos_page || 1));
+    const maxPages = body?.orcamentos_max_pages ? Math.max(1, Number(body.orcamentos_max_pages)) : undefined;
+    return await refreshOrcamentosOnly(sbClient, gcH, { tipo, page, maxPages });
+  }
 
-    if (body?.gc_status_only === true) {
-      const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
-      return {
-        success: true,
-        mode: "gc-status-only",
-        periodo: { inicio: startDate, fim: endDate },
-        gc_os_checked: result.checked,
-        gc_os_updated: result.updated,
-        errors: 0,
-      };
-    }
-
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-
-    const singleTaskIds: string[] = Array.isArray(body?.task_ids)
-      ? (body.task_ids as unknown[]).map((t) => String(t || "").trim()).filter(Boolean)
-      : [];
-    if (singleTaskIds.length > 0) {
-      return await refreshSingleTasks(sbClient, bearerToken, gcH, singleTaskIds);
-    }
-
-    if (body?.reports_only === true) {
-      return await runReportsOnlySync(
-        sbClient,
-        bearerToken,
-        gcH,
-        startDate,
-        endDate,
-        body?.reconcile_open_os !== false,
-      );
-    }
-
-    // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
-    const gcOsOptions = {
-      situacaoIds: situacaoIds.length > 0 ? situacaoIds : undefined,
-    };
-    const [gcOrcResult, gcOsResult] = await Promise.all([
-      fetchGcOrcamentos(gcH),
-      fetchGcOs(gcH, gcOsOptions),
-    ]);
-
-    await hydrateMissingOrcamentosByCodigo(
-      gcH,
-      gcOrcResult,
-      Object.values(gcOsResult.byCodigo || {}).map((os: any) => String(os?.gc_os_orcamento_codigo || ""))
-    );
-
-    const gcOrcMap = gcOrcResult.byTaskId;
-    const gcOrcByCodigo = gcOrcResult.byCodigo;
-    const gcOsMap = gcOsResult.byTaskId;
-    const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
-    const gcOsByExecTaskId = gcOsResult.byExecTaskId || {};
-    const gcOsByCodigo = gcOsResult.byCodigo;
-    const gcOsByOrcNumero = gcOsResult.byOrcNumero;
-    let forecastPromotionSummary: ForecastPromotionSummary = {
-      forecasts: 0,
-      promoted: 0,
-      alreadyPromoted: 0,
-      waitingOs: 0,
-      waitingTask: 0,
-      blocked: 0,
+  if (body?.gc_status_only === true) {
+    const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
+    return {
+      success: true,
+      mode: "gc-status-only",
+      periodo: { inicio: startDate, fim: endDate },
+      gc_os_checked: result.checked,
+      gc_os_updated: result.updated,
       errors: 0,
     };
+  }
 
-    console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+  const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
-    // Helpers de amarração OS↔Orçamento via tarefas Auvo (73343 / 73344 / 73341)
-    // - Orçamento (73341) geralmente aponta pra TAREFA EXECUÇÃO da OS, não pra TAREFA OS.
-    // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
-    const findOrcForOs = (gcOs: any): any | null => {
-      if (!gcOs) return null;
-      const orcCodigo = String(gcOs.gc_os_orcamento_codigo || "").trim();
-      if (orcCodigo && gcOrcByCodigo[orcCodigo]) return gcOrcByCodigo[orcCodigo];
-      const candidates: string[] = [];
-      const osIds = String(gcOs.gc_os_tarefa_os || "").split("/").filter(Boolean);
-      const execIds = String(gcOs.gc_os_tarefa_exec || "").split("/").filter(Boolean);
-      candidates.push(...osIds, ...execIds);
-      for (const id of candidates) {
-        if (gcOrcMap[id]) return gcOrcMap[id];
-      }
-      return null;
-    };
-    const findOsForTaskId = (taskId: string): any | null => {
-      if (!taskId) return null;
-      // 1) OS com 73343 == taskId
-      if (gcOsMap[taskId]) return gcOsMap[taskId];
-      // 2) OS com 73344 == taskId (orçamento aponta pra execução)
-      const execBucket = gcOsByExecTaskId[taskId];
-      if (execBucket && execBucket.length > 0) return execBucket[0];
-      return null;
-    };
-    const applyOrcPayload = (target: any, orcPayload: any) => {
-      if (!target || !orcPayload?.gc_orcamento_id) return;
-      target.gc_orcamento_id = orcPayload.gc_orcamento_id;
-      target.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
-      target.gc_orc_cliente = orcPayload.gc_orc_cliente;
-      target.gc_orc_situacao = orcPayload.gc_orc_situacao;
-      target.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
-      target.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
-      target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
-      target.gc_orc_valor_produtos = orcPayload.gc_orc_valor_produtos;
-      target.gc_orc_valor_servicos = orcPayload.gc_orc_valor_servicos;
-      target.gc_orc_tipo = orcPayload.gc_orc_tipo;
-      target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
-      target.gc_orc_data = orcPayload.gc_orc_data;
-      target.gc_orc_link = orcPayload.gc_orc_link;
-      target.orcamento_realizado = true;
-    };
+  const singleTaskIds: string[] = Array.isArray(body?.task_ids)
+    ? (body.task_ids as unknown[]).map((t) => String(t || "").trim()).filter(Boolean)
+    : [];
+  if (singleTaskIds.length > 0) {
+    return await refreshSingleTasks(sbClient, bearerToken, gcH, singleTaskIds);
+  }
 
-    // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
-    // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
-    // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
-    // breaking the Horas Trabalhadas tab (which depends on Auvo data).
-    const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
-    const isLiteSync = body?.lite === true;
-    const auvoTasksPromise: Promise<AuvoTaskFetchResult> = isFastGcOnly
-      ? Promise.resolve({ tasks: [], complete: false, windows: [] })
-      : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
-          console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
-          return {
-            tasks: [],
-            complete: false,
-            windows: [{ startDate, endDate, complete: false, error: (err as Error).message }],
-          };
-        });
-    if (!isFastGcOnly) {
-      console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
+  if (body?.reports_only === true) {
+    return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate, body?.reconcile_open_os !== false);
+  }
+
+  // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
+  const gcOsOptions = {
+    situacaoIds: situacaoIds.length > 0 ? situacaoIds : undefined,
+  };
+  const [gcOrcResult, gcOsResult] = await Promise.all([fetchGcOrcamentos(gcH), fetchGcOs(gcH, gcOsOptions)]);
+
+  await hydrateMissingOrcamentosByCodigo(
+    gcH,
+    gcOrcResult,
+    Object.values(gcOsResult.byCodigo || {}).map((os: any) => String(os?.gc_os_orcamento_codigo || "")),
+  );
+
+  const gcOrcMap = gcOrcResult.byTaskId;
+  const gcOrcByCodigo = gcOrcResult.byCodigo;
+  const gcOsMap = gcOsResult.byTaskId;
+  const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
+  const gcOsByExecTaskId = gcOsResult.byExecTaskId || {};
+  const gcOsByCodigo = gcOsResult.byCodigo;
+  const gcOsByOrcNumero = gcOsResult.byOrcNumero;
+  let forecastPromotionSummary: ForecastPromotionSummary = {
+    forecasts: 0,
+    promoted: 0,
+    alreadyPromoted: 0,
+    waitingOs: 0,
+    waitingTask: 0,
+    blocked: 0,
+    errors: 0,
+  };
+
+  console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+  // Helpers de amarração OS↔Orçamento via tarefas Auvo (73343 / 73344 / 73341)
+  // - Orçamento (73341) geralmente aponta pra TAREFA EXECUÇÃO da OS, não pra TAREFA OS.
+  // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
+  const findOrcForOs = (gcOs: any): any | null => {
+    if (!gcOs) return null;
+    const orcCodigo = String(gcOs.gc_os_orcamento_codigo || "").trim();
+    if (orcCodigo && gcOrcByCodigo[orcCodigo]) return gcOrcByCodigo[orcCodigo];
+    const candidates: string[] = [];
+    const osIds = String(gcOs.gc_os_tarefa_os || "")
+      .split("/")
+      .filter(Boolean);
+    const execIds = String(gcOs.gc_os_tarefa_exec || "")
+      .split("/")
+      .filter(Boolean);
+    candidates.push(...osIds, ...execIds);
+    for (const id of candidates) {
+      if (gcOrcMap[id]) return gcOrcMap[id];
     }
+    return null;
+  };
+  const findOsForTaskId = (taskId: string): any | null => {
+    if (!taskId) return null;
+    // 1) OS com 73343 == taskId
+    if (gcOsMap[taskId]) return gcOsMap[taskId];
+    // 2) OS com 73344 == taskId (orçamento aponta pra execução)
+    const execBucket = gcOsByExecTaskId[taskId];
+    if (execBucket && execBucket.length > 0) return execBucket[0];
+    return null;
+  };
+  const applyOrcPayload = (target: any, orcPayload: any) => {
+    if (!target || !orcPayload?.gc_orcamento_id) return;
+    target.gc_orcamento_id = orcPayload.gc_orcamento_id;
+    target.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
+    target.gc_orc_cliente = orcPayload.gc_orc_cliente;
+    target.gc_orc_situacao = orcPayload.gc_orc_situacao;
+    target.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
+    target.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
+    target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
+    target.gc_orc_valor_produtos = orcPayload.gc_orc_valor_produtos;
+    target.gc_orc_valor_servicos = orcPayload.gc_orc_valor_servicos;
+    target.gc_orc_tipo = orcPayload.gc_orc_tipo;
+    target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
+    target.gc_orc_data = orcPayload.gc_orc_data;
+    target.gc_orc_link = orcPayload.gc_orc_link;
+    target.orcamento_realizado = true;
+  };
 
-    // O retorno do GC também pode ser parcial. Nunca apagamos a linha inteira
-    // tarefa + OS por ausência do vínculo em uma rodada: isso transformava o
-    // card em uma OS isolada e eliminava a referência estável da tarefa Auvo.
-    // Alterações explícitas de dados/status continuam sendo aplicadas abaixo.
-    const staleOsLinksDeleted = 0;
-
-    const isGcSolicitadasOnly = situacaoIds.length > 0;
-    let gcFirstUpserted = 0;
-    if (isGcSolicitadasOnly) {
-      gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult);
-      console.log(`[central-sync] GC-first: ${gcFirstUpserted} OS solicitadas gravadas antes do Auvo`);
-    } else {
-      // Sync normal: garante que OS GC sem TAREFA OS (73343) — ex.: só com 73344
-      // ou totalmente desvinculadas — apareçam no central e tenham data_saida atualizada
-      // mesmo quando a tarefa Auvo de execução está fora da janela sincronizada.
-      gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult, { orphansOnly: true });
-      if (gcFirstUpserted > 0) {
-        console.log(`[central-sync] GC orphan backfill: ${gcFirstUpserted} OS sem 73343 gravadas/atualizadas`);
-      }
-    }
-    // Religa OS/orçamentos GC às tarefas Auvo já espelhadas, mesmo que a tarefa
-    // esteja fora da janela de datas deste sync (documento criado depois da tarefa).
-    try {
-      await backlinkGcDocsToExistingTasks(sbClient, gcOsResult, gcOrcResult);
-    } catch (err) {
-      console.error("[central-sync] backlink GC→tarefa falhou:", (err as Error).message);
-    }
-
-    if (isGcSolicitadasOnly) {
-      if (body?.fast === true) {
-        const requestedSituationIds = new Set(situacaoIds);
-        const isCompleteOpenSnapshot = requestedSituationIds.size === OPEN_OS_SITUACAO_IDS.length
-          && OPEN_OS_SITUACAO_IDS.every((id) => requestedSituationIds.has(id));
-        const gcStatusRefresh = isCompleteOpenSnapshot
-          ? await reconcileOpenOsMirror(sbClient, gcH, gcOsResult)
-          : { checked: 0, updated: 0, transitioned: 0, remaining: 0, complete: false, errors: 0 };
+  // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
+  // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
+  // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
+  // breaking the Horas Trabalhadas tab (which depends on Auvo data).
+  const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
+  const isLiteSync = body?.lite === true;
+  const auvoTasksPromise: Promise<AuvoTaskFetchResult> = isFastGcOnly
+    ? Promise.resolve({ tasks: [], complete: false, windows: [] })
+    : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
+        console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
         return {
-          success: true,
-          mode: "gc-first-fast",
-          periodo: { inicio: startDate, fim: endDate },
-          gc_os: Object.keys(gcOsResult.byCodigo).length,
-          upserted: gcFirstUpserted,
-          gc_os_status_checked: gcStatusRefresh.checked,
-          gc_os_status_updated: gcStatusRefresh.updated,
-          gc_os_transitioned: gcStatusRefresh.transitioned,
-          gc_os_status_remaining: gcStatusRefresh.remaining,
-          gc_os_reconciliation_complete: gcStatusRefresh.complete,
-          errors: gcStatusRefresh.errors,
+          tasks: [],
+          complete: false,
+          windows: [{ startDate, endDate, complete: false, error: (err as Error).message }],
         };
-      }
-    }
+      });
+  if (!isFastGcOnly) {
+    console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
+  }
 
-    // ── IMMEDIATE: Late linkage — link existing DB tasks to GC OS/ORC when gc_os_id is null ──
-    // Runs FIRST (before heavy lookups) to handle OS created after the task was synced
-    {
-      let lateLinkOS = 0;
-      let lateLinkOrc = 0;
-      // Run updates in parallel chunks to avoid IDLE_TIMEOUT.
-      const osLinkEntries = Object.entries(gcOsResult.byTaskId).filter(([t, p]: any) => t && p?.gc_os_id);
-      const PARALLEL_LINK = 20;
-      for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
-        const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
-        const results = await Promise.all(slice.map(async ([taskId, osPayload]: any) => {
+  // O retorno do GC também pode ser parcial. Nunca apagamos a linha inteira
+  // tarefa + OS por ausência do vínculo em uma rodada: isso transformava o
+  // card em uma OS isolada e eliminava a referência estável da tarefa Auvo.
+  // Alterações explícitas de dados/status continuam sendo aplicadas abaixo.
+  const staleOsLinksDeleted = 0;
+
+  const isGcSolicitadasOnly = situacaoIds.length > 0;
+  let gcFirstUpserted = 0;
+  if (isGcSolicitadasOnly) {
+    gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult);
+    console.log(`[central-sync] GC-first: ${gcFirstUpserted} OS solicitadas gravadas antes do Auvo`);
+  } else {
+    // Sync normal: garante que OS GC sem TAREFA OS (73343) — ex.: só com 73344
+    // ou totalmente desvinculadas — apareçam no central e tenham data_saida atualizada
+    // mesmo quando a tarefa Auvo de execução está fora da janela sincronizada.
+    gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult, { orphansOnly: true });
+    if (gcFirstUpserted > 0) {
+      console.log(`[central-sync] GC orphan backfill: ${gcFirstUpserted} OS sem 73343 gravadas/atualizadas`);
+    }
+  }
+  // Religa OS/orçamentos GC às tarefas Auvo já espelhadas, mesmo que a tarefa
+  // esteja fora da janela de datas deste sync (documento criado depois da tarefa).
+  try {
+    await backlinkGcDocsToExistingTasks(sbClient, gcOsResult, gcOrcResult);
+  } catch (err) {
+    console.error("[central-sync] backlink GC→tarefa falhou:", (err as Error).message);
+  }
+
+  if (isGcSolicitadasOnly) {
+    if (body?.fast === true) {
+      const requestedSituationIds = new Set(situacaoIds);
+      const isCompleteOpenSnapshot =
+        requestedSituationIds.size === OPEN_OS_SITUACAO_IDS.length &&
+        OPEN_OS_SITUACAO_IDS.every((id) => requestedSituationIds.has(id));
+      const gcStatusRefresh = isCompleteOpenSnapshot
+        ? await reconcileOpenOsMirror(sbClient, gcH, gcOsResult)
+        : { checked: 0, updated: 0, transitioned: 0, remaining: 0, complete: false, errors: 0 };
+      return {
+        success: true,
+        mode: "gc-first-fast",
+        periodo: { inicio: startDate, fim: endDate },
+        gc_os: Object.keys(gcOsResult.byCodigo).length,
+        upserted: gcFirstUpserted,
+        gc_os_status_checked: gcStatusRefresh.checked,
+        gc_os_status_updated: gcStatusRefresh.updated,
+        gc_os_transitioned: gcStatusRefresh.transitioned,
+        gc_os_status_remaining: gcStatusRefresh.remaining,
+        gc_os_reconciliation_complete: gcStatusRefresh.complete,
+        errors: gcStatusRefresh.errors,
+      };
+    }
+  }
+
+  // ── IMMEDIATE: Late linkage — link existing DB tasks to GC OS/ORC when gc_os_id is null ──
+  // Runs FIRST (before heavy lookups) to handle OS created after the task was synced
+  {
+    let lateLinkOS = 0;
+    let lateLinkOrc = 0;
+    // Run updates in parallel chunks to avoid IDLE_TIMEOUT.
+    const osLinkEntries = Object.entries(gcOsResult.byTaskId).filter(([t, p]: any) => t && p?.gc_os_id);
+    const PARALLEL_LINK = 20;
+    for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
+      const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
+      const results = await Promise.all(
+        slice.map(async ([taskId, osPayload]: any) => {
           const orcPayload = findOrcForOs(osPayload);
           const updatePayload: any = {
             gc_os_id: osPayload.gc_os_id,
@@ -2924,46 +3089,53 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             .eq("auvo_task_id", taskId)
             .is("gc_os_id", null);
           return count || 0;
-        }));
-        lateLinkOS += results.reduce((s, c) => s + c, 0);
-      }
+        }),
+      );
+      lateLinkOS += results.reduce((s, c) => s + c, 0);
+    }
 
-      const orcLinkEntries = Object.entries(gcOrcResult.byTaskId).filter(([t, p]: any) => t && p?.gc_orcamento_id);
-      for (let i = 0; i < orcLinkEntries.length; i += PARALLEL_LINK) {
-        const slice = orcLinkEntries.slice(i, i + PARALLEL_LINK);
-        const results = await Promise.all(slice.map(async ([taskId, orcPayload]: any) => {
+    const orcLinkEntries = Object.entries(gcOrcResult.byTaskId).filter(([t, p]: any) => t && p?.gc_orcamento_id);
+    for (let i = 0; i < orcLinkEntries.length; i += PARALLEL_LINK) {
+      const slice = orcLinkEntries.slice(i, i + PARALLEL_LINK);
+      const results = await Promise.all(
+        slice.map(async ([taskId, orcPayload]: any) => {
           const { count } = await sbClient
             .from("tarefas_central")
-            .update({
-              gc_orcamento_id: orcPayload.gc_orcamento_id,
-              gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
-              gc_orc_cliente: orcPayload.gc_orc_cliente,
-              gc_orc_situacao: orcPayload.gc_orc_situacao,
-              gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
-              gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
-              gc_orc_valor_total: orcPayload.gc_orc_valor_total,
-              gc_orc_valor_produtos: orcPayload.gc_orc_valor_produtos,
-              gc_orc_valor_servicos: orcPayload.gc_orc_valor_servicos,
-              gc_orc_tipo: orcPayload.gc_orc_tipo,
-              gc_orc_vendedor: orcPayload.gc_orc_vendedor,
-              gc_orc_data: orcPayload.gc_orc_data,
-              gc_orc_link: orcPayload.gc_orc_link,
-              orcamento_realizado: true,
-              atualizado_em: new Date().toISOString(),
-            }, { count: "exact" })
+            .update(
+              {
+                gc_orcamento_id: orcPayload.gc_orcamento_id,
+                gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
+                gc_orc_cliente: orcPayload.gc_orc_cliente,
+                gc_orc_situacao: orcPayload.gc_orc_situacao,
+                gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
+                gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
+                gc_orc_valor_total: orcPayload.gc_orc_valor_total,
+                gc_orc_valor_produtos: orcPayload.gc_orc_valor_produtos,
+                gc_orc_valor_servicos: orcPayload.gc_orc_valor_servicos,
+                gc_orc_tipo: orcPayload.gc_orc_tipo,
+                gc_orc_vendedor: orcPayload.gc_orc_vendedor,
+                gc_orc_data: orcPayload.gc_orc_data,
+                gc_orc_link: orcPayload.gc_orc_link,
+                orcamento_realizado: true,
+                atualizado_em: new Date().toISOString(),
+              },
+              { count: "exact" },
+            )
             .eq("auvo_task_id", taskId)
             .is("gc_orcamento_id", null);
           return count || 0;
-        }));
-        lateLinkOrc += results.reduce((s, c) => s + c, 0);
-      }
+        }),
+      );
+      lateLinkOrc += results.reduce((s, c) => s + c, 0);
+    }
 
-      const osOrcEntries = Object.values(gcOsResult.byCodigo || {})
-        .map((osPayload: any) => ({ osPayload, orcPayload: findOrcForOs(osPayload) }))
-        .filter(({ osPayload, orcPayload }: any) => osPayload?.gc_os_id && orcPayload?.gc_orcamento_id);
-      for (let i = 0; i < osOrcEntries.length; i += PARALLEL_LINK) {
-        const slice = osOrcEntries.slice(i, i + PARALLEL_LINK);
-        const results = await Promise.all(slice.map(async ({ osPayload, orcPayload }: any) => {
+    const osOrcEntries = Object.values(gcOsResult.byCodigo || {})
+      .map((osPayload: any) => ({ osPayload, orcPayload: findOrcForOs(osPayload) }))
+      .filter(({ osPayload, orcPayload }: any) => osPayload?.gc_os_id && orcPayload?.gc_orcamento_id);
+    for (let i = 0; i < osOrcEntries.length; i += PARALLEL_LINK) {
+      const slice = osOrcEntries.slice(i, i + PARALLEL_LINK);
+      const results = await Promise.all(
+        slice.map(async ({ osPayload, orcPayload }: any) => {
           const updatePayload: any = { atualizado_em: new Date().toISOString() };
           applyOrcPayload(updatePayload, orcPayload);
           const { count } = await sbClient
@@ -2972,31 +3144,35 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             .eq("gc_os_id", osPayload.gc_os_id)
             .is("gc_orcamento_id", null);
           return count || 0;
-        }));
-        lateLinkOrc += results.reduce((s, c) => s + c, 0);
-      }
+        }),
+      );
+      lateLinkOrc += results.reduce((s, c) => s + c, 0);
+    }
 
-      if (lateLinkOS > 0 || lateLinkOrc > 0) {
-        console.log(`[central-sync] Late linkage: ${lateLinkOS} tarefas vinculadas a OS, ${lateLinkOrc} a orçamentos`);
-      }
+    if (lateLinkOS > 0 || lateLinkOrc > 0) {
+      console.log(`[central-sync] Late linkage: ${lateLinkOS} tarefas vinculadas a OS, ${lateLinkOrc} a orçamentos`);
+    }
 
-      // ── FALLBACK: link GC OS to local rows via TAREFA EXECUÇÃO (73344) ──
-      // Quando a TAREFA OS (73343) está errada/duplicada/colide com outra OS, a OS
-      // nunca é vinculada e some da premiação. Para premiação o que importa é o
-      // 73344. Aqui ligamos pela execução APENAS quando a linha local ainda não
-      // tem gc_os_id, sem sobrescrever vínculos existentes feitos pelo 73343.
-      let lateLinkExec = 0;
-      const execLinkEntries: Array<[string, any]> = [];
-      for (const osPayload of Object.values(gcOsResult.byCodigo || {}) as any[]) {
-        if (!osPayload?.gc_os_id) continue;
-        const execIds = String(osPayload.gc_os_tarefa_exec || "").split("/").filter(Boolean);
-        for (const execId of execIds) {
-          if (execId) execLinkEntries.push([execId, osPayload]);
-        }
+    // ── FALLBACK: link GC OS to local rows via TAREFA EXECUÇÃO (73344) ──
+    // Quando a TAREFA OS (73343) está errada/duplicada/colide com outra OS, a OS
+    // nunca é vinculada e some da premiação. Para premiação o que importa é o
+    // 73344. Aqui ligamos pela execução APENAS quando a linha local ainda não
+    // tem gc_os_id, sem sobrescrever vínculos existentes feitos pelo 73343.
+    let lateLinkExec = 0;
+    const execLinkEntries: Array<[string, any]> = [];
+    for (const osPayload of Object.values(gcOsResult.byCodigo || {}) as any[]) {
+      if (!osPayload?.gc_os_id) continue;
+      const execIds = String(osPayload.gc_os_tarefa_exec || "")
+        .split("/")
+        .filter(Boolean);
+      for (const execId of execIds) {
+        if (execId) execLinkEntries.push([execId, osPayload]);
       }
-      for (let i = 0; i < execLinkEntries.length; i += PARALLEL_LINK) {
-        const slice = execLinkEntries.slice(i, i + PARALLEL_LINK);
-        const results = await Promise.all(slice.map(async ([execTaskId, osPayload]: any) => {
+    }
+    for (let i = 0; i < execLinkEntries.length; i += PARALLEL_LINK) {
+      const slice = execLinkEntries.slice(i, i + PARALLEL_LINK);
+      const results = await Promise.all(
+        slice.map(async ([execTaskId, osPayload]: any) => {
           const orcPayload = findOrcForOs(osPayload);
           const updatePayload: any = {
             gc_os_id: osPayload.gc_os_id,
@@ -3025,82 +3201,85 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             .eq("auvo_task_id", execTaskId)
             .is("gc_os_id", null);
           return count || 0;
-        }));
-        lateLinkExec += results.reduce((s, c) => s + c, 0);
-      }
-      if (lateLinkExec > 0) {
-        console.log(`[central-sync] Late linkage (TAREFA EXECUÇÃO/73344 fallback): ${lateLinkExec} OS vinculadas`);
-      }
+        }),
+      );
+      lateLinkExec += results.reduce((s, c) => s + c, 0);
+    }
+    if (lateLinkExec > 0) {
+      console.log(`[central-sync] Late linkage (TAREFA EXECUÇÃO/73344 fallback): ${lateLinkExec} OS vinculadas`);
+    }
+  }
+
+  // O sync completo é a fonte automática da transição previsão -> tarefa real.
+  // O modo rápido de situações não entra aqui para continuar leve e não disputar
+  // cota da API Auvo a cada 15 minutos.
+  if (!isGcSolicitadasOnly) {
+    forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult, gcH);
+  }
+
+  // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
+  // This ensures OS statuses are always updated even if the function times out later
+  {
+    const allGcOsById: Record<string, any> = {};
+    for (const osPayload of Object.values(gcOsResult.byCodigo)) {
+      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+    }
+    for (const osPayload of Object.values(gcOsResult.byTaskId)) {
+      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
     }
 
-    // O sync completo é a fonte automática da transição previsão -> tarefa real.
-    // O modo rápido de situações não entra aqui para continuar leve e não disputar
-    // cota da API Auvo a cada 15 minutos.
-    if (!isGcSolicitadasOnly) {
-      forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult, gcH);
+    const allGcOrcById: Record<string, any> = {};
+    for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
+      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+    }
+    for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
+      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
     }
 
-    // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
-    // This ensures OS statuses are always updated even if the function times out later
-    {
-      const allGcOsById: Record<string, any> = {};
-      for (const osPayload of Object.values(gcOsResult.byCodigo)) {
-        if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+    // Fetch distinct gc_os_id values from the DB — scoped to period when dates are provided
+    const isScoped = !!bodyStart && !!bodyEnd;
+    const dbOsIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      let query = sbClient.from("tarefas_central").select("gc_os_id").not("gc_os_id", "is", null);
+      if (isScoped) {
+        // Inclui OS com data_tarefa OU data_conclusao dentro do período
+        // (Relatórios filtra por data execução; sem isso, OS com execução no mês
+        // mas planejada em mês anterior nunca tinham situação atualizada)
+        query = query.or(
+          `and(data_tarefa.gte.${startDate},data_tarefa.lte.${endDate}),and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate})`,
+        );
       }
-      for (const osPayload of Object.values(gcOsResult.byTaskId)) {
-        if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+      const { data: chunk } = await query.range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      for (const r of chunk) {
+        if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
       }
+      if (chunk.length < 1000) break;
+    }
+    console.log(`[central-sync] OS no banco${isScoped ? ` (${startDate}→${endDate})` : " (global)"}: ${dbOsIds.size}`);
 
-      const allGcOrcById: Record<string, any> = {};
-      for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
-        if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+    // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
+    const missingOsIds = Array.from(dbOsIds).filter((id) => !allGcOsById[id]);
+    let pendingIndividualOsLookups = 0;
+    if (missingOsIds.length > 0) {
+      // Cap individual lookups to avoid IDLE_TIMEOUT (150s). Remaining IDs will be picked up next sync.
+      const MAX_INDIVIDUAL = 80;
+      const toFetch = missingOsIds.slice(0, MAX_INDIVIDUAL);
+      if (missingOsIds.length > MAX_INDIVIDUAL) {
+        pendingIndividualOsLookups = missingOsIds.length - MAX_INDIVIDUAL;
+        console.log(
+          `[central-sync] ${missingOsIds.length} OS faltantes — limitando a ${MAX_INDIVIDUAL} nesta execução`,
+        );
+      } else {
+        console.log(
+          `[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`,
+        );
       }
-      for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
-        if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
-      }
-
-      // Fetch distinct gc_os_id values from the DB — scoped to period when dates are provided
-      const isScoped = !!bodyStart && !!bodyEnd;
-      const dbOsIds = new Set<string>();
-      for (let from = 0; ; from += 1000) {
-        let query = sbClient
-          .from("tarefas_central")
-          .select("gc_os_id")
-          .not("gc_os_id", "is", null);
-        if (isScoped) {
-          // Inclui OS com data_tarefa OU data_conclusao dentro do período
-          // (Relatórios filtra por data execução; sem isso, OS com execução no mês
-          // mas planejada em mês anterior nunca tinham situação atualizada)
-          query = query.or(
-            `and(data_tarefa.gte.${startDate},data_tarefa.lte.${endDate}),and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate})`
-          );
-        }
-        const { data: chunk } = await query.range(from, from + 999);
-        if (!chunk || chunk.length === 0) break;
-        for (const r of chunk) {
-          if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
-        }
-        if (chunk.length < 1000) break;
-      }
-      console.log(`[central-sync] OS no banco${isScoped ? ` (${startDate}→${endDate})` : ' (global)'}: ${dbOsIds.size}`);
-
-      // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
-      const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
-      let pendingIndividualOsLookups = 0;
-      if (missingOsIds.length > 0) {
-        // Cap individual lookups to avoid IDLE_TIMEOUT (150s). Remaining IDs will be picked up next sync.
-        const MAX_INDIVIDUAL = 80;
-        const toFetch = missingOsIds.slice(0, MAX_INDIVIDUAL);
-        if (missingOsIds.length > MAX_INDIVIDUAL) {
-          pendingIndividualOsLookups = missingOsIds.length - MAX_INDIVIDUAL;
-          console.log(`[central-sync] ${missingOsIds.length} OS faltantes — limitando a ${MAX_INDIVIDUAL} nesta execução`);
-        } else {
-          console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
-        }
-        const PARALLEL = 15;
-        for (let i = 0; i < toFetch.length; i += PARALLEL) {
-          const batch = toFetch.slice(i, i + PARALLEL);
-          const results = await Promise.all(batch.map(async (osId) => {
+      const PARALLEL = 15;
+      for (let i = 0; i < toFetch.length; i += PARALLEL) {
+        const batch = toFetch.slice(i, i + PARALLEL);
+        const results = await Promise.all(
+          batch.map(async (osId) => {
             const url = `${GC_BASE_URL}/api/ordens_servicos/${osId}`;
             const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
             if (!resp.ok) return null;
@@ -3114,7 +3293,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
             });
             const execTaskVal = attrExec
-              ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
+              ? String(
+                  (attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "",
+                ).trim()
               : "";
             const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
             return {
@@ -3128,24 +3309,28 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
               gc_os_tarefa_exec,
             };
-          }));
-          for (const fresh of results) {
-            if (fresh) allGcOsById[fresh.gc_os_id] = fresh;
-          }
+          }),
+        );
+        for (const fresh of results) {
+          if (fresh) allGcOsById[fresh.gc_os_id] = fresh;
         }
-        console.log(`[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter(id => !allGcOsById[id]).length}`);
-        (globalThis as any).__centralSyncPending = {
-          os_individuais: pendingIndividualOsLookups,
-          lookups_auvo: 0,
-        };
       }
+      console.log(
+        `[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter((id) => !allGcOsById[id]).length}`,
+      );
+      (globalThis as any).__centralSyncPending = {
+        os_individuais: pendingIndividualOsLookups,
+        lookups_auvo: 0,
+      };
+    }
 
-      let globalOsUpdated = 0;
-      const osIdsArray = Array.from(dbOsIds);
-      const PARALLEL_REFRESH = 20;
-      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
-        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
-        const results = await Promise.all(slice.map(async (osId) => {
+    let globalOsUpdated = 0;
+    const osIdsArray = Array.from(dbOsIds);
+    const PARALLEL_REFRESH = 20;
+    for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+      const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+      const results = await Promise.all(
+        slice.map(async (osId) => {
           const fresh = allGcOsById[osId];
           if (!fresh) return 0;
           const updatePayload: any = {
@@ -3166,438 +3351,454 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             .update(updatePayload, { count: "exact" })
             .eq("gc_os_id", osId);
           return count || 0;
-        }));
-        globalOsUpdated += results.reduce((s, c) => s + c, 0);
-      }
+        }),
+      );
+      globalOsUpdated += results.reduce((s, c) => s + c, 0);
+    }
 
-      // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
-      let execFilled = 0;
-      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
-        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
-        const results = await Promise.all(slice.map(async (osId) => {
+    // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
+    let execFilled = 0;
+    for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+      const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+      const results = await Promise.all(
+        slice.map(async (osId) => {
           const fresh = allGcOsById[osId];
           if (!fresh?.gc_os_tarefa_exec) return 0;
           const { count } = await sbClient
             .from("tarefas_central")
-            .update({
-              gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
-              atualizado_em: new Date().toISOString(),
-            }, { count: "exact" })
+            .update(
+              {
+                gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+                atualizado_em: new Date().toISOString(),
+              },
+              { count: "exact" },
+            )
             .eq("gc_os_id", osId)
             .is("gc_os_tarefa_exec", null);
           return count || 0;
-        }));
-        execFilled += results.reduce((s, c) => s + c, 0);
-      }
-      if (execFilled > 0) {
-        console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
-      }
+        }),
+      );
+      execFilled += results.reduce((s, c) => s + c, 0);
+    }
+    if (execFilled > 0) {
+      console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
+    }
 
-      const dbOrcIds = new Set<string>();
-      for (let from = 0; ; from += 1000) {
-        let query = sbClient
-          .from("tarefas_central")
-          .select("gc_orcamento_id")
-          .not("gc_orcamento_id", "is", null);
-        if (isScoped) {
-          query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
-        }
-        const { data: chunk } = await query.range(from, from + 999);
-        if (!chunk || chunk.length === 0) break;
-        for (const r of chunk) {
-          if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
-        }
-        if (chunk.length < 1000) break;
+    const dbOrcIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      let query = sbClient.from("tarefas_central").select("gc_orcamento_id").not("gc_orcamento_id", "is", null);
+      if (isScoped) {
+        query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
       }
+      const { data: chunk } = await query.range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      for (const r of chunk) {
+        if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
+      }
+      if (chunk.length < 1000) break;
+    }
 
-      let globalOrcUpdated = 0;
-      const orcIdsArray = Array.from(dbOrcIds);
-      for (let i = 0; i < orcIdsArray.length; i += PARALLEL_REFRESH) {
-        const slice = orcIdsArray.slice(i, i + PARALLEL_REFRESH);
-        const results = await Promise.all(slice.map(async (orcId) => {
+    let globalOrcUpdated = 0;
+    const orcIdsArray = Array.from(dbOrcIds);
+    for (let i = 0; i < orcIdsArray.length; i += PARALLEL_REFRESH) {
+      const slice = orcIdsArray.slice(i, i + PARALLEL_REFRESH);
+      const results = await Promise.all(
+        slice.map(async (orcId) => {
           const fresh = allGcOrcById[orcId];
           if (!fresh) return 0;
           const { count } = await sbClient
             .from("tarefas_central")
-            .update({
-              gc_orc_situacao: fresh.gc_orc_situacao,
-              gc_orc_situacao_id: fresh.gc_orc_situacao_id,
-              gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
-              gc_orc_valor_total: fresh.gc_orc_valor_total,
-              gc_orc_valor_produtos: fresh.gc_orc_valor_produtos,
-              gc_orc_valor_servicos: fresh.gc_orc_valor_servicos,
-              gc_orc_tipo: fresh.gc_orc_tipo,
-              gc_orc_vendedor: fresh.gc_orc_vendedor,
-              gc_orc_cliente: fresh.gc_orc_cliente,
-              atualizado_em: new Date().toISOString(),
-            }, { count: "exact" })
+            .update(
+              {
+                gc_orc_situacao: fresh.gc_orc_situacao,
+                gc_orc_situacao_id: fresh.gc_orc_situacao_id,
+                gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
+                gc_orc_valor_total: fresh.gc_orc_valor_total,
+                gc_orc_valor_produtos: fresh.gc_orc_valor_produtos,
+                gc_orc_valor_servicos: fresh.gc_orc_valor_servicos,
+                gc_orc_tipo: fresh.gc_orc_tipo,
+                gc_orc_vendedor: fresh.gc_orc_vendedor,
+                gc_orc_cliente: fresh.gc_orc_cliente,
+                atualizado_em: new Date().toISOString(),
+              },
+              { count: "exact" },
+            )
             .eq("gc_orcamento_id", orcId);
           return count || 0;
-        }));
-        globalOrcUpdated += results.reduce((s, c) => s + c, 0);
-      }
-
-      console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
+        }),
+      );
+      globalOrcUpdated += results.reduce((s, c) => s + c, 0);
     }
 
-    // Step 3: NOW await Auvo (kicked off earlier in parallel with GC refresh)
-    console.log(`[central-sync] Aguardando Auvo (iniciado em paralelo): ${startDate} → ${endDate}`);
-    const auvoFetch = await auvoTasksPromise;
-    const auvoTasks = auvoFetch.tasks;
-    console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
-
-    if (auvoTasks.length === 0) {
-      console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
-    }
-
-    // Load existing task IDs to avoid overwriting rows not returned by current Auvo window
-    const existingTaskIdsInDb = new Set<string>();
-    for (let from = 0; ; from += 1000) {
-      const { data: existingChunk, error: existingErr } = await sbClient
-        .from("tarefas_central")
-        .select("auvo_task_id")
-        .range(from, from + 999);
-      if (existingErr || !existingChunk || existingChunk.length === 0) break;
-      for (const row of existingChunk) existingTaskIdsInDb.add(String((row as any).auvo_task_id));
-      if (existingChunk.length < 1000) break;
-    }
-
-    // Enrich ALL completed tasks with direct Auvo task detail (list endpoint lacks displacement data)
-    const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
-    const candidateTaskIds: string[] = [];
-    const seenCandidates = new Set<string>();
-
-    for (const task of auvoTasks) {
-      const taskId = String(task.taskID || "").trim();
-      if (!taskId || seenCandidates.has(taskId)) continue;
-      // Full snapshots are expensive and can make manual report syncs time out.
-      // Lite sync persists the list data first and skips detail-only enrichment.
-      if (!isLiteSync) candidateTaskIds.push(taskId);
-      seenCandidates.add(taskId);
-    }
-
-    if (candidateTaskIds.length > 0) {
-      console.log(`[central-sync] Buscando detalhe via Auvo para ${candidateTaskIds.length} tarefas (paralelo 10)...`);
-      const PARALLEL = 10;
-      for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
-        const batch = candidateTaskIds.slice(i, i + PARALLEL);
-        const results = await Promise.all(
-          batch.map((id) => fetchAuvoTaskSnapshot(bearerToken, id))
-        );
-        batch.forEach((id, idx) => {
-          if (results[idx]) taskSnapshotById.set(id, results[idx]!);
-        });
-      }
-      console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
-    }
-
-    // Pré-hidratação: varre orientações Auvo e busca no GC OS/Orçamentos referenciados
-    // que não vieram na listagem (ex.: "OS N° 9224", "Orçamento #5082", "ORÇAMENTO 331").
-    {
-      const allOsCodes = new Set<string>();
-      const allOrcCodes = new Set<string>();
-      for (const task of auvoTasks) {
-        const taskId = String(task.taskID || "");
-        const snap = taskSnapshotById.get(taskId);
-        const text = String(snap?.orientation || task.orientation || "");
-        if (!text) continue;
-        const refs = extractReferencedCodes(text);
-        for (const c of refs.osCodigos) if (!gcOsByCodigo[c]) allOsCodes.add(c);
-        for (const c of refs.orcCodigos) if (!gcOrcByCodigo[c]) allOrcCodes.add(c);
-      }
-      if (allOsCodes.size > 0) {
-        console.log(`[central-sync] Hidratando ${allOsCodes.size} OS referenciadas em orientações...`);
-        await hydrateMissingOsByCodigo(gcH, gcOsResult, [...allOsCodes]);
-      }
-      if (allOrcCodes.size > 0) {
-        console.log(`[central-sync] Hidratando ${allOrcCodes.size} Orçamentos referenciados em orientações...`);
-        await hydrateMissingOrcamentosByCodigo(gcH, gcOrcResult, [...allOrcCodes]);
-      }
-    }
-
-    // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
-    function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
-      let os: any = null;
-      let orc: any = null;
-      if (!orientation) return { os, orc };
-
-      // Try "TAREFA OS: XXXXX" or "TAREFA OS XXXXX" → look up in gcOsMap by referenced taskId
-      const tarefaOsMatch = orientation.match(/TAREFA\s+OS[:\s]+(\d{5,})/i);
-      if (tarefaOsMatch) {
-        const refTaskId = tarefaOsMatch[1];
-        if (refTaskId !== taskId && gcOsMap[refTaskId]) {
-          os = gcOsMap[refTaskId];
-        }
-      }
-
-      const refs = extractReferencedCodes(orientation);
-
-      // OS por código (loose): "OS N° 9224", "OS 9224", "OS:9224"
-      if (!os) {
-        for (const code of refs.osCodigos) {
-          if (gcOsByCodigo[code]) { os = gcOsByCodigo[code]; break; }
-        }
-      }
-
-      // Orçamento por código (loose): "Orçamento #5185", "ORÇAMENTO 331", "OR N° 331"
-      for (const code of refs.orcCodigos) {
-        if (!orc && gcOrcByCodigo[code]) orc = gcOrcByCodigo[code];
-        if (!os && gcOsByOrcNumero[code]) os = gcOsByOrcNumero[code];
-        if (orc && os) break;
-      }
-
-      return { os, orc };
-    }
-
-    // Resolve nome/série a partir do vínculo nativo da própria tarefa. O Auvo
-    // normalmente retorna apenas `equipmentsId`; esperar um `equipmentName` no
-    // detalhe fazia tarefas válidas ficarem sem equipamento no espelho.
-    const taskEquipmentIdsById = new Map<string, string[]>();
-    const allTaskEquipmentIds = new Set<string>();
-    for (const task of auvoTasks) {
-      const taskId = String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim();
-      if (!taskId) continue;
-      const snapshot = taskSnapshotById.get(taskId);
-      const ids = [...new Set([
-        ...extractAuvoEquipmentIds(task),
-        ...(snapshot?.equipmentIds || []),
-      ].map(String).map((id) => id.trim()).filter(Boolean))];
-      taskEquipmentIdsById.set(taskId, ids);
-      ids.forEach((id) => allTaskEquipmentIds.add(id));
-    }
-
-    const equipmentIdList = [...allTaskEquipmentIds];
-    const equipmentCatalogById = await loadAuvoEquipmentCatalog(
-      sbClient,
-      bearerToken,
-      equipmentIdList,
+    console.log(
+      `[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`,
     );
+  }
 
-    // Build rows for upsert
-    let secondaryMatches = 0;
-    const rows: any[] = [];
+  // Step 3: NOW await Auvo (kicked off earlier in parallel with GC refresh)
+  console.log(`[central-sync] Aguardando Auvo (iniciado em paralelo): ${startDate} → ${endDate}`);
+  const auvoFetch = await auvoTasksPromise;
+  const auvoTasks = auvoFetch.tasks;
+  console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
+
+  if (auvoTasks.length === 0) {
+    console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
+  }
+
+  // Load existing task IDs to avoid overwriting rows not returned by current Auvo window
+  const existingTaskIdsInDb = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: existingChunk, error: existingErr } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id")
+      .range(from, from + 999);
+    if (existingErr || !existingChunk || existingChunk.length === 0) break;
+    for (const row of existingChunk) existingTaskIdsInDb.add(String((row as any).auvo_task_id));
+    if (existingChunk.length < 1000) break;
+  }
+
+  // Enrich ALL completed tasks with direct Auvo task detail (list endpoint lacks displacement data)
+  const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
+  const candidateTaskIds: string[] = [];
+  const seenCandidates = new Set<string>();
+
+  for (const task of auvoTasks) {
+    const taskId = String(task.taskID || "").trim();
+    if (!taskId || seenCandidates.has(taskId)) continue;
+    // Full snapshots are expensive and can make manual report syncs time out.
+    // Lite sync persists the list data first and skips detail-only enrichment.
+    if (!isLiteSync) candidateTaskIds.push(taskId);
+    seenCandidates.add(taskId);
+  }
+
+  if (candidateTaskIds.length > 0) {
+    console.log(`[central-sync] Buscando detalhe via Auvo para ${candidateTaskIds.length} tarefas (paralelo 10)...`);
+    const PARALLEL = 10;
+    for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
+      const batch = candidateTaskIds.slice(i, i + PARALLEL);
+      const results = await Promise.all(batch.map((id) => fetchAuvoTaskSnapshot(bearerToken, id)));
+      batch.forEach((id, idx) => {
+        if (results[idx]) taskSnapshotById.set(id, results[idx]!);
+      });
+    }
+    console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
+  }
+
+  // Pré-hidratação: varre orientações Auvo e busca no GC OS/Orçamentos referenciados
+  // que não vieram na listagem (ex.: "OS N° 9224", "Orçamento #5082", "ORÇAMENTO 331").
+  {
+    const allOsCodes = new Set<string>();
+    const allOrcCodes = new Set<string>();
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "");
-      if (!taskId) continue;
+      const snap = taskSnapshotById.get(taskId);
+      const text = String(snap?.orientation || task.orientation || "");
+      if (!text) continue;
+      const refs = extractReferencedCodes(text);
+      for (const c of refs.osCodigos) if (!gcOsByCodigo[c]) allOsCodes.add(c);
+      for (const c of refs.orcCodigos) if (!gcOrcByCodigo[c]) allOrcCodes.add(c);
+    }
+    if (allOsCodes.size > 0) {
+      console.log(`[central-sync] Hidratando ${allOsCodes.size} OS referenciadas em orientações...`);
+      await hydrateMissingOsByCodigo(gcH, gcOsResult, [...allOsCodes]);
+    }
+    if (allOrcCodes.size > 0) {
+      console.log(`[central-sync] Hidratando ${allOrcCodes.size} Orçamentos referenciados em orientações...`);
+      await hydrateMissingOrcamentosByCodigo(gcH, gcOrcResult, [...allOrcCodes]);
+    }
+  }
 
-      let gcOrc = gcOrcMap[taskId] || null;
-      let gcOs = gcOsMap[taskId] || null;
+  // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
+  function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
+    let os: any = null;
+    let orc: any = null;
+    if (!orientation) return { os, orc };
 
-      // Cross-link via 73343/73344 ↔ 73341
-      // Se temos OS mas não orçamento, procura orçamento usando 73343 OU 73344 da OS.
-      if (gcOs && !gcOrc) {
-        const found = findOrcForOs(gcOs);
-        if (found) gcOrc = found;
+    // Try "TAREFA OS: XXXXX" or "TAREFA OS XXXXX" → look up in gcOsMap by referenced taskId
+    const tarefaOsMatch = orientation.match(/TAREFA\s+OS[:\s]+(\d{5,})/i);
+    if (tarefaOsMatch) {
+      const refTaskId = tarefaOsMatch[1];
+      if (refTaskId !== taskId && gcOsMap[refTaskId]) {
+        os = gcOsMap[refTaskId];
       }
-      // Se temos orçamento mas não OS, procura OS cuja 73344 (execução) == taskId.
-      if (gcOrc && !gcOs) {
-        const found = findOsForTaskId(taskId);
-        if (found) {
-          gcOs = found;
-          // E re-tenta orçamento via OS encontrada (caso 73341 aponte pra outra ponta)
-          if (!gcOrc) gcOrc = findOrcForOs(gcOs);
+    }
+
+    const refs = extractReferencedCodes(orientation);
+
+    // OS por código (loose): "OS N° 9224", "OS 9224", "OS:9224"
+    if (!os) {
+      for (const code of refs.osCodigos) {
+        if (gcOsByCodigo[code]) {
+          os = gcOsByCodigo[code];
+          break;
         }
       }
+    }
 
-      // Secondary linkage: if no direct match, parse orientacao for references
-      if (!gcOs || !gcOrc) {
-        const orientation = String(task.orientation || "");
-        const snapshot = taskSnapshotById.get(taskId);
-        const snapshotOrientation = String(snapshot?.orientation || "");
-        const fullOrientation = snapshotOrientation || orientation;
+    // Orçamento por código (loose): "Orçamento #5185", "ORÇAMENTO 331", "OR N° 331"
+    for (const code of refs.orcCodigos) {
+      if (!orc && gcOrcByCodigo[code]) orc = gcOrcByCodigo[code];
+      if (!os && gcOsByOrcNumero[code]) os = gcOsByOrcNumero[code];
+      if (orc && os) break;
+    }
 
-        if (fullOrientation) {
-          const secondary = secondaryLinkage(fullOrientation, taskId);
-          if (!gcOs && secondary.os) {
-            gcOs = secondary.os;
-            secondaryMatches++;
-          }
-          if (!gcOrc && secondary.orc) {
-            gcOrc = secondary.orc;
-            if (!secondary.os) secondaryMatches++;
-          }
-        }
+    return { os, orc };
+  }
+
+  // Resolve nome/série a partir do vínculo nativo da própria tarefa. O Auvo
+  // normalmente retorna apenas `equipmentsId`; esperar um `equipmentName` no
+  // detalhe fazia tarefas válidas ficarem sem equipamento no espelho.
+  const taskEquipmentIdsById = new Map<string, string[]>();
+  const allTaskEquipmentIds = new Set<string>();
+  for (const task of auvoTasks) {
+    const taskId = String(task?.taskID ?? task?.taskId ?? task?.id ?? "").trim();
+    if (!taskId) continue;
+    const snapshot = taskSnapshotById.get(taskId);
+    const ids = [
+      ...new Set(
+        [...extractAuvoEquipmentIds(task), ...(snapshot?.equipmentIds || [])]
+          .map(String)
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
+    taskEquipmentIdsById.set(taskId, ids);
+    ids.forEach((id) => allTaskEquipmentIds.add(id));
+  }
+
+  const equipmentIdList = [...allTaskEquipmentIds];
+  const equipmentCatalogById = await loadAuvoEquipmentCatalog(sbClient, bearerToken, equipmentIdList);
+
+  // Build rows for upsert
+  let secondaryMatches = 0;
+  const rows: any[] = [];
+  for (const task of auvoTasks) {
+    const taskId = String(task.taskID || "");
+    if (!taskId) continue;
+
+    let gcOrc = gcOrcMap[taskId] || null;
+    let gcOs = gcOsMap[taskId] || null;
+
+    // Cross-link via 73343/73344 ↔ 73341
+    // Se temos OS mas não orçamento, procura orçamento usando 73343 OU 73344 da OS.
+    if (gcOs && !gcOrc) {
+      const found = findOrcForOs(gcOs);
+      if (found) gcOrc = found;
+    }
+    // Se temos orçamento mas não OS, procura OS cuja 73344 (execução) == taskId.
+    if (gcOrc && !gcOs) {
+      const found = findOsForTaskId(taskId);
+      if (found) {
+        gcOs = found;
+        // E re-tenta orçamento via OS encontrada (caso 73341 aponte pra outra ponta)
+        if (!gcOrc) gcOrc = findOrcForOs(gcOs);
       }
+    }
 
-      // Customer resolution chain
-      const desc = String(task.customerDescription || "").trim();
-      const nameRaw = String(
-        task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
-      ).trim();
-      const nameGc = gcOrc?.gc_orc_cliente || gcOs?.gc_os_cliente || "";
-      const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
-
-      // A listagem do Auvo pode omitir respostas que existem no detalhe da tarefa.
-      // Mesclamos as duas fontes e guardamos todas as respostas em formato plano.
+    // Secondary linkage: if no direct match, parse orientacao for references
+    if (!gcOs || !gcOrc) {
+      const orientation = String(task.orientation || "");
       const snapshot = taskSnapshotById.get(taskId);
-      const questionnaire = resolveQuestionnaireData(
-        QUESTIONNAIRE_ID,
-        task.questionnaires,
-        snapshot?.questionnaires,
-      );
-      const answers = questionnaire.answers;
-      const hasFilledQ = questionnaire.filled;
+      const snapshotOrientation = String(snapshot?.orientation || "");
+      const fullOrientation = snapshotOrientation || orientation;
 
-      const baseAddress = resolveTaskAddress(task);
-      const taskWithDetail = snapshot
-        ? {
-            ...task,
-            duration: snapshot.duration || task.duration,
-            durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
-            timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
-            checkInDate: snapshot.checkInDate || task.checkInDate,
-            checkOutDate: snapshot.checkOutDate || task.checkOutDate,
-            displacementStart: snapshot.displacementStart || task.displacementStart,
-            estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
-          }
-        : task;
-      const inlineEquipment = extractAuvoInlineEquipmentInfo(taskWithDetail);
-      const catalogEquipment = (taskEquipmentIdsById.get(taskId) || [])
-        .map((equipmentId) => equipmentCatalogById.get(equipmentId))
-        .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment);
-      const resolvedEquipment = joinAuvoEquipmentInfo([...inlineEquipment, ...catalogEquipment]);
-      // Always prefer snapshot (detail endpoint) - it's more reliable than list
-      const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
-      const resolvedAddress = snapshotAddr || baseAddress;
-      const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
-
-      // Resolve checkout date for monthly accounting
-      const checkOutDateRawFull = String(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate || "").trim();
-      const checkOutDateRaw = normalizeDate(checkOutDateRawFull);
-      // displacementStart: try list endpoint first, then snapshot
-      const displacementStartRaw = String(task.displacementStart || task.displacement_start || snapshot?.displacementStart || "").trim();
-      // checkInDate: try list endpoint first, then snapshot
-      const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
-      const checkInIso = normalizeDateTime(checkInDateRaw);
-      const checkOutIso = normalizeDateTime(checkOutDateRawFull);
-
-      // Calculate displacement separately (displacementStart → checkInDate). It must not enter worked hours.
-      const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw) || null;
-
-      const startTimeResolved =
-        extractTimeFromDateStr(checkInDateRaw) ||
-        String(task.startTime || task.startHour || snapshot?.startTime || "").trim() ||
-        extractTimeFromDateStr(String(task.taskDate || ""));
-
-      let endTimeResolved =
-        extractTimeFromDateStr(checkOutDateRawFull) ||
-        String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
-        extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
-
-      const workedHoursRaw = computeAuvoWorkedHours(taskWithDetail);
-      const estimatedDurationHours = parseDurationToHours(taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "");
-      const durationDecimalResolved = workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours;
-
-      if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
-        const startMinutes = parseClockToMinutes(startTimeResolved);
-        if (startMinutes >= 0) {
-          const endMinutes = startMinutes + Math.round(durationDecimalResolved * 60);
-          endTimeResolved = minutesToClock(endMinutes);
+      if (fullOrientation) {
+        const secondary = secondaryLinkage(fullOrientation, taskId);
+        if (!gcOs && secondary.os) {
+          gcOs = secondary.os;
+          secondaryMatches++;
+        }
+        if (!gcOrc && secondary.orc) {
+          gcOrc = secondary.orc;
+          if (!secondary.os) secondaryMatches++;
         }
       }
-
-      const row: any = {
-        auvo_task_id: taskId,
-        cliente,
-        tecnico: resolveAuvoTechnicianName(task),
-        tecnico_id: resolveAuvoTechnicianId(task),
-        data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
-        data_conclusao: checkOutDateRaw || null,
-        check_in_iso: checkInIso,
-        check_out_iso: checkOutIso,
-        deslocamento_inicio: displacementStartRaw || null,
-        duracao_deslocamento: duracaoDeslocamento,
-        status_auvo: (() => {
-          // Auvo taskStatus codes: 1=Opened, 2=InDisplacement, 3=CheckedIn, 4=CheckedOut, 5=Finished, 6=Paused
-          const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
-            : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
-            : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
-
-          if (statusCode === 6) return "Pausada";
-          if (statusCode === 4 || statusCode === 5) return "Finalizada";
-          if (statusCode === 3) return "Em andamento";
-          if (statusCode === 2) return "Em deslocamento";
-          if (statusCode === 1) return "Aberta";
-
-          // Fallback: derive from event fields if statusCode is missing/0
-          const hasCheckOut = !!task.checkOut;
-          if (hasCheckOut) return "Finalizada";
-          const timeControls = task.timeControl || [];
-          const hasPauseOpen = timeControls.some((tc: any) => tc.pauseStart && !tc.pauseEnd);
-          if (hasPauseOpen || task.reasonForPause) return "Pausada";
-          if (task.checkIn) return "Em andamento";
-          return "Aberta";
-        })(),
-        orientacao: resolvedOrientation,
-        pendencia: String(task.pendency ?? "").trim(),
-        descricao: resolveTaskType(task),
-        duracao_decimal: durationDecimalResolved,
-        hora_inicio: startTimeResolved,
-        hora_fim: endTimeResolved,
-        check_in: !!(task.checkIn || checkInIso),
-        check_out: !!(task.checkOut || checkOutIso),
-        endereco: resolvedAddress,
-        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-        auvo_task_url: String(task.taskUrl || ""),
-        auvo_survey_url: String(task.survey || ""),
-        questionario_id: questionnaire.questionnaireId,
-        questionario_respostas: answers,
-        questionario_preenchido: hasFilledQ,
-        orcamento_realizado: !!gcOrc,
-        os_realizada: !!gcOs,
-        atualizado_em: new Date().toISOString(),
-        // Fonte de verdade: equipmentsId da tarefa + catálogo Auvo local.
-        equipamento_nome: resolvedEquipment.name || snapshot?.equipmentName || null,
-        equipamento_id_serie: resolvedEquipment.identifier || snapshot?.equipmentSerial || null,
-      };
-
-      // GC Orçamento fields
-      if (gcOrc) {
-        row.gc_orcamento_id = gcOrc.gc_orcamento_id;
-        row.gc_orcamento_codigo = gcOrc.gc_orcamento_codigo;
-        row.gc_orc_cliente = gcOrc.gc_orc_cliente;
-        row.gc_orc_situacao = gcOrc.gc_orc_situacao;
-        row.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
-        row.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
-        row.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
-        row.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
-        row.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
-        row.gc_orc_tipo = gcOrc.gc_orc_tipo;
-        row.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
-        row.gc_orc_data = gcOrc.gc_orc_data;
-        row.gc_orc_link = gcOrc.gc_orc_link;
-      }
-
-      // GC OS fields
-      if (gcOs) {
-        row.gc_os_id = gcOs.gc_os_id;
-        row.gc_os_codigo = gcOs.gc_os_codigo;
-        row.gc_os_cliente = gcOs.gc_os_cliente;
-        row.gc_os_situacao = gcOs.gc_os_situacao;
-        row.gc_os_situacao_id = gcOs.gc_os_situacao_id;
-        row.gc_os_cor_situacao = gcOs.gc_os_cor_situacao;
-        row.gc_os_valor_total = gcOs.gc_os_valor_total;
-        row.gc_os_vendedor = gcOs.gc_os_vendedor;
-        row.gc_os_data = gcOs.gc_os_data;
-        row.gc_os_data_saida = gcOs.gc_os_data_saida;
-        row.gc_os_link = gcOs.gc_os_link;
-        row.gc_os_link_cobranca = (gcOs as any).gc_os_link_cobranca || null;
-        row.gc_os_tarefa_exec = gcOs.gc_os_tarefa_exec || null;
-        row.gc_os_tarefa_os = gcOs.gc_os_tarefa_os || taskId;
-      }
-
-      rows.push(row);
     }
 
-    if (secondaryMatches > 0) {
-      console.log(`[central-sync] Vínculo secundário (orientação): ${secondaryMatches} tarefas vinculadas a OS/Orçamento`);
+    // Customer resolution chain
+    const desc = String(task.customerDescription || "").trim();
+    const nameRaw = String(task.customerName || task.customer?.tradeName || task.customer?.companyName || "").trim();
+    const nameGc = gcOrc?.gc_orc_cliente || gcOs?.gc_os_cliente || "";
+    const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
+
+    // A listagem do Auvo pode omitir respostas que existem no detalhe da tarefa.
+    // Mesclamos as duas fontes e guardamos todas as respostas em formato plano.
+    const snapshot = taskSnapshotById.get(taskId);
+    const questionnaire = resolveQuestionnaireData(QUESTIONNAIRE_ID, task.questionnaires, snapshot?.questionnaires);
+    const answers = questionnaire.answers;
+    const hasFilledQ = questionnaire.filled;
+
+    const baseAddress = resolveTaskAddress(task);
+    const taskWithDetail = snapshot
+      ? {
+          ...task,
+          duration: snapshot.duration || task.duration,
+          durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
+          timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
+          checkInDate: snapshot.checkInDate || task.checkInDate,
+          checkOutDate: snapshot.checkOutDate || task.checkOutDate,
+          displacementStart: snapshot.displacementStart || task.displacementStart,
+          estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
+        }
+      : task;
+    const inlineEquipment = extractAuvoInlineEquipmentInfo(taskWithDetail);
+    const catalogEquipment = (taskEquipmentIdsById.get(taskId) || [])
+      .map((equipmentId) => equipmentCatalogById.get(equipmentId))
+      .filter((equipment): equipment is AuvoEquipmentInfo => !!equipment);
+    const resolvedEquipment = joinAuvoEquipmentInfo([...inlineEquipment, ...catalogEquipment]);
+    // Always prefer snapshot (detail endpoint) - it's more reliable than list
+    const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
+    const resolvedAddress = snapshotAddr || baseAddress;
+    const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
+
+    // Resolve checkout date for monthly accounting
+    const checkOutDateRawFull = String(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate || "").trim();
+    const checkOutDateRaw = normalizeDate(checkOutDateRawFull);
+    // displacementStart: try list endpoint first, then snapshot
+    const displacementStartRaw = String(
+      task.displacementStart || task.displacement_start || snapshot?.displacementStart || "",
+    ).trim();
+    // checkInDate: try list endpoint first, then snapshot
+    const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
+    const checkInIso = normalizeDateTime(checkInDateRaw);
+    const checkOutIso = normalizeDateTime(checkOutDateRawFull);
+
+    // Calculate displacement separately (displacementStart → checkInDate). It must not enter worked hours.
+    const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw) || null;
+
+    const startTimeResolved =
+      extractTimeFromDateStr(checkInDateRaw) ||
+      String(task.startTime || task.startHour || snapshot?.startTime || "").trim() ||
+      extractTimeFromDateStr(String(task.taskDate || ""));
+
+    let endTimeResolved =
+      extractTimeFromDateStr(checkOutDateRawFull) ||
+      String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
+      extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
+
+    const workedHoursRaw = computeAuvoWorkedHours(taskWithDetail);
+    const estimatedDurationHours = parseDurationToHours(
+      taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "",
+    );
+    const durationDecimalResolved = workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours;
+
+    if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
+      const startMinutes = parseClockToMinutes(startTimeResolved);
+      if (startMinutes >= 0) {
+        const endMinutes = startMinutes + Math.round(durationDecimalResolved * 60);
+        endTimeResolved = minutesToClock(endMinutes);
+      }
     }
 
-    // Fallback: include ALL GC OS tasks not returned by current Auvo window
-    // This ensures all OS from GC are represented in the database regardless of Auvo date range
-    const existingTaskOsKeys = new Set(rows.map((r) => `${String(r.auvo_task_id)}::${String(r.gc_os_id || "")}`));
-    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
-      for (const gcOs of osList as any[]) {
+    const row: any = {
+      auvo_task_id: taskId,
+      cliente,
+      tecnico: resolveAuvoTechnicianName(task),
+      tecnico_id: resolveAuvoTechnicianId(task),
+      data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
+      data_conclusao: checkOutDateRaw || null,
+      check_in_iso: checkInIso,
+      check_out_iso: checkOutIso,
+      deslocamento_inicio: displacementStartRaw || null,
+      duracao_deslocamento: duracaoDeslocamento,
+      status_auvo: (() => {
+        // Auvo taskStatus codes: 1=Opened, 2=InDisplacement, 3=CheckedIn, 4=CheckedOut, 5=Finished, 6=Paused
+        const statusCode =
+          typeof task.taskStatus === "number"
+            ? task.taskStatus
+            : typeof task.taskStatus?.id === "number"
+              ? task.taskStatus.id
+              : typeof task.taskStatus === "object"
+                ? Number(task.taskStatus?.id || task.taskStatus?.status || 0)
+                : 0;
+
+        if (statusCode === 6) return "Pausada";
+        if (statusCode === 4 || statusCode === 5) return "Finalizada";
+        if (statusCode === 3) return "Em andamento";
+        if (statusCode === 2) return "Em deslocamento";
+        if (statusCode === 1) return "Aberta";
+
+        // Fallback: derive from event fields if statusCode is missing/0
+        const hasCheckOut = !!task.checkOut;
+        if (hasCheckOut) return "Finalizada";
+        const timeControls = task.timeControl || [];
+        const hasPauseOpen = timeControls.some((tc: any) => tc.pauseStart && !tc.pauseEnd);
+        if (hasPauseOpen || task.reasonForPause) return "Pausada";
+        if (task.checkIn) return "Em andamento";
+        return "Aberta";
+      })(),
+      orientacao: resolvedOrientation,
+      pendencia: String(task.pendency ?? "").trim(),
+      descricao: resolveTaskType(task),
+      duracao_decimal: durationDecimalResolved,
+      hora_inicio: startTimeResolved,
+      hora_fim: endTimeResolved,
+      check_in: !!(task.checkIn || checkInIso),
+      check_out: !!(task.checkOut || checkOutIso),
+      endereco: resolvedAddress,
+      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+      auvo_task_url: String(task.taskUrl || ""),
+      auvo_survey_url: String(task.survey || ""),
+      questionario_id: questionnaire.questionnaireId,
+      questionario_respostas: answers,
+      questionario_preenchido: hasFilledQ,
+      orcamento_realizado: !!gcOrc,
+      os_realizada: !!gcOs,
+      atualizado_em: new Date().toISOString(),
+      // Fonte de verdade: equipmentsId da tarefa + catálogo Auvo local.
+      equipamento_nome: resolvedEquipment.name || snapshot?.equipmentName || null,
+      equipamento_id_serie: resolvedEquipment.identifier || snapshot?.equipmentSerial || null,
+    };
+
+    // GC Orçamento fields
+    if (gcOrc) {
+      row.gc_orcamento_id = gcOrc.gc_orcamento_id;
+      row.gc_orcamento_codigo = gcOrc.gc_orcamento_codigo;
+      row.gc_orc_cliente = gcOrc.gc_orc_cliente;
+      row.gc_orc_situacao = gcOrc.gc_orc_situacao;
+      row.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
+      row.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
+      row.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
+      row.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
+      row.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
+      row.gc_orc_tipo = gcOrc.gc_orc_tipo;
+      row.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
+      row.gc_orc_data = gcOrc.gc_orc_data;
+      row.gc_orc_link = gcOrc.gc_orc_link;
+    }
+
+    // GC OS fields
+    if (gcOs) {
+      row.gc_os_id = gcOs.gc_os_id;
+      row.gc_os_codigo = gcOs.gc_os_codigo;
+      row.gc_os_cliente = gcOs.gc_os_cliente;
+      row.gc_os_situacao = gcOs.gc_os_situacao;
+      row.gc_os_situacao_id = gcOs.gc_os_situacao_id;
+      row.gc_os_cor_situacao = gcOs.gc_os_cor_situacao;
+      row.gc_os_valor_total = gcOs.gc_os_valor_total;
+      row.gc_os_vendedor = gcOs.gc_os_vendedor;
+      row.gc_os_data = gcOs.gc_os_data;
+      row.gc_os_data_saida = gcOs.gc_os_data_saida;
+      row.gc_os_link = gcOs.gc_os_link;
+      row.gc_os_link_cobranca = (gcOs as any).gc_os_link_cobranca || null;
+      row.gc_os_tarefa_exec = gcOs.gc_os_tarefa_exec || null;
+      row.gc_os_tarefa_os = gcOs.gc_os_tarefa_os || taskId;
+    }
+
+    rows.push(row);
+  }
+
+  if (secondaryMatches > 0) {
+    console.log(
+      `[central-sync] Vínculo secundário (orientação): ${secondaryMatches} tarefas vinculadas a OS/Orçamento`,
+    );
+  }
+
+  // Fallback: include ALL GC OS tasks not returned by current Auvo window
+  // This ensures all OS from GC are represented in the database regardless of Auvo date range
+  const existingTaskOsKeys = new Set(rows.map((r) => `${String(r.auvo_task_id)}::${String(r.gc_os_id || "")}`));
+  for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
+    for (const gcOs of osList as any[]) {
       if (existingTaskOsKeys.has(`${taskId}::${String(gcOs?.gc_os_id || "")}`)) continue;
 
       // Amarração orçamento: tenta primeiro pelo taskId (73343), depois via 73344 da OS
@@ -3610,7 +3811,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
       if (!fallbackSnapshot && !isGcSolicitadasOnly && !isLiteSync) {
-        console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
+        console.log(
+          `[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`,
+        );
         continue;
       }
 
@@ -3619,7 +3822,15 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
         tecnico: fallbackSnapshot?.technicianName || "",
         tecnico_id: fallbackSnapshot?.technicianId || "",
-        data_tarefa: normalizeDate(fallbackSnapshot?.taskDate || fallbackSnapshot?.taskEndDate || fallbackSnapshot?.checkOutDate || fallbackSnapshot?.checkInDate) || gcOs?.gc_os_data || null,
+        data_tarefa:
+          normalizeDate(
+            fallbackSnapshot?.taskDate ||
+              fallbackSnapshot?.taskEndDate ||
+              fallbackSnapshot?.checkOutDate ||
+              fallbackSnapshot?.checkInDate,
+          ) ||
+          gcOs?.gc_os_data ||
+          null,
         status_auvo: fallbackSnapshot ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
         orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
@@ -3630,7 +3841,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         check_in: false,
         check_out: false,
         endereco: fallbackSnapshot?.address || "",
-        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`, 
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: "",
         auvo_survey_url: "",
         questionario_id: null,
@@ -3673,275 +3884,284 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       rows.push(fallbackRow);
       existingTaskOsKeys.add(`${taskId}::${String(gcOs?.gc_os_id || "")}`);
-      }
     }
+  }
 
-    // Patch existing OS rows in period that still have empty address/orientation
-    const { data: rowsMissingAddress } = await sbClient
+  // Patch existing OS rows in period that still have empty address/orientation
+  const { data: rowsMissingAddress } = await sbClient
+    .from("tarefas_central")
+    .select("auvo_task_id")
+    .not("gc_os_id", "is", null)
+    .gte("data_tarefa", startDate)
+    .lte("data_tarefa", endDate)
+    .or("endereco.is.null,endereco.eq.");
+
+  if (!isLiteSync && rowsMissingAddress?.length) {
+    const patchIds = rowsMissingAddress
+      .map((r) => String((r as any).auvo_task_id || "").trim())
+      .filter((id) => id && !existingTaskIdsInDb.has(id));
+
+    console.log(`[central-sync] Patch endereço para ${patchIds.length} OS existentes sem endereço...`);
+    const PARALLEL = 5;
+    for (let i = 0; i < patchIds.length; i += PARALLEL) {
+      const batch = patchIds.slice(i, i + PARALLEL);
+      const results = await Promise.all(
+        batch.map((id) => {
+          const cached = taskSnapshotById.get(id);
+          return cached ? Promise.resolve(cached) : fetchAuvoTaskSnapshot(bearerToken, id);
+        }),
+      );
+      batch.forEach((id, idx) => {
+        const snapshot = results[idx];
+        if (!snapshot || (!snapshot.address && !snapshot.orientation)) return;
+        taskSnapshotById.set(id, snapshot);
+        rows.push({
+          auvo_task_id: id,
+          endereco: snapshot.address || "",
+          orientacao: snapshot.orientation || "",
+          atualizado_em: new Date().toISOString(),
+        });
+      });
+    }
+  }
+
+  // Preserve existing values from DB to avoid losing GC/equipment data in partial syncs
+  const rowTaskIds = rows.map((r) => String(r.auvo_task_id)).filter(Boolean);
+  type ExistingTaskData = {
+    equipamento_nome: string | null;
+    equipamento_id_serie: string | null;
+    gc_os_id: string | null;
+    gc_os_codigo: string | null;
+    gc_os_cliente: string | null;
+    gc_os_situacao: string | null;
+    gc_os_situacao_id: string | null;
+    gc_os_cor_situacao: string | null;
+    gc_os_valor_total: number | null;
+    gc_os_vendedor: string | null;
+    gc_os_data: string | null;
+    gc_os_data_saida: string | null;
+    gc_os_link: string | null;
+    gc_os_link_cobranca: string | null;
+    gc_os_tarefa_exec: string | null;
+    gc_os_tarefa_os: string | null;
+    gc_orcamento_id: string | null;
+    gc_orcamento_codigo: string | null;
+    gc_orc_cliente: string | null;
+    gc_orc_situacao: string | null;
+    gc_orc_situacao_id: string | null;
+    gc_orc_cor_situacao: string | null;
+    gc_orc_valor_total: number | null;
+    gc_orc_vendedor: string | null;
+    gc_orc_data: string | null;
+    gc_orc_link: string | null;
+    os_realizada: boolean | null;
+    orcamento_realizado: boolean | null;
+  };
+
+  const existingTaskMap: Record<string, ExistingTaskData> = {};
+  for (let i = 0; i < rowTaskIds.length; i += 200) {
+    const batch = rowTaskIds.slice(i, i + 200);
+    const { data: dbRows } = await sbClient
       .from("tarefas_central")
-      .select("auvo_task_id")
-      .not("gc_os_id", "is", null)
-      .gte("data_tarefa", startDate)
-      .lte("data_tarefa", endDate)
-      .or("endereco.is.null,endereco.eq.");
+      .select(
+        "auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, gc_os_tarefa_exec, gc_os_tarefa_os, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado",
+      )
+      .in("auvo_task_id", batch)
+      .order("atualizado_em", { ascending: false });
 
-    if (!isLiteSync && rowsMissingAddress?.length) {
-      const patchIds = rowsMissingAddress
-        .map((r) => String((r as any).auvo_task_id || "").trim())
-        .filter((id) => id && !existingTaskIdsInDb.has(id));
-
-      console.log(`[central-sync] Patch endereço para ${patchIds.length} OS existentes sem endereço...`);
-      const PARALLEL = 5;
-      for (let i = 0; i < patchIds.length; i += PARALLEL) {
-        const batch = patchIds.slice(i, i + PARALLEL);
-        const results = await Promise.all(
-          batch.map((id) => {
-            const cached = taskSnapshotById.get(id);
-            return cached ? Promise.resolve(cached) : fetchAuvoTaskSnapshot(bearerToken, id);
-          })
-        );
-        batch.forEach((id, idx) => {
-          const snapshot = results[idx];
-          if (!snapshot || (!snapshot.address && !snapshot.orientation)) return;
-          taskSnapshotById.set(id, snapshot);
-          rows.push({
-            auvo_task_id: id,
-            endereco: snapshot.address || "",
-            orientacao: snapshot.orientation || "",
-            atualizado_em: new Date().toISOString(),
-          });
-        });
+    for (const r of dbRows || []) {
+      const candidate: ExistingTaskData = {
+        equipamento_nome: r.equipamento_nome || null,
+        equipamento_id_serie: r.equipamento_id_serie || null,
+        gc_os_id: r.gc_os_id || null,
+        gc_os_codigo: r.gc_os_codigo || null,
+        gc_os_cliente: r.gc_os_cliente || null,
+        gc_os_situacao: r.gc_os_situacao || null,
+        gc_os_situacao_id: r.gc_os_situacao_id || null,
+        gc_os_cor_situacao: r.gc_os_cor_situacao || null,
+        gc_os_valor_total: r.gc_os_valor_total ?? null,
+        gc_os_vendedor: r.gc_os_vendedor || null,
+        gc_os_data: r.gc_os_data || null,
+        gc_os_data_saida: r.gc_os_data_saida || null,
+        gc_os_link: r.gc_os_link || null,
+        gc_os_link_cobranca: r.gc_os_link_cobranca || null,
+        gc_os_tarefa_exec: r.gc_os_tarefa_exec || null,
+        gc_os_tarefa_os: r.gc_os_tarefa_os || null,
+        gc_orcamento_id: r.gc_orcamento_id || null,
+        gc_orcamento_codigo: r.gc_orcamento_codigo || null,
+        gc_orc_cliente: r.gc_orc_cliente || null,
+        gc_orc_situacao: r.gc_orc_situacao || null,
+        gc_orc_situacao_id: r.gc_orc_situacao_id || null,
+        gc_orc_cor_situacao: r.gc_orc_cor_situacao || null,
+        gc_orc_valor_total: r.gc_orc_valor_total ?? null,
+        gc_orc_vendedor: r.gc_orc_vendedor || null,
+        gc_orc_data: r.gc_orc_data || null,
+        gc_orc_link: r.gc_orc_link || null,
+        os_realizada: r.os_realizada ?? null,
+        orcamento_realizado: r.orcamento_realizado ?? null,
+      };
+      const current = existingTaskMap[r.auvo_task_id];
+      const currentLinks = Number(!!current?.gc_os_id) + Number(!!current?.gc_orcamento_id);
+      const candidateLinks = Number(!!candidate.gc_os_id) + Number(!!candidate.gc_orcamento_id);
+      // O resultado vem do mais novo para o mais antigo. Só trocamos o mais
+      // novo quando uma linha antiga conserva mais referências de documento.
+      if (!current || candidateLinks > currentLinks) {
+        existingTaskMap[r.auvo_task_id] = candidate;
       }
     }
+  }
 
-    // Preserve existing values from DB to avoid losing GC/equipment data in partial syncs
-    const rowTaskIds = rows.map((r) => String(r.auvo_task_id)).filter(Boolean);
-    type ExistingTaskData = {
-      equipamento_nome: string | null;
-      equipamento_id_serie: string | null;
-      gc_os_id: string | null;
-      gc_os_codigo: string | null;
-      gc_os_cliente: string | null;
-      gc_os_situacao: string | null;
-      gc_os_situacao_id: string | null;
-      gc_os_cor_situacao: string | null;
-      gc_os_valor_total: number | null;
-      gc_os_vendedor: string | null;
-      gc_os_data: string | null;
-      gc_os_data_saida: string | null;
-      gc_os_link: string | null;
-      gc_os_link_cobranca: string | null;
-      gc_os_tarefa_exec: string | null;
-      gc_os_tarefa_os: string | null;
-      gc_orcamento_id: string | null;
-      gc_orcamento_codigo: string | null;
-      gc_orc_cliente: string | null;
-      gc_orc_situacao: string | null;
-      gc_orc_situacao_id: string | null;
-      gc_orc_cor_situacao: string | null;
-      gc_orc_valor_total: number | null;
-      gc_orc_vendedor: string | null;
-      gc_orc_data: string | null;
-      gc_orc_link: string | null;
-      os_realizada: boolean | null;
-      orcamento_realizado: boolean | null;
-    };
+  for (const row of rows) {
+    const existing = existingTaskMap[row.auvo_task_id];
+    if (!existing) continue;
 
-    const existingTaskMap: Record<string, ExistingTaskData> = {};
-    for (let i = 0; i < rowTaskIds.length; i += 200) {
-      const batch = rowTaskIds.slice(i, i + 200);
-      const { data: dbRows } = await sbClient
-        .from("tarefas_central")
-        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, gc_os_tarefa_exec, gc_os_tarefa_os, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
-        .in("auvo_task_id", batch)
-        .order("atualizado_em", { ascending: false });
+    // Equipment
+    if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
+    if (!row.equipamento_id_serie && existing.equipamento_id_serie)
+      row.equipamento_id_serie = existing.equipamento_id_serie;
 
-      for (const r of dbRows || []) {
-        const candidate: ExistingTaskData = {
-          equipamento_nome: r.equipamento_nome || null,
-          equipamento_id_serie: r.equipamento_id_serie || null,
-          gc_os_id: r.gc_os_id || null,
-          gc_os_codigo: r.gc_os_codigo || null,
-          gc_os_cliente: r.gc_os_cliente || null,
-          gc_os_situacao: r.gc_os_situacao || null,
-          gc_os_situacao_id: r.gc_os_situacao_id || null,
-          gc_os_cor_situacao: r.gc_os_cor_situacao || null,
-          gc_os_valor_total: r.gc_os_valor_total ?? null,
-          gc_os_vendedor: r.gc_os_vendedor || null,
-          gc_os_data: r.gc_os_data || null,
-          gc_os_data_saida: r.gc_os_data_saida || null,
-          gc_os_link: r.gc_os_link || null,
-          gc_os_link_cobranca: r.gc_os_link_cobranca || null,
-          gc_os_tarefa_exec: r.gc_os_tarefa_exec || null,
-          gc_os_tarefa_os: r.gc_os_tarefa_os || null,
-          gc_orcamento_id: r.gc_orcamento_id || null,
-          gc_orcamento_codigo: r.gc_orcamento_codigo || null,
-          gc_orc_cliente: r.gc_orc_cliente || null,
-          gc_orc_situacao: r.gc_orc_situacao || null,
-          gc_orc_situacao_id: r.gc_orc_situacao_id || null,
-          gc_orc_cor_situacao: r.gc_orc_cor_situacao || null,
-          gc_orc_valor_total: r.gc_orc_valor_total ?? null,
-          gc_orc_vendedor: r.gc_orc_vendedor || null,
-          gc_orc_data: r.gc_orc_data || null,
-          gc_orc_link: r.gc_orc_link || null,
-          os_realizada: r.os_realizada ?? null,
-          orcamento_realizado: r.orcamento_realizado ?? null,
-        };
-        const current = existingTaskMap[r.auvo_task_id];
-        const currentLinks = Number(!!current?.gc_os_id) + Number(!!current?.gc_orcamento_id);
-        const candidateLinks = Number(!!candidate.gc_os_id) + Number(!!candidate.gc_orcamento_id);
-        // O resultado vem do mais novo para o mais antigo. Só trocamos o mais
-        // novo quando uma linha antiga conserva mais referências de documento.
-        if (!current || candidateLinks > currentLinks) {
-          existingTaskMap[r.auvo_task_id] = candidate;
-        }
-      }
+    // Ausência na rodada não é alteração. Mantemos o último vínculo completo
+    // tarefa ↔ OS e só o substituímos quando a leitura atual trouxer outro.
+    if (!row.gc_os_id && existing.gc_os_id) {
+      row.gc_os_id = existing.gc_os_id;
+      row.gc_os_codigo = existing.gc_os_codigo;
+      row.gc_os_cliente = existing.gc_os_cliente;
+      row.gc_os_situacao = existing.gc_os_situacao;
+      row.gc_os_situacao_id = existing.gc_os_situacao_id;
+      row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
+      row.gc_os_valor_total = existing.gc_os_valor_total;
+      row.gc_os_vendedor = existing.gc_os_vendedor;
+      row.gc_os_data = existing.gc_os_data;
+      row.gc_os_data_saida = existing.gc_os_data_saida;
+      row.gc_os_link = existing.gc_os_link;
+      row.gc_os_link_cobranca = existing.gc_os_link_cobranca;
+      row.gc_os_tarefa_exec = existing.gc_os_tarefa_exec;
+      row.gc_os_tarefa_os = existing.gc_os_tarefa_os;
+      row.os_realizada = existing.os_realizada ?? true;
+    } else if (
+      row.gc_os_id &&
+      (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) &&
+      existing.gc_os_valor_total !== null
+    ) {
+      row.gc_os_valor_total = existing.gc_os_valor_total;
     }
 
-    for (const row of rows) {
-      const existing = existingTaskMap[row.auvo_task_id];
-      if (!existing) continue;
-
-      // Equipment
-      if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
-      if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
-
-      // Ausência na rodada não é alteração. Mantemos o último vínculo completo
-      // tarefa ↔ OS e só o substituímos quando a leitura atual trouxer outro.
-      if (!row.gc_os_id && existing.gc_os_id) {
-        row.gc_os_id = existing.gc_os_id;
-        row.gc_os_codigo = existing.gc_os_codigo;
-        row.gc_os_cliente = existing.gc_os_cliente;
-        row.gc_os_situacao = existing.gc_os_situacao;
-        row.gc_os_situacao_id = existing.gc_os_situacao_id;
-        row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
-        row.gc_os_valor_total = existing.gc_os_valor_total;
-        row.gc_os_vendedor = existing.gc_os_vendedor;
-        row.gc_os_data = existing.gc_os_data;
-        row.gc_os_data_saida = existing.gc_os_data_saida;
-        row.gc_os_link = existing.gc_os_link;
-        row.gc_os_link_cobranca = existing.gc_os_link_cobranca;
-        row.gc_os_tarefa_exec = existing.gc_os_tarefa_exec;
-        row.gc_os_tarefa_os = existing.gc_os_tarefa_os;
-        row.os_realizada = existing.os_realizada ?? true;
-      } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
-        row.gc_os_valor_total = existing.gc_os_valor_total;
-      }
-
-      // Preserve GC orçamento when current sync didn't find a match
-      if (!row.gc_orcamento_id && existing.gc_orcamento_id) {
-        row.gc_orcamento_id = existing.gc_orcamento_id;
-        row.gc_orcamento_codigo = existing.gc_orcamento_codigo;
-        row.gc_orc_cliente = existing.gc_orc_cliente;
-        row.gc_orc_situacao = existing.gc_orc_situacao;
-        row.gc_orc_situacao_id = existing.gc_orc_situacao_id;
-        row.gc_orc_cor_situacao = existing.gc_orc_cor_situacao;
-        row.gc_orc_valor_total = existing.gc_orc_valor_total;
-        row.gc_orc_vendedor = existing.gc_orc_vendedor;
-        row.gc_orc_data = existing.gc_orc_data;
-        row.gc_orc_link = existing.gc_orc_link;
-        row.orcamento_realizado = existing.orcamento_realizado ?? true;
-      } else if (row.gc_orcamento_id && (row.gc_orc_valor_total === null || row.gc_orc_valor_total === undefined) && existing.gc_orc_valor_total !== null) {
-        row.gc_orc_valor_total = existing.gc_orc_valor_total;
-      }
+    // Preserve GC orçamento when current sync didn't find a match
+    if (!row.gc_orcamento_id && existing.gc_orcamento_id) {
+      row.gc_orcamento_id = existing.gc_orcamento_id;
+      row.gc_orcamento_codigo = existing.gc_orcamento_codigo;
+      row.gc_orc_cliente = existing.gc_orc_cliente;
+      row.gc_orc_situacao = existing.gc_orc_situacao;
+      row.gc_orc_situacao_id = existing.gc_orc_situacao_id;
+      row.gc_orc_cor_situacao = existing.gc_orc_cor_situacao;
+      row.gc_orc_valor_total = existing.gc_orc_valor_total;
+      row.gc_orc_vendedor = existing.gc_orc_vendedor;
+      row.gc_orc_data = existing.gc_orc_data;
+      row.gc_orc_link = existing.gc_orc_link;
+      row.orcamento_realizado = existing.orcamento_realizado ?? true;
+    } else if (
+      row.gc_orcamento_id &&
+      (row.gc_orc_valor_total === null || row.gc_orc_valor_total === undefined) &&
+      existing.gc_orc_valor_total !== null
+    ) {
+      row.gc_orc_valor_total = existing.gc_orc_valor_total;
     }
+  }
 
-    // Upsert in batches of 100
-    // A identidade de uma linha é SEMPRE tarefa + OS. O orçamento NÃO entra na
-    // chave: ele muda ao longo do ciclo (vincula/desvincula) e, quando fazia
-    // parte da mirror_key, cada mudança criava uma nova linha em vez de
-    // atualizar a existente — origem das tarefas duplicadas no Controle OS.
-    for (const row of rows) {
-      row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:`;
+  // Upsert in batches of 100
+  // A identidade de uma linha é SEMPRE tarefa + OS. O orçamento NÃO entra na
+  // chave: ele muda ao longo do ciclo (vincula/desvincula) e, quando fazia
+  // parte da mirror_key, cada mudança criava uma nova linha em vez de
+  // atualizar a existente — origem das tarefas duplicadas no Controle OS.
+  for (const row of rows) {
+    row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:`;
+  }
+
+  let upserted = 0;
+  let errors = 0;
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+
+    if (error) {
+      console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);
+      errors++;
+    } else {
+      upserted += batch.length;
     }
+  }
 
-    let upserted = 0;
-    let errors = 0;
-    for (let i = 0; i < rows.length; i += 100) {
-      const batch = rows.slice(i, i + 100);
+  // ── Persist native equipment-task relationships ──
+  const equipTaskRelRows: any[] = [];
+  for (const task of auvoTasks) {
+    const taskId = String(task.taskID || "");
+    if (!taskId) continue;
+
+    // Mesmo conjunto já normalizado acima (lista + detalhe + formatos legados).
+    const allEquipIds = new Set<string>(taskEquipmentIdsById.get(taskId) || []);
+    const snapshot = taskSnapshotById.get(taskId);
+
+    if (allEquipIds.size === 0) continue;
+
+    const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+    const statusCode =
+      typeof task.taskStatus === "number"
+        ? task.taskStatus
+        : typeof task.taskStatus?.id === "number"
+          ? task.taskStatus.id
+          : 0;
+    let statusAuvo = "Aberta";
+    if (statusCode === 6) statusAuvo = "Pausada";
+    else if (statusCode === 4 || statusCode === 5 || !!task.checkOut) statusAuvo = "Finalizada";
+    else if (statusCode === 3) statusAuvo = "Em andamento";
+    else if (statusCode === 2) statusAuvo = "Em deslocamento";
+    else if (statusCode === 1) statusAuvo = "Aberta";
+
+    const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
+    const tecnico = resolveAuvoTechnicianName(task);
+    const taskTypeId = auvoTaskTypeId(task);
+    const taskTypeDesc = auvoTaskTypeDescription(task);
+
+    for (const eqId of allEquipIds) {
+      equipTaskRelRows.push({
+        auvo_equipment_id: eqId,
+        auvo_task_id: taskId,
+        auvo_task_type_id: taskTypeId || null,
+        auvo_task_type_description: taskTypeDesc || null,
+        status_auvo: statusAuvo,
+        data_tarefa: normalizeDate(task.taskDate) || null,
+        data_conclusao: checkOutDateRaw || null,
+        cliente: cliente || null,
+        tecnico: tecnico || null,
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        source: "native_equipment_relation",
+        synced_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  if (equipTaskRelRows.length > 0) {
+    console.log(`[central-sync] Upserting ${equipTaskRelRows.length} equipment-task relationships...`);
+    let relUpserted = 0;
+    for (let i = 0; i < equipTaskRelRows.length; i += 200) {
+      const batch = equipTaskRelRows.slice(i, i + 200);
       const { error } = await sbClient
-        .from("tarefas_central")
-        .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
-      
+        .from("equipamento_tarefas_auvo")
+        .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
       if (error) {
-        console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);
-        errors++;
+        console.error(`[central-sync] Equip-task rel batch error:`, error.message);
       } else {
-        upserted += batch.length;
+        relUpserted += batch.length;
       }
     }
+    console.log(`[central-sync] Equipment-task relationships upserted: ${relUpserted}`);
+  }
 
-    // ── Persist native equipment-task relationships ──
-    const equipTaskRelRows: any[] = [];
-    for (const task of auvoTasks) {
-      const taskId = String(task.taskID || "");
-      if (!taskId) continue;
-
-      // Mesmo conjunto já normalizado acima (lista + detalhe + formatos legados).
-      const allEquipIds = new Set<string>(taskEquipmentIdsById.get(taskId) || []);
-      const snapshot = taskSnapshotById.get(taskId);
-
-      if (allEquipIds.size === 0) continue;
-
-      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
-      const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
-        : typeof task.taskStatus?.id === "number" ? task.taskStatus.id : 0;
-      let statusAuvo = "Aberta";
-      if (statusCode === 6) statusAuvo = "Pausada";
-      else if (statusCode === 4 || statusCode === 5 || !!task.checkOut) statusAuvo = "Finalizada";
-      else if (statusCode === 3) statusAuvo = "Em andamento";
-      else if (statusCode === 2) statusAuvo = "Em deslocamento";
-      else if (statusCode === 1) statusAuvo = "Aberta";
-
-      const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
-      const tecnico = resolveAuvoTechnicianName(task);
-      const taskTypeId = auvoTaskTypeId(task);
-      const taskTypeDesc = auvoTaskTypeDescription(task);
-
-      for (const eqId of allEquipIds) {
-        equipTaskRelRows.push({
-          auvo_equipment_id: eqId,
-          auvo_task_id: taskId,
-          auvo_task_type_id: taskTypeId || null,
-          auvo_task_type_description: taskTypeDesc || null,
-          status_auvo: statusAuvo,
-          data_tarefa: normalizeDate(task.taskDate) || null,
-          data_conclusao: checkOutDateRaw || null,
-          cliente: cliente || null,
-          tecnico: tecnico || null,
-          auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-          source: "native_equipment_relation",
-          synced_at: new Date().toISOString(),
-        });
-      }
-    }
-
-    if (equipTaskRelRows.length > 0) {
-      console.log(`[central-sync] Upserting ${equipTaskRelRows.length} equipment-task relationships...`);
-      let relUpserted = 0;
-      for (let i = 0; i < equipTaskRelRows.length; i += 200) {
-        const batch = equipTaskRelRows.slice(i, i + 200);
-        const { error } = await sbClient
-          .from("equipamento_tarefas_auvo")
-          .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
-        if (error) {
-          console.error(`[central-sync] Equip-task rel batch error:`, error.message);
-        } else {
-          relUpserted += batch.length;
-        }
-      }
-      console.log(`[central-sync] Equipment-task relationships upserted: ${relUpserted}`);
-    }
-
-    const deletedTaskReconciliation: DeletedTaskReconciliation = errors === 0
-      ? await reconcileDeletedAuvoTasks(
-          sbClient,
-          bearerToken,
-          startDate,
-          endDate,
-          auvoFetch,
-          "central-sync:full",
-        )
+  const deletedTaskReconciliation: DeletedTaskReconciliation =
+    errors === 0
+      ? await reconcileDeletedAuvoTasks(sbClient, bearerToken, startDate, endDate, auvoFetch, "central-sync:full")
       : {
           candidates: 0,
           checked: 0,
@@ -3953,116 +4173,121 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           activeRowsRemoved: 0,
           error: "gravação atual teve erro; exclusão desativada",
         };
-    if (deletedTaskReconciliation.error) {
-      console.warn(`[central-sync] reconciliação de excluídas ignorada: ${deletedTaskReconciliation.error}`);
-    }
+  if (deletedTaskReconciliation.error) {
+    console.warn(`[central-sync] reconciliação de excluídas ignorada: ${deletedTaskReconciliation.error}`);
+  }
 
+  // ── Post-sync: persist atrasos AND pendências permanently ──
+  // 1) Tasks past due and NOT finalized (still open)
+  // 2) Tasks finalized AFTER scheduled date (were late but got done)
+  // 3) Tasks with pendência (regardless of status)
+  // All are persisted permanently via ON CONFLICT DO NOTHING so records are never lost
+  const today = new Date().toISOString().split("T")[0];
+  const monthStart = today.substring(0, 8) + "01";
+  try {
+    // Fetch ALL tasks from this month that are past due (any status) or have pendência
+    const { data: monthTasks } = await sbClient
+      .from("tarefas_central")
+      .select(
+        "auvo_task_id, tecnico_id, tecnico, cliente, orientacao, data_tarefa, data_conclusao, status_auvo, pendencia",
+      )
+      .gte("data_tarefa", monthStart)
+      .lte("data_tarefa", today);
 
-    // ── Post-sync: persist atrasos AND pendências permanently ──
-    // 1) Tasks past due and NOT finalized (still open)
-    // 2) Tasks finalized AFTER scheduled date (were late but got done)
-    // 3) Tasks with pendência (regardless of status)
-    // All are persisted permanently via ON CONFLICT DO NOTHING so records are never lost
-    const today = new Date().toISOString().split("T")[0];
-    const monthStart = today.substring(0, 8) + "01";
-    try {
-      // Fetch ALL tasks from this month that are past due (any status) or have pendência
-      const { data: monthTasks } = await sbClient
-        .from("tarefas_central")
-        .select("auvo_task_id, tecnico_id, tecnico, cliente, orientacao, data_tarefa, data_conclusao, status_auvo, pendencia")
-        .gte("data_tarefa", monthStart)
-        .lte("data_tarefa", today);
+    if (monthTasks && monthTasks.length > 0) {
+      const naoExec: any[] = [];
 
-      if (monthTasks && monthTasks.length > 0) {
-        const naoExec: any[] = [];
+      for (const t of monthTasks) {
+        const isPastDue = t.data_tarefa < today;
+        const isNotFinalized = !["Finalizada", "Cancelada"].includes(t.status_auvo || "");
+        const isLateFinish = t.status_auvo === "Finalizada" && t.data_conclusao && t.data_conclusao > t.data_tarefa;
+        const hasPendencia = !!(t.pendencia && String(t.pendencia).trim().length > 0);
 
-        for (const t of monthTasks) {
-          const isPastDue = t.data_tarefa < today;
-          const isNotFinalized = !["Finalizada", "Cancelada"].includes(t.status_auvo || "");
-          const isLateFinish = t.status_auvo === "Finalizada" && t.data_conclusao && t.data_conclusao > t.data_tarefa;
-          const hasPendencia = !!(t.pendencia && String(t.pendencia).trim().length > 0);
-
-          // Determine status_original label
-          let statusOriginal = "";
-          if (isPastDue && isNotFinalized) {
-            statusOriginal = t.status_auvo || "Não finalizada";
-          } else if (isLateFinish) {
-            statusOriginal = "Finalizada com atraso";
-          } else if (hasPendencia && isPastDue) {
-            statusOriginal = "Com pendência";
-          }
-
-          // Build motivo
-          let motivo = "";
-          if (hasPendencia) {
-            motivo = `Pendência: ${String(t.pendencia).trim().substring(0, 200)}`;
-          }
-
-          if (statusOriginal) {
-            naoExec.push({
-              auvo_task_id: t.auvo_task_id,
-              tecnico_id: t.tecnico_id || "",
-              tecnico_nome: t.tecnico || "",
-              cliente: t.cliente || null,
-              descricao: t.orientacao || null,
-              data_planejada: t.data_tarefa,
-              status_original: statusOriginal,
-              motivo: motivo || null,
-            });
-          }
+        // Determine status_original label
+        let statusOriginal = "";
+        if (isPastDue && isNotFinalized) {
+          statusOriginal = t.status_auvo || "Não finalizada";
+        } else if (isLateFinish) {
+          statusOriginal = "Finalizada com atraso";
+        } else if (hasPendencia && isPastDue) {
+          statusOriginal = "Com pendência";
         }
 
-        if (naoExec.length > 0) {
-          const { error: naoExecErr } = await sbClient
-            .from("atividades_nao_executadas")
-            .upsert(naoExec, { onConflict: "auvo_task_id,data_planejada" });
+        // Build motivo
+        let motivo = "";
+        if (hasPendencia) {
+          motivo = `Pendência: ${String(t.pendencia).trim().substring(0, 200)}`;
+        }
 
-          if (naoExecErr) console.error("[central-sync] Erro ao salvar não executadas:", naoExecErr);
-          else console.log(`[central-sync] ${naoExec.length} atividades (atrasos/pendências) salvas permanentemente`);
+        if (statusOriginal) {
+          naoExec.push({
+            auvo_task_id: t.auvo_task_id,
+            tecnico_id: t.tecnico_id || "",
+            tecnico_nome: t.tecnico || "",
+            cliente: t.cliente || null,
+            descricao: t.orientacao || null,
+            data_planejada: t.data_tarefa,
+            status_original: statusOriginal,
+            motivo: motivo || null,
+          });
         }
       }
-    } catch (naoExecError) {
-      console.warn("[central-sync] Erro ao detectar atividades não executadas:", naoExecError);
+
+      if (naoExec.length > 0) {
+        const { error: naoExecErr } = await sbClient
+          .from("atividades_nao_executadas")
+          .upsert(naoExec, { onConflict: "auvo_task_id,data_planejada" });
+
+        if (naoExecErr) console.error("[central-sync] Erro ao salvar não executadas:", naoExecErr);
+        else console.log(`[central-sync] ${naoExec.length} atividades (atrasos/pendências) salvas permanentemente`);
+      }
     }
+  } catch (naoExecError) {
+    console.warn("[central-sync] Erro ao detectar atividades não executadas:", naoExecError);
+  }
 
-    // Clean up tasks older than 6 months
-    const { count: deleted } = await sbClient
-      .from("tarefas_central")
-      .delete({ count: "exact" })
-      .lt("data_tarefa", cleanupCutoff);
+  // Clean up tasks older than 6 months
+  const { count: deleted } = await sbClient
+    .from("tarefas_central")
+    .delete({ count: "exact" })
+    .lt("data_tarefa", cleanupCutoff);
 
-    console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
+  console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
-    // Ausência simples continua sem apagar nada. `ghostsDeleted` contabiliza
-    // somente IDs confirmados duas vezes no endpoint individual e já arquivados.
-    const ghostsDeleted = deletedTaskReconciliation.archived;
+  // Ausência simples continua sem apagar nada. `ghostsDeleted` contabiliza
+  // somente IDs confirmados duas vezes no endpoint individual e já arquivados.
+  const ghostsDeleted = deletedTaskReconciliation.archived;
 
-    const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
-    console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
-    (globalThis as any).__centralSyncPending = { os_individuais: 0, lookups_auvo: 0 };
+  const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
+  console.log(
+    `[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`,
+  );
+  (globalThis as any).__centralSyncPending = { os_individuais: 0, lookups_auvo: 0 };
 
-    const auvoFailed = auvoTasks.length === 0;
-    return {
-      success: true,
-      auvo_error: auvoFailed ? "API do Auvo retornou erro (502/503). Tarefas não foram atualizadas. Tente novamente em alguns minutos." : null,
-      periodo: { inicio: startDate, fim: endDate },
-      auvo_tarefas: auvoTasks.length,
-      gc_orcamentos: Object.keys(gcOrcMap).length,
-      gc_os: Object.keys(gcOsMap).length,
-      upserted,
-      errors,
-      deleted: deleted || 0,
-      ghosts_deleted: ghostsDeleted,
-      auvo_excluidas_candidatas: deletedTaskReconciliation.candidates,
-      auvo_excluidas_verificadas: deletedTaskReconciliation.checked,
-      auvo_excluidas_confirmadas: deletedTaskReconciliation.confirmedDeleted,
-      auvo_excluidas_espelhos_removidos: deletedTaskReconciliation.activeRowsRemoved,
-      auvo_excluidas_preservadas: deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
-      auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
-      auvo_paginacao_completa: auvoFetch.complete,
-      previsoes_orcamento: forecastPromotionSummary,
-    };
-
+  const auvoFailed = auvoTasks.length === 0;
+  return {
+    success: true,
+    auvo_error: auvoFailed
+      ? "API do Auvo retornou erro (502/503). Tarefas não foram atualizadas. Tente novamente em alguns minutos."
+      : null,
+    periodo: { inicio: startDate, fim: endDate },
+    auvo_tarefas: auvoTasks.length,
+    gc_orcamentos: Object.keys(gcOrcMap).length,
+    gc_os: Object.keys(gcOsMap).length,
+    upserted,
+    errors,
+    deleted: deleted || 0,
+    ghosts_deleted: ghostsDeleted,
+    auvo_excluidas_candidatas: deletedTaskReconciliation.candidates,
+    auvo_excluidas_verificadas: deletedTaskReconciliation.checked,
+    auvo_excluidas_confirmadas: deletedTaskReconciliation.confirmedDeleted,
+    auvo_excluidas_espelhos_removidos: deletedTaskReconciliation.activeRowsRemoved,
+    auvo_excluidas_preservadas:
+      deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
+    auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
+    auvo_paginacao_completa: auvoFetch.complete,
+    previsoes_orcamento: forecastPromotionSummary,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -4090,14 +4315,17 @@ Deno.serve(async (req) => {
       setTimeout(() => backgroundSync, 0);
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      background: true,
-      message: "Sincronização iniciada em background",
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        background: true,
+        message: "Sincronização iniciada em background",
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (err: any) {
     console.error("[central-sync] Error:", err);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
