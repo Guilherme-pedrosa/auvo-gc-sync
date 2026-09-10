@@ -1,3 +1,4 @@
+// Auvo report imports require a complete source response before persistence.
 // Controle OS: bounded report steps preserve Auvo assignments and report confirmed progress.
 import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
