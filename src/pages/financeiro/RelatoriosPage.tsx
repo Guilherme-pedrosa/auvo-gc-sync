@@ -5,30 +5,19 @@ import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FileText, Clock, Settings, RefreshCw, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isOpenOsSituation } from "@/lib/osOpenStatuses";
+import { syncReportsInSteps } from "@/lib/reportsSync";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
 
-
-const SYNC_STEPS = [
-  { label: "Autenticando no Auvo...", progress: 5 },
-  { label: "Buscando tarefas do Auvo...", progress: 15 },
-  { label: "Buscando orçamentos do GestãoClick...", progress: 35 },
-  { label: "Buscando OS do GestãoClick...", progress: 50 },
-  { label: "Cruzando dados Auvo × GC...", progress: 65 },
-  { label: "Buscando endereços detalhados...", progress: 75 },
-  { label: "Salvando no banco de dados...", progress: 88 },
-  { label: "Finalizando...", progress: 95 },
-];
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 const REPORTS_SYNC_CHUNK_DAYS = 1;
@@ -121,12 +110,12 @@ const fetchHorasTrabalhadasCentral = async (startDate: string, endDate: string) 
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
-  const [syncStep, setSyncStep] = useState(0);
-  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncFailed, setSyncFailed] = useState(false);
+
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("os-abertas");
-  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const refreshTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const syncController = useRef<AbortController | null>(null);
+
   const today = new Date();
   const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
@@ -137,197 +126,42 @@ export default function RelatoriosPage() {
     queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
   }, [queryClient]);
 
-  const clearScheduledRefreshes = useCallback(() => {
-    refreshTimeoutsRef.current.forEach(clearTimeout);
-    refreshTimeoutsRef.current = [];
-  }, []);
-
-  const scheduleBackgroundRefresh = useCallback(() => {
-    clearScheduledRefreshes();
-    // Step the progress bar forward as the background sync runs server-side,
-    // and only release the syncing UI on the final refresh.
-    const steps: { delay: number; progress: number; message: string }[] = [
-      { delay: 15000, progress: 50, message: "Sync rodando no servidor — buscando Auvo..." },
-      { delay: 30000, progress: 65, message: "Sync rodando no servidor — cruzando GC × Auvo..." },
-      { delay: 60000, progress: 80, message: "Sync rodando no servidor — gravando no banco..." },
-      { delay: 120000, progress: 95, message: "Finalizando sincronização..." },
-    ];
-    refreshTimeoutsRef.current = steps.map(({ delay, progress, message }) =>
-      setTimeout(() => {
-        refreshRelatoriosData();
-        setSyncProgress(progress);
-        setSyncStatusMessage(message);
-        if (delay >= 60000) {
-          queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
-        }
-        if (delay === 120000) {
-          // Final tick: complete the bar and release the UI
-          setSyncProgress(100);
-          setSyncStatusMessage("Atualização concluída — se ainda faltar dado, rode novamente em um período menor.");
-          setTimeout(() => {
-            setSyncing(false);
-            setSyncProgress(0);
-            setSyncStep(0);
-          }, 2000);
-        }
-      }, delay)
-    );
-  }, [clearScheduledRefreshes, refreshRelatoriosData, queryClient]);
-
-  const startProgressSimulation = () => {
-    setSyncStep(0);
-    setSyncProgress(SYNC_STEPS[0]?.progress ?? 5);
-    let currentStep = 0;
-
-    stepTimerRef.current = setInterval(() => {
-      currentStep++;
-      if (currentStep < SYNC_STEPS.length) {
-        setSyncStep(currentStep);
-        setSyncProgress(SYNC_STEPS[currentStep].progress);
-      } else {
-        if (stepTimerRef.current) clearInterval(stepTimerRef.current);
-      }
-    }, 4000);
-  };
-
-  const stopProgressSimulation = (success: boolean) => {
-    if (stepTimerRef.current) {
-      clearInterval(stepTimerRef.current);
-      stepTimerRef.current = null;
-    }
-    if (success) {
-      setSyncProgress(100);
-      setTimeout(() => {
-        setSyncing(false);
-        setSyncStep(0);
-        // Mantemos syncProgress=100 e syncStatusMessage para a barra continuar visível.
-      }, 1500);
-    } else {
-      setSyncing(false);
-      setSyncProgress(0);
-      setSyncStep(0);
-    }
-  };
-
   const handleSync = async (situacaoIds?: string[]) => {
+    if (syncController.current) return;
+    const controller = new AbortController();
+    syncController.current = controller;
     setSyncing(true);
-    setSyncStatusMessage("Iniciando sincronização...");
-    clearScheduledRefreshes();
-    startProgressSimulation();
-    const syncFrom = format(dateFrom, "yyyy-MM-dd");
-    const syncTo = format(dateTo, "yyyy-MM-dd");
-
+    setSyncFailed(false);
+    setSyncStatusMessage("Iniciando sincronização em lotes...");
     try {
-      const syncSolicitadasOnly = !!situacaoIds?.length;
-      if (!syncSolicitadasOnly) {
-        const chunks = buildDateChunks(dateFrom, dateTo);
-        let totalAuvo = 0;
-        let totalUpserted = 0;
-        let totalErrors = 0;
-        let transitionedOs = 0;
-        let reconciliationRemaining = 0;
-
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          setSyncProgress(Math.min(95, 10 + Math.round((i / Math.max(chunks.length, 1)) * 85)));
-          setSyncStatusMessage(`Buscando Auvo ${i + 1}/${chunks.length}: ${chunk.start} → ${chunk.end}`);
-
-          const { data, error } = await supabase.functions.invoke("central-sync", {
-            body: {
-              start_date: chunk.start,
-              end_date: chunk.end,
-              situacao_ids: [],
-              reports_only: true,
-              reconcile_open_os: i === 0,
-              wait: true,
-            },
-          });
-          if (error) throw error;
-          if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
-          if (data?.auvo_error) throw new Error(data.auvo_error);
-
-          totalAuvo += Number(data?.auvo_tarefas || 0);
-          totalUpserted += Number(data?.upserted || 0);
-          totalErrors += Number(data?.errors || 0);
-          transitionedOs += Number(data?.gc_os_transitioned || 0);
-          reconciliationRemaining = Math.max(reconciliationRemaining, Number(data?.gc_os_status_remaining || 0));
-        }
-
-        if (reconciliationRemaining > 0) {
-          toast.warning(`Sync concluído; ${reconciliationRemaining} OS ainda precisam de outra rodada de conciliação.`);
-        } else {
-          toast.success(`Sync ${syncFrom} → ${syncTo}: ${totalAuvo} tarefas, ${totalUpserted} atualizadas`);
-        }
-        stopProgressSimulation(true);
-        setSyncStatusMessage(
-          `Última sincronização concluída em ${chunks.length} lotes: ${totalAuvo} tarefas Auvo, ${totalUpserted} atualizadas no banco, ${transitionedOs} OS retiradas das etapas antigas${reconciliationRemaining ? `, ${reconciliationRemaining} pendentes de nova rodada` : ""}${totalErrors ? `, ${totalErrors} erros` : ""}.`
-        );
-        refreshRelatoriosData();
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: true },
-      });
-      if (error) throw error;
-      if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
-      if (data?.auvo_error) throw new Error(data.auvo_error);
-
-      if (data?.background) {
-        toast.info("Sync iniciado em background — a tela será atualizada automaticamente");
-        setSyncProgress(35);
-        setSyncStatusMessage("Sincronização rodando no servidor. Pode levar alguns minutos.");
-        // Keep syncing=true so the progress bar stays visible until background refresh finishes.
-        scheduleBackgroundRefresh();
-        return;
-      }
-
-      const reconciliationRemaining = Number(data?.gc_os_status_remaining || 0);
-      if (reconciliationRemaining > 0) {
-        toast.warning(`OS atualizadas; ${reconciliationRemaining} ainda precisam de outra rodada de conciliação.`);
-      } else {
-        toast.success(syncSolicitadasOnly
-          ? `OS do GC atualizadas: ${data.upserted || 0}; ${data.gc_os_transitioned || 0} saíram das etapas antigas`
-          : `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
-        );
-      }
-      stopProgressSimulation(true);
-      setSyncStatusMessage(
-        `Última sincronização concluída: ${data?.auvo_tarefas ?? 0} tarefas Auvo, ${data?.upserted ?? 0} atualizadas no banco, ${data?.gc_os_transitioned ?? 0} OS retiradas das etapas antigas${reconciliationRemaining ? `, ${reconciliationRemaining} pendentes de nova rodada` : ""}.`
+      const totals = await syncReportsInSteps(
+        (name, options) => supabase.functions.invoke(name, options),
+        {
+          days: situacaoIds?.length ? [] : buildDateChunks(dateFrom, dateTo),
+          situationIds: situacaoIds,
+          signal: controller.signal,
+          onProgress: (message, completed) => setSyncStatusMessage(`${message} · ${completed} lotes concluídos`),
+        },
       );
-      refreshRelatoriosData();
-    } catch (err: any) {
-      const message = String(err?.message || "");
-      const isBackgroundSync =
-        message.includes("504") ||
-        message.includes("IDLE_TIMEOUT") ||
-        message.includes("context canceled") ||
-        message.includes("FunctionsHttpError") ||
-        message.includes("FunctionsFetchError") ||
-        message.includes("Failed to send a request to the Edge Function") ||
-        message.toLowerCase().includes("fetch");
-
-      if (isBackgroundSync) {
-        toast.info("Sync pode estar rodando em background — atualizando a tela automaticamente");
-        setSyncProgress(35);
-        setSyncStatusMessage("A chamada demorou, mas vou atualizar os dados automaticamente.");
-        // Keep syncing=true so the progress bar stays visible until background refresh finishes.
-        scheduleBackgroundRefresh();
-      } else {
-        toast.error(`Erro: ${message}`);
-        setSyncStatusMessage(`Erro na última sincronização: ${message}`);
-        stopProgressSimulation(false);
+      setSyncStatusMessage(`Sincronização concluída: ${totals.orders} OS conferidas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas.`);
+      toast.success("Sincronização concluída e dados gravados.");
+    } catch (error: any) {
+      if (!controller.signal.aborted) {
+        setSyncFailed(true);
+        const message = error?.message || "Falha na sincronização.";
+        setSyncStatusMessage(`Sincronização interrompida: ${message}`);
+        toast.error(message, { duration: 15000 });
+      }
+    } finally {
+      if (syncController.current === controller) syncController.current = null;
+      if (!controller.signal.aborted) {
+        setSyncing(false);
+        refreshRelatoriosData();
       }
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
-      clearScheduledRefreshes();
-    };
-  }, [clearScheduledRefreshes]);
-
+  useEffect(() => () => { syncController.current?.abort(); }, []);
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
     queryKey: ["relatorios-tarefas-os"],
@@ -571,9 +405,8 @@ export default function RelatoriosPage() {
           </div>
           {(syncing || syncStatusMessage) && (
             <div className="w-72 space-y-1.5">
-              <Progress value={syncing ? syncProgress : 100} className="h-2" />
-              <p className="text-[11px] text-muted-foreground text-right">
-                {syncStatusMessage || SYNC_STEPS[syncStep]?.label || "Iniciando..."}
+              <p role="status" aria-live="polite" className={cn("text-xs text-right", syncFailed ? "text-destructive" : "text-muted-foreground")}>
+                {syncStatusMessage || "Iniciando..."}
               </p>
             </div>
           )}
