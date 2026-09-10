@@ -3,6 +3,8 @@ installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
+import { persistGcShells, persistReportTasks } from "./report-persistence.ts";
+import { runBoundedReportStep } from "./report-steps.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
   normalizeGcDocumentCode,
@@ -973,6 +975,7 @@ async function fetchGcOrcamentosByOsCodigos(
   gcOsResult: { byCodigo?: Record<string, any> } | null,
   sbClient?: any,
   limite = 80,
+  strict = false,
 ): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
   const acc = { byTaskId: {} as Record<string, any>, byCodigo: {} as Record<string, any> };
   let codigos = [...new Set(
@@ -985,11 +988,12 @@ async function fetchGcOrcamentosByOsCodigos(
   if (sbClient && codigos.length > 0) {
     const jaVinculados = new Set<string>();
     for (let i = 0; i < codigos.length; i += 200) {
-      const { data } = await sbClient
+      const { data, error } = await sbClient
         .from("tarefas_central")
         .select("gc_orcamento_codigo")
         .in("gc_orcamento_codigo", codigos.slice(i, i + 200))
         .not("auvo_task_id", "like", "gc-only::%");
+      if (error && strict) throw new Error(`Falha ao consultar vínculos: ${error.message}`);
       for (const row of data || []) {
         if (row?.gc_orcamento_codigo) jaVinculados.add(String(row.gc_orcamento_codigo));
       }
@@ -1004,10 +1008,13 @@ async function fetchGcOrcamentosByOsCodigos(
     try {
       const response = await rateLimitedFetch(
         `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`,
-        { headers: gcHeaders },
+        { headers: gcHeaders, signal: AbortSignal.timeout(20_000) },
         "gc",
       );
-      if (!response.ok) continue;
+      if (!response.ok) {
+        if (strict) throw new Error(`Consulta do orçamento ${codigo}: HTTP ${response.status}`);
+        continue;
+      }
       const data = await response.json().catch(() => ({}));
       const records: any[] = Array.isArray(data?.data) ? data.data : [];
       const orc = records.find((row) => String(row?.codigo || "").trim() === codigo);
@@ -1023,6 +1030,7 @@ async function fetchGcOrcamentosByOsCodigos(
       hidratados++;
     } catch (err) {
       console.error(`[central-sync] busca dirigida do orçamento ${codigo} falhou:`, (err as Error).message);
+      if (strict) throw err;
     }
   }
   console.log(`[central-sync] busca dirigida de orçamentos via OS/81831: ${hidratados}/${codigos.length}`);
@@ -1141,23 +1149,24 @@ function extractReferencedCodes(text: string): { osCodigos: string[]; orcCodigos
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string; reportPage?: number }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any>; nextPage: number | null }> {
   const map: Record<string, any> = {};
   const byTaskIdAll: Record<string, any[]> = {};
   const byExecTaskId: Record<string, any[]> = {};
   const byCodigo: Record<string, any> = {};
   const byOrcNumero: Record<string, any> = {};
+  let nextPage: number | null = null;
 
   // If situacaoIds provided, fetch per situação; otherwise fetch all
   const situacaoIds = options?.situacaoIds?.length ? options.situacaoIds : [null];
 
   for (const sitId of situacaoIds) {
-    let page = 1;
-    let totalPages = 1;
+    let page = options?.reportPage || 1;
+    let totalPages = page;
     const MAX_PAGES = 500;
 
     while (page <= totalPages && page <= MAX_PAGES) {
-      let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+      let url = `${GC_BASE_URL}/api/ordens_servicos?limite=${options?.reportPage ? 25 : 100}&pagina=${page}`;
       if (sitId) url += `&situacao_id=${sitId}`;
       if (options?.dataInicio) url += `&data_inicio=${options.dataInicio}`;
       if (options?.dataFim) url += `&data_fim=${options.dataFim}`;
@@ -1165,18 +1174,23 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       let response: Response | null = null;
       const RATE_BACKOFF = [3000, 6000, 12000];
       for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
-        response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        response = await rateLimitedFetch(url, { headers: gcHeaders, ...(options?.reportPage ? { signal: AbortSignal.timeout(20_000) } : {}) }, "gc");
         if (response.status !== 429) break;
         console.warn(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
         await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
       }
       if (!response || response.status === 429) {
+        if (options?.reportPage) throw new Error("GestãoClick limitou a consulta de OS. O lote não foi concluído.");
         console.error(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""}: 429 persistente após retries — retornando mapa parcial`);
         break;
       }
-      if (!response.ok) break;
+      if (!response.ok) {
+        if (options?.reportPage) throw new Error(`Consulta de OS: HTTP ${response.status}`);
+        break;
+      }
 
       const data = await response.json();
+      if (options?.reportPage && !Array.isArray(data?.data)) throw new Error("GestãoClick retornou uma lista de OS inválida.");
       const records: any[] = Array.isArray(data?.data) ? data.data : [];
       totalPages = data?.meta?.total_paginas || 1;
 
@@ -1249,13 +1263,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       }
 
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+      if (options?.reportPage) {
+        nextPage = page < Number(totalPages) ? page + 1 : null;
+        break;
+      }
       page++;
     }
     if (page > 500 && page <= totalPages) {
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
-  return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero };
+  return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero, nextPage };
 }
 
 async function upsertGcOsShellRows(
@@ -1326,17 +1344,7 @@ async function upsertGcOsShellRows(
     });
   }
 
-  let upserted = 0;
-  for (let i = 0; i < shells.length; i += 100) {
-    const batch = shells.slice(i, i + 100);
-    const { error } = await sbClient
-      .from("tarefas_central")
-      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
-    if (error) console.error("[central-sync] GC-first shell upsert error:", error.message);
-    else upserted += batch.length;
-  }
-
-  return upserted;
+  return await persistGcShells(sbClient, shells);
 }
 
 // CAUSA RAIZ: a OS (73343) e o orçamento (73341) só eram amarrados à tarefa Auvo
@@ -1349,6 +1357,7 @@ async function backlinkGcDocsToExistingTasks(
   sbClient: any,
   gcOsResult?: { byCodigo?: Record<string, any> } | null,
   gcOrcResult?: { byTaskId?: Record<string, any> } | null,
+  strict = false,
 ) {
   const summary = { os_linked: 0, orc_linked: 0, shells_removed: 0 };
 
@@ -1377,6 +1386,7 @@ async function backlinkGcDocsToExistingTasks(
       .in("auvo_task_id", taskIds.slice(i, i + 200));
     if (error) {
       console.error("[central-sync] backlink select:", error.message);
+      if (strict) throw new Error(`Falha ao ler vínculos: ${error.message}`);
       continue;
     }
     rows.push(...(data || []));
@@ -1442,6 +1452,7 @@ async function backlinkGcDocsToExistingTasks(
       .eq("mirror_key", row.mirror_key);
     if (error) {
       console.error(`[central-sync] backlink update ${row.mirror_key}:`, error.message);
+      if (strict) throw new Error(`Falha ao salvar vínculo: ${error.message}`);
       continue;
     }
     updates++;
@@ -1493,7 +1504,7 @@ type ForecastPromotionSummary = {
 };
 
 async function reconcileBudgetExecutionForecasts(
-  sbClient: ReturnType<typeof createClient>,
+  sbClient: ReturnType<typeof createClient<any>>,
   gcOsResult: { byCodigo: Record<string, any> },
   gcHeaders?: Record<string, string>,
 ): Promise<ForecastPromotionSummary> {
@@ -1686,6 +1697,11 @@ async function reconcileBudgetExecutionForecasts(
 
 
 type CentralSyncBody = {
+  report_step?: unknown;
+  report_page?: unknown;
+  known_os_ids?: unknown;
+  after_os_id?: unknown;
+  budget_codes?: unknown;
   start_date?: unknown;
   end_date?: unknown;
   situacao_ids?: unknown;
@@ -2545,21 +2561,8 @@ async function runReportsOnlySync(
     };
   }).filter(Boolean);
 
-  let upserted = 0;
+  const upserted = await persistReportTasks(sbClient, rows);
   let errors = 0;
-  for (let i = 0; i < rows.length; i += 100) {
-    const batch = rows.slice(i, i + 100);
-    const { error } = await sbClient
-      .from("tarefas_central")
-      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
-
-    if (error) {
-      console.error(`[central-sync] Reports-only batch ${i}-${i + batch.length} error:`, error.message);
-      errors++;
-    } else {
-      upserted += batch.length;
-    }
-  }
 
   const relationshipRows: any[] = [];
   for (const row of rows as any[]) {
@@ -2686,6 +2689,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     };
+
+    if (body?.report_step) return await runBoundedReportStep(sbClient, gcH, body, {
+      fetchOs: fetchGcOs, saveOs: upsertGcOsShellRows, backlink: backlinkGcDocsToExistingTasks,
+      fetchBudgets: fetchGcOrcamentosByOsCodigos,
+      getOs: id => rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${id}`, { headers: gcH, signal: AbortSignal.timeout(15_000) }, "gc"),
+      mapOs: mapGcOsToMirrorPayload, mirrorPatch: mirrorUpdateFromGcPayload,
+    });
 
     if (body?.orcamentos_only === true) {
       const rawTipo = String(body?.orcamentos_tipo || "").trim();

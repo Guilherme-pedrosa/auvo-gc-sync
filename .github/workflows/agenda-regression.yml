@@ -15,4 +15,6 @@ jobs:
           cache: npm
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - run: npm run test:agenda
+      - run: npm test -- --run src/test/reports-sync.test.ts src/test/reports-sync-page.test.tsx
       - run: npx tsc --noEmit -p tsconfig.app.json
+      - run: npx --yes deno@2.9.6 check --no-lock supabase/functions/central-sync/index.ts
