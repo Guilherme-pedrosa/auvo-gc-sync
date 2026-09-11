@@ -12,6 +12,7 @@ const migration = readFileSync(
   "utf8",
 );
 const centralSync = readFileSync(resolve(root, "supabase/functions/central-sync/index.ts"), "utf8");
+const auvoPagination = readFileSync(resolve(root, "supabase/functions/central-sync/auvo-task-pagination.ts"), "utf8");
 
 describe("reconciliação conservadora de tarefas excluídas no Auvo", () => {
   it("gera candidato somente em janela completamente lida", () => {
@@ -54,7 +55,7 @@ describe("reconciliação conservadora de tarefas excluídas no Auvo", () => {
   });
 
   it("desativa remoção após erro de paginação, gravação ou leitura local", () => {
-    expect(centralSync).toContain("primeira página respondeu 404");
+    expect(auvoPagination).toContain("primeira página respondeu 404");
     expect(centralSync).toContain("gravação atual teve erro; exclusão desativada");
     expect(centralSync).toContain("leitura local incompleta");
     expect(centralSync).toContain("isConfirmedDeletedAuvoStatus(first.status, second?.status ?? null)");

@@ -1,12 +1,13 @@
-// Auvo report imports require a complete source response before persistence.
+// Hourly imports persist complete days; interactive imports require the whole period.
 // Controle OS: bounded report steps preserve Auvo assignments and report confirmed progress.
 import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
-import { assertCompleteAuvoReport, persistGcShells, persistReportTasks } from "./report-persistence.ts";
+import { selectAuvoReportTasks, persistGcShells, persistReportTasks } from "./report-persistence.ts";
 import { runBoundedReportStep } from "./report-steps.ts";
+import { fetchAuvoTaskWindows, type AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
   normalizeGcDocumentCode,
@@ -42,7 +43,6 @@ const GC_ATRIBUTO_LOCAL_REPARO = "68658";
 // inside this process so Promise.all cannot create request bursts.
 const MIN_DELAY_MS = 350;
 const FUTURE_DAYS_WINDOW = 30;
-const AUVO_TASK_CHUNK_DAYS = 1;
 const OPEN_OS_SITUACAO_IDS = [
   "7063579", // AGUARDANDO COMPRA DE PEÇAS
   "7063580", // AGUARDANDO CHEGADA DE PEÇAS
@@ -552,153 +552,13 @@ async function loadAuvoEquipmentCatalog(
   return catalog;
 }
 
-type AuvoTaskFetchWindow = {
-  startDate: string;
-  endDate: string;
-  complete: boolean;
-  error?: string;
-};
-
-type AuvoTaskFetchResult = {
-  tasks: any[];
-  complete: boolean;
-  windows: AuvoTaskFetchWindow[];
-};
-
-// Fetch Auvo tasks for a single bounded window. `complete` is intentionally
-// strict: only a successful, fully paginated response can authorize deletion.
-async function fetchAuvoTasksForPeriod(
-  bearerToken: string,
-  startDate: string,
-  endDate: string,
-): Promise<{ tasks: any[]; complete: boolean; error?: string }> {
-  const allTasks: any[] = [];
-  let page = 1;
-  let complete = true;
-  let error: string | undefined;
-  const pageSize = 100;
-  const MAX_PAGES = 30;
-  const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
-
-  while (page <= MAX_PAGES) {
-    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
-
-    let response: Response | null = null;
-    const MAX_RETRIES = 3;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-      if (response.status === 502 || response.status === 503) {
-        const waitMs = attempt * 3000; // 3s, 6s, 9s
-        console.warn(
-          `[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${response.status} — retry ${attempt}/${MAX_RETRIES} em ${waitMs}ms`,
-        );
-        await new Promise((r) => setTimeout(r, waitMs));
-        continue;
-      }
-      break;
-    }
-
-    if (!response) {
-      complete = false;
-      error = `sem resposta na página ${page}`;
-      break;
-    }
-
-    if (response.status === 404) {
-      console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 404 (fim)`);
-      // A primeira página 404 não é uma fotografia vazia confiável. Pode ser
-      // indisponibilidade/roteamento e, portanto, nunca autoriza exclusão.
-      if (page === 1) {
-        complete = false;
-        error = "primeira página respondeu 404";
-      }
-      break;
-    }
-    if (!response.ok) {
-      const text = await response.text();
-      console.error(
-        `[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status} (após ${MAX_RETRIES} tentativas): ${text.substring(0, 200)}`,
-      );
-      complete = false;
-      error = `página ${page} respondeu ${response.status}`;
-      break;
-    }
-
-    const json = await response.json();
-    const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
-    if (!Array.isArray(tasks)) {
-      complete = false;
-      error = `página ${page} retornou payload inesperado`;
-      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: payload inesperado`);
-      break;
-    }
-    if (tasks.length === 0) {
-      console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 0 tasks (fim)`);
-      break;
-    }
-
-    allTasks.push(...tasks);
-    console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${tasks.length} tasks`);
-
-    if (tasks.length < pageSize) break;
-    page++;
-  }
-
-  if (page > MAX_PAGES) {
-    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks (${startDate}→${endDate})`);
-    complete = false;
-    error = `limite de ${MAX_PAGES} páginas atingido`;
-  }
-
-  return { tasks: allTasks, complete, error };
-}
-
-// Fetch ALL Auvo tasks in short date windows. The Auvo /tasks endpoint becomes
-// very slow on full-month ranges and can hit the 150s function idle timeout;
-// short windows keep each request bounded while still collecting every task.
+// The transport retains the existing date filter and server-side credentials.
 async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<AuvoTaskFetchResult> {
-  const allTasks: any[] = [];
-  const seenTaskIds = new Set<string>();
-  const windows: AuvoTaskFetchWindow[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
-  const current = new Date(start);
-  while (current <= end) {
-    const chunkStart = current.toISOString().split("T")[0];
-    const chunkEndDate = new Date(current);
-    chunkEndDate.setDate(chunkEndDate.getDate() + AUVO_TASK_CHUNK_DAYS - 1);
-    if (chunkEndDate > end) chunkEndDate.setTime(end.getTime());
-    const chunkEnd = chunkEndDate.toISOString().split("T")[0];
-
-    console.log(`[central-sync] Buscando Auvo: ${chunkStart} → ${chunkEnd}`);
-    const result = await fetchAuvoTasksForPeriod(bearerToken, chunkStart, chunkEnd);
-    windows.push({
-      startDate: chunkStart,
-      endDate: chunkEnd,
-      complete: result.complete,
-      error: result.error,
-    });
-    for (const task of result.tasks) {
-      const taskId = String(task?.taskID || "").trim();
-      if (taskId && seenTaskIds.has(taskId)) continue;
-      if (taskId) seenTaskIds.add(taskId);
-      allTasks.push(task);
-    }
-    console.log(
-      `[central-sync] Janela ${chunkStart}: ${result.tasks.length} tarefas (${allTasks.length} únicas acumuladas), completa=${result.complete}`,
-    );
-
-    current.setTime(chunkEndDate.getTime());
-    current.setDate(current.getDate() + 1);
-  }
-
-  return {
-    tasks: allTasks,
-    complete: windows.length > 0 && windows.every((window) => window.complete),
-    windows,
-  };
+  return fetchAuvoTaskWindows((date, page) => {
+    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: date + "T00:00:00", endDate: date + "T23:59:59" }));
+    const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
+    return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
+  }, startDate, endDate);
 }
 
 type DeletedTaskReconciliation = {
@@ -2511,6 +2371,7 @@ async function runReportsOnlySync(
   startDate: string,
   endDate: string,
   shouldReconcileOpenOs = true,
+  allowPartial = false,
 ) {
   console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
 
@@ -2536,8 +2397,10 @@ async function runReportsOnlySync(
   }
 
   const auvoFetch = await fetchAuvoTasks(bearerToken, startDate, endDate);
-  assertCompleteAuvoReport(auvoFetch, startDate, endDate);
-  const auvoTasks = auvoFetch.tasks;
+  const { tasks: auvoTasks, incompleteWindows } = selectAuvoReportTasks(auvoFetch, startDate, endDate, allowPartial);
+  if (incompleteWindows.length) {
+    console.warn("[central-sync] Importação parcial: dias incompletos preservados", JSON.stringify(incompleteWindows));
+  }
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
 
   const taskIds = auvoTasks.map((task: any) => String(task.taskID || "").trim()).filter(Boolean);
@@ -2788,7 +2651,9 @@ async function runReportsOnlySync(
   }
 
   return {
-    success: true,
+    success: auvoFetch.complete && errors + gcStatusRefresh.errors === 0,
+    partial: !auvoFetch.complete,
+    auvo_janelas_incompletas: incompleteWindows,
     mode: "reports-only",
     periodo: { inicio: startDate, fim: endDate },
     auvo_tarefas: auvoTasks.length,
@@ -2809,7 +2674,7 @@ async function runReportsOnlySync(
       deletedTaskReconciliation.preserved + deletedTaskReconciliation.unknown + deletedTaskReconciliation.skipped,
     auvo_excluidas_reconciliation_error: deletedTaskReconciliation.error || null,
     auvo_paginacao_completa: auvoFetch.complete,
-    errors: errors + gcStatusRefresh.errors,
+    errors: errors + gcStatusRefresh.errors + incompleteWindows.length,
   };
 }
 
@@ -2898,7 +2763,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
   }
 
   if (body?.reports_only === true) {
-    return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate, body?.reconcile_open_os !== false);
+    // Only asynchronous jobs may keep confirmed days while another day fails.
+    // wait/fast/lite are synchronous modes and retain the strict report contract.
+    return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate,
+      body?.reconcile_open_os !== false, body?.wait !== true && body?.fast !== true && body?.lite !== true);
   }
 
   // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
@@ -2986,11 +2854,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
   const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
   const isLiteSync = body?.lite === true;
   const auvoTasksPromise: Promise<AuvoTaskFetchResult> = isFastGcOnly
-    ? Promise.resolve({ tasks: [], complete: false, windows: [] })
+    ? Promise.resolve({ tasks: [], completeTasks: [], complete: false, windows: [] })
     : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
         console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
         return {
           tasks: [],
+          completeTasks: [],
           complete: false,
           windows: [{ startDate, endDate, complete: false, error: (err as Error).message }],
         };

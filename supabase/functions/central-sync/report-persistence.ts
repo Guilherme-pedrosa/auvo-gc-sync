@@ -1,10 +1,23 @@
-// GC refreshes must not reset the technician, schedule, execution or questionnaire.
+import type { AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
+
+// Interactive imports still require every requested day to be confirmed.
 export function assertCompleteAuvoReport(result: { complete: boolean; windows?: { error?: string }[] }, start: string, end: string): void {
   if (result.complete) return;
   const reason = result.windows?.find(window => window.error)?.error || "consulta incompleta";
   throw new Error(`Auvo não confirmou as tarefas de ${start} a ${end}: ${reason}. Os registros existentes foram preservados.`);
 }
 
+export function selectAuvoReportTasks(result: AuvoTaskFetchResult, start: string, end: string, allowPartial = false) {
+  if (!allowPartial || !result.windows.some(window => window.complete)) {
+    assertCompleteAuvoReport(result, start, end);
+  }
+  return {
+    tasks: result.complete ? result.tasks : result.completeTasks,
+    incompleteWindows: result.windows.filter(window => !window.complete),
+  };
+}
+
+// GC refreshes must not reset the technician, schedule, execution or questionnaire.
 export async function persistGcShells(sb: any, shells: any[]): Promise<number> {
   let saved = 0;
   for (let from = 0; from < shells.length; from += 5) {
