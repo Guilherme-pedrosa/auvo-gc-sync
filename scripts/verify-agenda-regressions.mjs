@@ -18,6 +18,11 @@ const files = [
   'src/test/reports-sync.test.ts',
   'src/test/reports-sync-page.test.tsx',
   'src/test/reports-sync-day-recovery.test.ts',
+  'src/test/report-os-task-steps.test.ts',
+  'src/test/linked-report-tasks.test.ts',
+  'src/test/reports-sync-linked-tasks.test.ts',
+  'src/test/os-task-lookup.test.ts',
+  'src/test/os-abertas-task-refresh.test.tsx',
 ];
 for (const file of files) accessSync(file);
 const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', ...files], { stdio: 'inherit' });

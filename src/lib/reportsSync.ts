@@ -7,7 +7,11 @@ export type ReportsSyncDayWarning = {
   kind: "auvo_day"; os_id?: never; start_date: string; end_date: string;
   status: number | null; message: string;
 };
-export type ReportsSyncWarning = ReportsSyncOsWarning | ReportsSyncDayWarning;
+export type ReportsSyncTaskWarning = {
+  kind: "auvo_task"; os_id?: never; task_id: string; os_ids?: string[];
+  status: number | null; message: string;
+};
+export type ReportsSyncWarning = ReportsSyncOsWarning | ReportsSyncDayWarning | ReportsSyncTaskWarning;
 export type ReportsSyncTotals = {
   tasks: number; saved: number; orders: number; transitioned: number;
   warnings: ReportsSyncWarning[]; incomplete: boolean;
@@ -15,10 +19,12 @@ export type ReportsSyncTotals = {
 
 export function reportsSyncPendingSummary(warnings: ReportsSyncWarning[]): string {
   const days = warnings.filter(warning => warning.kind === "auvo_day").length;
-  const orders = warnings.length - days;
+  const tasks = warnings.filter(warning => warning.kind === "auvo_task").length;
+  const orders = warnings.length - days - tasks;
   return [
     orders ? `${orders} OS pendentes de conferência` : "",
     days ? `${days} ${days === 1 ? "dia Auvo não confirmado" : "dias Auvo não confirmados"}` : "",
+    tasks ? `${tasks} ${tasks === 1 ? "tarefa Auvo não confirmada" : "tarefas Auvo não confirmadas"}` : "",
   ].filter(Boolean).join("; ");
 }
 
@@ -50,21 +56,15 @@ export async function describeSyncError(error: any): Promise<string> {
   return error?.message || "Não foi possível concluir a sincronização.";
 }
 
-export async function syncReportsInSteps(
-  invoke: Invoke,
-  options: {
-    days: Day[];
-    situationIds?: string[];
-    onProgress: (message: string, completed: number) => void;
-    onSaved?: () => void;
-    onWarnings?: (warnings: ReportsSyncWarning[]) => void;
-    signal?: AbortSignal;
-  },
-): Promise<ReportsSyncTotals> {
+type SyncCallbacks = {
+  onProgress: (message: string, completed: number) => void;
+  onSaved?: () => void;
+  onWarnings?: (warnings: ReportsSyncWarning[]) => void;
+  signal?: AbortSignal;
+};
+
+function reportsSyncSession(invoke: Invoke, options: SyncCallbacks) {
   const totals: ReportsSyncTotals = { tasks: 0, saved: 0, orders: 0, transitioned: 0, warnings: [], incomplete: false };
-  const ids = options.situationIds?.length ? options.situationIds : OPEN_OS_SITUATIONS.map(row => row.id);
-  const knownIds = new Set<string>();
-  const budgetCodes = new Set<string>();
   let completed = 0;
   const call = async (label: string, body: Record<string, unknown>) => {
     options.signal?.throwIfAborted();
@@ -79,14 +79,64 @@ export async function syncReportsInSteps(
       throw syncStepError(label, data?.error || data?.auvo_error || "O servidor não confirmou a gravação completa deste lote.", data);
     }
     if (body.report_step && data.report_step !== body.report_step) {
-      throw new Error("A atualização do serviço de sincronização ainda não está disponível. Tente novamente após a publicação.");
+      throw Object.assign(new Error("A atualização do serviço de sincronização ainda não está disponível. Tente novamente após a publicação."), { syncProtocolFailed: true });
     }
-    if (data?.incomplete && (body.report_step !== "os_reconcile" || !Array.isArray(data.warnings) || !data.warnings.length)) {
+    if (data?.incomplete && (!["os_reconcile", "os_tasks"].includes(String(body.report_step)) || !Array.isArray(data.warnings) || !data.warnings.length)) {
       throw new Error(`${label}: o servidor não confirmou a conclusão deste lote.`);
     }
     completed++;
     options.onSaved?.();
     return data;
+  };
+
+  const addWarnings = (warnings: ReportsSyncWarning[]) => {
+    const key = (warning: ReportsSyncWarning) => warning.kind === "auvo_day"
+      ? `day:${warning.start_date}:${warning.end_date}` : warning.kind === "auvo_task"
+        ? `task:${warning.task_id}` : `os:${warning.os_id}`;
+    for (const warning of warnings) {
+      if (!totals.warnings.some(existing => key(existing) === key(warning))) totals.warnings.push(warning);
+    }
+    if (warnings.length) {
+      totals.incomplete = true;
+      options.onWarnings?.([...totals.warnings]);
+    }
+  };
+  const failureReason = async (error: any, label: string) => {
+    options.signal?.throwIfAborted();
+    if (error?.name === "AbortError" || error?.syncProtocolFailed) throw error;
+    const detail = await describeSyncError(error);
+    options.signal?.throwIfAborted();
+    if (authenticationFailed(error, detail)) throw error;
+    return detail.startsWith(`${label}: `) ? detail.slice(label.length + 2) : detail;
+  };
+  const finish = () => {
+    options.onProgress(totals.incomplete
+      ? totals.warnings.some(warning => warning.kind === "auvo_day" || warning.kind === "auvo_task")
+        ? `Sincronização parcial: ${reportsSyncPendingSummary(totals.warnings)}. Os demais lotes foram processados; registros existentes preservados.`
+        : `Lotes processados; ${totals.warnings.length} OS ficaram pendentes de conferência. Registros preservados.`
+      : "Todos os lotes foram concluídos e gravados.", completed);
+    return totals;
+  };
+  return { totals, call, addWarnings, failureReason, finish };
+}
+
+/** Controle OS follows GC links; task dates never limit this workflow. */
+export async function syncReportsInSteps(
+  invoke: Invoke,
+  options: SyncCallbacks & { situationIds?: string[] },
+): Promise<ReportsSyncTotals> {
+  const { totals, call, addWarnings, failureReason, finish } = reportsSyncSession(invoke, options);
+  const ids = options.situationIds?.length ? options.situationIds : OPEN_OS_SITUATIONS.map(row => row.id);
+  const knownIds = new Set<string>();
+  const budgetCodes = new Set<string>();
+  const taskIds = new Set<string>();
+  const collectTaskIds = (data: any) => {
+    if (!Array.isArray(data.auvo_task_ids)) throw new Error("O serviço não confirmou a lista de tarefas vinculadas às OS. Atualize a sincronização após a publicação.");
+    for (const value of data.auvo_task_ids) {
+      const id = String(value);
+      if (!/^\d+$/.test(id) || Number(id) <= 0) throw new Error("O serviço retornou um vínculo de tarefa Auvo inválido.");
+      taskIds.add(id);
+    }
   };
 
   for (const situationId of ids) {
@@ -99,6 +149,7 @@ export async function syncReportsInSteps(
       });
       for (const id of data.os_ids || []) knownIds.add(String(id));
       for (const code of data.budget_codes || []) budgetCodes.add(String(code));
+      collectTaskIds(data);
       totals.orders += Number(data.upserted || 0);
       page = data.next_page ?? null;
       if (page !== null && (!Number.isInteger(page) || page <= currentPage)) throw new Error("Paginação de OS inválida; sincronização interrompida.");
@@ -111,27 +162,61 @@ export async function syncReportsInSteps(
       report_step: "os_reconcile", situacao_ids: ids, known_os_ids: [...knownIds], after_os_id: after,
     });
     totals.transitioned += Number(data.transitioned || 0);
+    collectTaskIds(data);
     if (Array.isArray(data.warnings) && data.warnings.length) {
       for (const warning of data.warnings) {
         if (!warning || typeof warning.os_id !== "string" || typeof warning.message !== "string") {
           throw new Error("O serviço retornou uma pendência de conferência inválida.");
         }
-        if (!totals.warnings.some(existing => existing.os_id === warning.os_id)) totals.warnings.push(warning);
       }
-      totals.incomplete = true;
-      options.onWarnings?.([...totals.warnings]);
+      addWarnings(data.warnings);
     }
     const next = data.next_after ?? null;
     if (next !== null && (typeof next !== "string" || (after !== null && next <= after))) throw new Error("Paginação de conferência inválida.");
     after = next;
   } while (after !== null);
 
+  const tasks = [...taskIds];
+  for (let index = 0; index < tasks.length; index += 5) {
+    const batch = tasks.slice(index, index + 5);
+    const label = `Atualizando tarefas vinculadas às OS: ${index + 1}–${Math.min(index + 5, tasks.length)}/${tasks.length}`;
+    try {
+      const data = await call(label, { report_step: "os_tasks", task_ids: batch });
+      if (Array.isArray(data.warnings)) {
+        for (const warning of data.warnings) {
+          if (warning?.kind !== "auvo_task" || typeof warning.task_id !== "string" || !batch.includes(warning.task_id) || typeof warning.message !== "string") {
+            throw new Error("O serviço retornou uma pendência de tarefa Auvo inválida.");
+          }
+          if (authenticationFailed(warning, warning.message)) throw syncStepError(label, warning.message, warning);
+        }
+        addWarnings(data.warnings);
+      }
+      totals.tasks += Number(data.auvo_tarefas || 0);
+      totals.saved += Number(data.upserted || 0);
+    } catch (error: any) {
+      const reason = await failureReason(error, label);
+      addWarnings(batch.map(taskId => ({
+        kind: "auvo_task", task_id: taskId, status: null,
+        message: `Tarefa Auvo ${taskId}: consulta não confirmada. ${reason}`,
+      })));
+    }
+  }
+  // Refresh execution before auxiliary budget lookups, which can be slower.
   const codes = [...budgetCodes];
   for (let i = 0; i < codes.length; i += 3) {
     await call(`Conferindo orçamentos vinculados: ${i + 1}–${Math.min(i + 3, codes.length)}/${codes.length}`, {
       report_step: "budgets", budget_codes: codes.slice(i, i + 3),
     });
   }
+  return finish();
+}
+
+/** Date windows belong only to the explicit worked-hours import. */
+export async function syncWorkedHoursInSteps(
+  invoke: Invoke,
+  options: SyncCallbacks & { days: Day[] },
+): Promise<ReportsSyncTotals> {
+  const { totals, call, addWarnings, failureReason, finish } = reportsSyncSession(invoke, options);
   for (const [index, day] of options.days.entries()) {
     const label = `Atualizando tarefas Auvo ${index + 1}/${options.days.length}: ${day.start}`;
     try {
@@ -143,27 +228,12 @@ export async function syncReportsInSteps(
     } catch (error: any) {
       // Each day is an independent persisted batch. A failed provider response
       // must remain pending without blocking the remaining dates or counting as saved.
-      options.signal?.throwIfAborted();
-      if (error?.name === "AbortError") throw error;
-      const detail = await describeSyncError(error);
-      options.signal?.throwIfAborted();
-      if (authenticationFailed(error, detail)) throw error;
-      const reason = detail.startsWith(`${label}: `) ? detail.slice(label.length + 2) : detail;
-      if (!totals.warnings.some(warning => warning.kind === "auvo_day"
-        && warning.start_date === day.start && warning.end_date === day.end)) {
-        totals.warnings.push({
+      const reason = await failureReason(error, label);
+      addWarnings([{
           kind: "auvo_day", start_date: day.start, end_date: day.end, status: null,
           message: `${day.start}${day.end !== day.start ? ` a ${day.end}` : ""}: consulta Auvo não confirmada. ${reason}`,
-        });
-      }
-      totals.incomplete = true;
-      options.onWarnings?.([...totals.warnings]);
+      }]);
     }
   }
-  options.onProgress(totals.incomplete
-    ? totals.warnings.some(warning => warning.kind === "auvo_day")
-      ? `Sincronização parcial: ${reportsSyncPendingSummary(totals.warnings)}. Os demais lotes foram processados; registros existentes preservados.`
-      : `Lotes processados; ${totals.warnings.length} OS ficaram pendentes de conferência. Registros preservados.`
-    : "Todos os lotes foram concluídos e gravados.", completed);
-  return totals;
+  return finish();
 }

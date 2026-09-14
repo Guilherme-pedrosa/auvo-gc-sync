@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { transferableAbortController } from "node:util";
-import { describeSyncError, syncReportsInSteps } from "../lib/reportsSync";
+import { describeSyncError, syncReportsInSteps, syncWorkedHoursInSteps } from "../lib/reportsSync";
 import { assertCompleteAuvoReport, persistGcShells, persistReportTasks } from "../../supabase/functions/central-sync/report-persistence";
 import { runBoundedReportStep } from "../../supabase/functions/central-sync/report-steps";
 
@@ -13,24 +13,24 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals());
 
 describe("Controle OS — sincronização em lotes", () => {
-  it("percorre todas as páginas e separa OS, orçamentos e dias Auvo", async () => {
+  it("percorre páginas de OS, orçamentos e tarefas vinculadas sem datas", async () => {
     const invoke = vi.fn(async (_name, { body }) => {
       if (body.report_step === "os_page") return { data: { success: true, report_step: body.report_step,
-        os_ids: [String(body.report_page)], budget_codes: ["1", "2", "3", "4"],
+        os_ids: [String(body.report_page)], budget_codes: ["1", "2", "3", "4"], auvo_task_ids: ["11", "12", "13", "14", "15", "16", "17"],
         next_page: body.report_page === 1 ? 2 : null, upserted: 25 }, error: null };
-      return { data: { success: true, report_step: body.report_step, transitioned: 1, next_after: null,
-        auvo_tarefas: 30, upserted: 30 }, error: null };
+      return { data: { success: true, report_step: body.report_step, transitioned: 1, next_after: null, auvo_task_ids: [],
+        auvo_tarefas: body.task_ids?.length || 0, upserted: body.task_ids?.length || 0 }, error: null };
     });
     const progress = vi.fn();
-    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"],
-      days: [{ start: "2026-09-01", end: "2026-09-01" }, { start: "2026-09-02", end: "2026-09-02" }], onProgress: progress });
+    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress });
     const bodies = invoke.mock.calls.map(([, options]) => options.body);
-    expect(bodies.map(body => body.report_step || "auvo")).toEqual(["os_page", "os_page", "os_reconcile", "budgets", "budgets", "auvo", "auvo"]);
+    expect(bodies.map(body => body.report_step)).toEqual(["os_page", "os_page", "os_reconcile", "os_tasks", "os_tasks", "budgets", "budgets"]);
     expect(bodies[2].known_os_ids).toEqual(["1", "2"]);
-    expect(bodies[3].budget_codes).toHaveLength(3);
-    expect(bodies[4].budget_codes).toEqual(["4"]);
-    expect(bodies.slice(-2).every(body => body.reconcile_open_os === false && body.wait === true)).toBe(true);
-    expect(totals).toEqual({ orders: 50, tasks: 60, saved: 60, transitioned: 1, incomplete: false, warnings: [] });
+    expect(bodies[5].budget_codes).toHaveLength(3);
+    expect(bodies[6].budget_codes).toEqual(["4"]);
+    expect(bodies.slice(3, 5).map(body => body.task_ids.length)).toEqual([5, 2]);
+    expect(bodies.every(body => body.wait === true && !body.start_date && !body.end_date && !body.reports_only)).toBe(true);
+    expect(totals).toEqual({ orders: 50, tasks: 7, saved: 7, transitioned: 1, incomplete: false, warnings: [] });
     expect(progress.mock.lastCall).toEqual(["Todos os lotes foram concluídos e gravados.", 7]);
   });
 
@@ -39,7 +39,7 @@ describe("Controle OS — sincronização em lotes", () => {
       code: "IDLE_TIMEOUT", message: "Request idle timeout limit (150s) reached",
     }, { status: 504 }) };
     const invoke = vi.fn(async () => ({ data: null, error }));
-    await expect(syncReportsInSteps(invoke, { days: [], onProgress: vi.fn(), situationIds: ["7063705"] })).rejects.toThrow(/lote não teve conclusão confirmada/);
+    await expect(syncReportsInSteps(invoke, { onProgress: vi.fn(), situationIds: ["7063705"] })).rejects.toThrow(/lote não teve conclusão confirmada/);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(await error.context.json()).toMatchObject({ code: "IDLE_TIMEOUT" });
   });
@@ -49,17 +49,16 @@ describe("Controle OS — sincronização em lotes", () => {
       message: "OS 389831437: HTTP 400 — Você não possui permissão para acessar este pedido!. Registro preservado." };
     const invoke = vi.fn(async (_name, { body }) => {
       if (body.report_step === "os_page") return { data: { success: true, report_step: "os_page",
-        os_ids: ["77"], budget_codes: ["6686"], upserted: 1, next_page: null }, error: null };
+        os_ids: ["77"], budget_codes: ["6686"], auvo_task_ids: ["123456"], upserted: 1, next_page: null }, error: null };
       if (body.report_step === "os_reconcile") return { data: { success: true, report_step: "os_reconcile",
-        transitioned: 2, incomplete: true, warnings: [warning], next_after: body.after_os_id ? null : "389831437" }, error: null };
+        transitioned: 2, incomplete: true, warnings: [warning], auvo_task_ids: [], next_after: body.after_os_id ? null : "389831437" }, error: null };
       return { data: { success: true, report_step: body.report_step, auvo_tarefas: 12, upserted: 12 }, error: null };
     });
     const progress = vi.fn();
     const onWarnings = vi.fn();
-    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"],
-      days: [{ start: "2026-09-14", end: "2026-09-14" }], onProgress: progress, onWarnings });
+    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress, onWarnings });
     expect(invoke.mock.calls.map(([, { body }]) => body.report_step || "auvo"))
-      .toEqual(["os_page", "os_reconcile", "os_reconcile", "budgets", "auvo"]);
+      .toEqual(["os_page", "os_reconcile", "os_reconcile", "os_tasks", "budgets"]);
     expect(totals).toEqual({ orders: 1, tasks: 12, saved: 12, transitioned: 4, incomplete: true, warnings: [warning] });
     expect(onWarnings).toHaveBeenLastCalledWith([warning]);
     expect(progress.mock.lastCall).toEqual(["Lotes processados; 1 OS ficaram pendentes de conferência. Registros preservados.", 5]);
@@ -75,14 +74,14 @@ describe("Controle OS — sincronização em lotes", () => {
   ])("não confirma uma etapa incompleta: %j", async data => {
     const invoke = vi.fn(async () => ({ data, error: null }));
     const progress = vi.fn();
-    await expect(syncReportsInSteps(invoke, { days: [], onProgress: progress, situationIds: ["7063705"] })).rejects.toThrow();
+    await expect(syncReportsInSteps(invoke, { onProgress: progress, situationIds: ["7063705"] })).rejects.toThrow();
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(progress).not.toHaveBeenCalledWith("Todos os lotes foram concluídos e gravados.", expect.anything());
   });
 
   it("não entra em loop quando o servidor repete a mesma página", async () => {
-    const invoke = vi.fn(async () => ({ data: { success: true, report_step: "os_page", next_page: 1 }, error: null }));
-    await expect(syncReportsInSteps(invoke, { days: [], onProgress: vi.fn(), situationIds: ["7063705"] })).rejects.toThrow(/Paginação/);
+    const invoke = vi.fn(async () => ({ data: { success: true, report_step: "os_page", next_page: 1, auvo_task_ids: [] }, error: null }));
+    await expect(syncReportsInSteps(invoke, { onProgress: vi.fn(), situationIds: ["7063705"] })).rejects.toThrow(/Paginação/);
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
@@ -92,7 +91,7 @@ describe("Controle OS — sincronização em lotes", () => {
       controller.abort();
       return { data: { success: true, report_step: "os_page" }, error: null };
     });
-    await expect(syncReportsInSteps(invoke, { days: [], onProgress: vi.fn(), signal: controller.signal })).rejects.toThrow();
+    await expect(syncReportsInSteps(invoke, { onProgress: vi.fn(), signal: controller.signal })).rejects.toThrow();
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
@@ -106,7 +105,7 @@ describe("Controle OS — sincronização em lotes", () => {
       ? { success: true, auvo_tarefas: 0, upserted: 0, errors: 0, auvo_paginacao_completa: false }
       : { success: true, report_step: body.report_step, next_page: null, next_after: null }, error: null }));
     const progress = vi.fn();
-    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress,
+    const totals = await syncWorkedHoursInSteps(invoke, { onProgress: progress,
       days: [{ start: "2026-09-06", end: "2026-09-06" }, { start: "2026-09-07", end: "2026-09-07" }] });
     expect(totals).toMatchObject({ incomplete: true, tasks: 0, saved: 0 });
     expect(totals.warnings).toEqual([
@@ -123,7 +122,10 @@ function database(existing: any[] = [], writeError: any = null) {
   const inserts: any[] = [];
   return { writes, inserts, from: vi.fn(() => ({
     select: () => ({ in: async () => ({ data: existing, error: null }) }),
-    update: (patch: any) => ({ eq: async (key: string, id: string) => { writes.push({ patch, key, id }); return { error: writeError }; } }),
+    update: (patch: any) => ({
+      eq: async (key: string, id: string) => { writes.push({ patch, key, id }); return { error: writeError }; },
+      like: async (key: string, pattern: string) => { writes.push({ patch, key, pattern }); return { error: writeError }; },
+    }),
     upsert: async (rows: any[], options: any) => { inserts.push({ rows, options }); return { error: writeError }; },
   })) };
 }
@@ -140,7 +142,9 @@ describe("persistência do Controle OS", () => {
       tecnico: "", data_tarefa: "2000-01-01", status_auvo: "Pendente vínculo Auvo", questionario_respostas: [],
       check_in: false, duracao_decimal: 0, gc_os_situacao: "Em execução", atualizado_em: "now" }]);
     expect(sb.inserts).toHaveLength(0);
-    expect(sb.writes).toEqual([{ key: "gc_os_id", id: "77", patch: {
+    expect(sb.writes).toEqual([{ key: "mirror_key", pattern: "%::os:77::orc:%", patch: {
+      gc_os_id: "77", gc_os_codigo: "1000", gc_os_situacao: "Em execução", atualizado_em: "now",
+    } }, { key: "gc_os_id", id: "77", patch: {
       gc_os_id: "77", gc_os_codigo: "1000", gc_os_situacao: "Em execução", atualizado_em: "now",
     } }]);
   });
@@ -151,6 +155,47 @@ describe("persistência do Controle OS", () => {
     expect(await persistGcShells(sb, rows)).toBe(12);
     expect(sb.inserts.map(batch => batch.rows.length)).toEqual([5, 5, 2]);
     expect(sb.inserts.every(batch => batch.options.ignoreDuplicates === true)).toBe(true);
+  });
+
+  it("restaura a OS 10222 sem copiar o diagnóstico finalizado da 9042 para sua execução", async () => {
+    const rows = [
+      { mirror_key: "70949049::os:397842014::orc:", gc_os_id: "355449840", gc_os_codigo: "9042",
+        auvo_task_id: "70949049", status_auvo: "Finalizada", data_tarefa: "2026-03-24", tecnico: "Diagnóstico", gc_orcamento_codigo: "5332" },
+      { mirror_key: "70949049::os:355449840::orc:", gc_os_id: "355449840", gc_os_codigo: "9042",
+        auvo_task_id: "70949049", status_auvo: "Finalizada", data_tarefa: "2026-03-24", tecnico: "Diagnóstico" },
+    ];
+    const original9042 = { ...rows[1] };
+    const sb = { from: () => ({
+      select: () => ({ in: async (_key: string, ids: string[]) => ({ data: rows.filter(row => ids.includes(row.gc_os_id)), error: null }) }),
+      upsert: async (batch: any[]) => {
+        for (const row of batch) if (!rows.some(existing => existing.mirror_key === row.mirror_key)) rows.push({ ...row });
+        return { error: null };
+      },
+      update: (patch: any) => ({
+        like: async (_key: string, pattern: string) => {
+          for (const row of rows) if (row.mirror_key.includes(pattern.slice(1, -1))) Object.assign(row, patch);
+          return { error: null };
+        },
+        eq: async (key: string, id: string) => {
+          for (const row of rows) if (row[key] === id) Object.assign(row, patch);
+          return { error: null };
+        },
+      }),
+    }) };
+    const fresh = { mirror_key: "79667772::os:397842014::orc:", gc_os_id: "397842014", gc_os_codigo: "10222",
+      gc_os_tarefa_os: "70949049", gc_os_tarefa_exec: "79667772", gc_os_situacao: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO",
+      auvo_task_id: "79667772", status_auvo: "Pendente vínculo Auvo", data_tarefa: null, tecnico: "", atualizado_em: "now" };
+    expect(await persistGcShells(sb, [fresh])).toBe(1);
+    expect(rows[0]).toMatchObject({ gc_os_id: "397842014", gc_os_codigo: "10222", auvo_task_id: "70949049",
+      status_auvo: "Finalizada", data_tarefa: "2026-03-24", tecnico: "Diagnóstico", gc_orcamento_codigo: "5332" });
+    expect(rows[1]).toEqual(original9042);
+    expect(rows[2]).toMatchObject(fresh);
+    // A repeated refresh preserves the execution's independently hydrated data.
+    Object.assign(rows[2], { status_auvo: "Aberta", data_tarefa: null, tecnico: "", check_out: false });
+    await persistGcShells(sb, [fresh]);
+    expect(rows).toHaveLength(3);
+    expect(rows[2]).toMatchObject({ status_auvo: "Aberta", data_tarefa: null, tecnico: "", check_out: false });
+    expect(rows[1]).toEqual(original9042);
   });
 
   it("limita tarefas a cinco por transação e não ignora erro de gravação", async () => {

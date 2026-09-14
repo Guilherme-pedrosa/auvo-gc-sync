@@ -10,6 +10,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 import { selectAuvoReportTasks, persistGcShells, persistReportTasks } from "./report-persistence.ts";
 import { runBoundedReportStep } from "./report-steps.ts";
+import { syncLinkedReportTasks } from "./linked-report-tasks.ts";
 import { readGcOsForReconciliation } from "./gc-os-reconciliation.ts";
 import { reconcileBudgetExecutionForecasts, type ForecastPromotionSummary } from "./budget-forecast-reconciliation.ts";
 import { fetchAuvoTaskWindows, type AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
@@ -1230,7 +1231,7 @@ async function fetchGcOs(
 async function upsertGcOsShellRows(
   sbClient: any,
   gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> },
-  options?: { orphansOnly?: boolean },
+  options?: { orphansOnly?: boolean; executionFirst?: boolean },
 ) {
   const shells: any[] = [];
   const seen = new Set<string>();
@@ -1239,8 +1240,10 @@ async function upsertGcOsShellRows(
     const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os)
       .split("/")
       .filter(Boolean);
-    // Só 73343 (TAREFA OS) pode criar/atualizar vínculo de OS.
-    const realTaskId = taskIds[0] || "";
+    // Controle OS starts from the GC order and its execution task (73344).
+    // Diagnosis remains a separate relationship, never execution progress.
+    const executionId = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean)[0];
+    const realTaskId = (options?.executionFirst ? executionId : "") || taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
     const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
@@ -1259,7 +1262,7 @@ async function upsertGcOsShellRows(
       cliente: (osPayload as any).gc_os_cliente || "Cliente não identificado",
       tecnico: "",
       tecnico_id: "",
-      data_tarefa: (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
+      data_tarefa: options?.executionFirst ? null : (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
       status_auvo: semTarefa ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
       orientacao: "",
       pendencia: "",
@@ -2538,7 +2541,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
   if (body?.report_step)
     return await runBoundedReportStep(sbClient, gcH, body, {
       fetchOs: fetchGcOs,
-      saveOs: upsertGcOsShellRows,
+      saveOs: (sb, result) => upsertGcOsShellRows(sb, result, { executionFirst: true }),
       backlink: backlinkGcDocsToExistingTasks,
       fetchBudgets: fetchGcOrcamentosByOsCodigos,
       getOs: (id) =>
@@ -2549,6 +2552,49 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         ),
       mapOs: mapGcOsToMirrorPayload,
       mirrorPatch: mirrorUpdateFromGcPayload,
+      syncOsTasks: async (taskIds) => {
+        const token = await auvoLogin(auvoApiKey, auvoApiToken);
+        return await syncLinkedReportTasks(sbClient, taskIds, {
+          getTask: async (taskId) => {
+            let response: Response;
+            for (let attempt = 0; ; attempt++) {
+              response = await rateLimitedFetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
+                headers: auvoHeaders(token), signal: AbortSignal.timeout(15_000),
+              }, "auvo");
+              if (attempt >= 1 || ![429, 502, 503, 504].includes(response.status)) return response;
+              await new Promise((resolve) => setTimeout(resolve, 1_000));
+            }
+          },
+          enrich: async (task) => {
+            const equipmentIds = extractAuvoEquipmentIds(task);
+            const catalog = await loadAuvoEquipmentCatalog(sbClient, token, equipmentIds);
+            const equipment = joinAuvoEquipmentInfo([
+              ...extractAuvoInlineEquipmentInfo(task),
+              ...equipmentIds.map((id) => catalog.get(id)).filter((item): item is AuvoEquipmentInfo => !!item),
+            ]);
+            return {
+              ...(equipment.name ? { equipamento_nome: equipment.name } : {}),
+              ...(equipment.identifier ? { equipamento_id_serie: equipment.identifier } : {}),
+              ...(resolveTaskAddress(task) ? { endereco: resolveTaskAddress(task) } : {}),
+              ...(resolveTaskType(task) ? { descricao: resolveTaskType(task) } : {}),
+            };
+          },
+          afterSave: async (task) => {
+            const equipmentIds = extractAuvoEquipmentIds(task);
+            if (!equipmentIds.length) return;
+            const { error } = await sbClient.from("equipamento_tarefas_auvo").upsert(equipmentIds.map((id) => ({
+              auvo_equipment_id: id, auvo_task_id: String(task.taskID),
+              auvo_task_type_id: auvoTaskTypeId(task) || null,
+              auvo_task_type_description: resolveTaskType(task) || null,
+              data_tarefa: normalizeDate(task.taskDate),
+              tecnico: resolveAuvoTechnicianName(task),
+              cliente: String(task.customerDescription || task.customerName || ""),
+              source: "native_equipment_relation", synced_at: new Date().toISOString(),
+            })), { onConflict: "auvo_equipment_id,auvo_task_id" });
+            if (error) throw new Error(`Falha ao atualizar equipamentos da tarefa ${task.taskID}: ${error.message}`);
+          },
+        });
+      },
     });
 
   if (body?.orcamentos_only === true) {

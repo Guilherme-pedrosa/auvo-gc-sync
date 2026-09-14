@@ -1,17 +1,14 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { startOfMonth, endOfMonth, format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { FileText, Clock, Settings, RefreshCw, CalendarIcon } from "lucide-react";
+import { FileText, Clock, Settings, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isOpenOsSituation } from "@/lib/osOpenStatuses";
-import { reportsSyncPendingSummary, syncReportsInSteps, type ReportsSyncWarning } from "@/lib/reportsSync";
+import { reportsSyncPendingSummary, syncReportsInSteps, syncWorkedHoursInSteps, type ReportsSyncWarning } from "@/lib/reportsSync";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
@@ -22,7 +19,7 @@ import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 const REPORTS_SYNC_CHUNK_DAYS = 1;
 const TAREFAS_CENTRAL_REPORT_COLUMNS = [
-  "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
+  "mirror_key", "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
   "orientacao", "pendencia", "descricao", "endereco", "auvo_link", "auvo_task_url", "auvo_survey_url",
   "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
   "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
@@ -36,7 +33,7 @@ const TAREFAS_CENTRAL_REPORT_COLUMNS = [
 const parseAuvoTaskIds = (value: unknown): string[] => {
   const raw = String(value ?? "").trim();
   if (!raw) return [];
-  return raw.split("/").map((id) => id.trim()).filter((id) => /^\d+$/.test(id));
+  return raw.split(/\D+/).filter((id) => /^\d+$/.test(id) && Number(id) > 0);
 };
 
 const buildDateChunks = (from: Date, to: Date, chunkDays = REPORTS_SYNC_CHUNK_DAYS) => {
@@ -61,9 +58,11 @@ const buildDateChunks = (from: Date, to: Date, chunkDays = REPORTS_SYNC_CHUNK_DA
 
 const fetchAllTarefasCentral = async ({
   onlyWithOs = false,
+  taskIds,
   signal,
 }: {
   onlyWithOs?: boolean;
+  taskIds?: string[];
   signal?: AbortSignal;
 } = {}) => {
   const rows: any[] = [];
@@ -81,6 +80,7 @@ const fetchAllTarefasCentral = async ({
     if (onlyWithOs) {
       query = query.not("gc_os_id", "is", null);
     }
+    if (taskIds?.length) query = query.in("auvo_task_id", taskIds);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -112,8 +112,9 @@ export default function RelatoriosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
   const [syncWarnings, setSyncWarnings] = useState<ReportsSyncWarning[]>([]);
-  const syncOsWarnings = syncWarnings.filter(warning => warning.kind !== "auvo_day");
+  const syncOsWarnings = syncWarnings.filter(warning => !warning.kind || warning.kind === "os");
   const syncDayWarnings = syncWarnings.filter(warning => warning.kind === "auvo_day");
+  const syncTaskWarnings = syncWarnings.filter(warning => warning.kind === "auvo_task");
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("os-abertas");
@@ -125,6 +126,7 @@ export default function RelatoriosPage() {
 
   const refreshRelatoriosData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
+    queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-referenciadas"] });
     queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
     queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
   }, [queryClient]);
@@ -136,24 +138,25 @@ export default function RelatoriosPage() {
     setSyncing(true);
     setSyncFailed(false);
     setSyncWarnings([]);
-    setSyncStatusMessage("Iniciando sincronização em lotes...");
+    const workedHours = !situacaoIds?.length && activeTab === "horas";
+    setSyncStatusMessage(workedHours ? "Atualizando horas do período selecionado..." : "Buscando OS do GC e suas tarefas vinculadas...");
     try {
-      const totals = await syncReportsInSteps(
-        (name, options) => supabase.functions.invoke(name, options),
-        {
-          days: situacaoIds?.length ? [] : buildDateChunks(dateFrom, dateTo),
-          situationIds: situacaoIds,
-          signal: controller.signal,
-          onProgress: (message, completed) => setSyncStatusMessage(`${message} · ${completed} lotes concluídos`),
-          onWarnings: setSyncWarnings,
-        },
-      );
+      const invoke = (name: string, options: { body: Record<string, unknown> }) => supabase.functions.invoke(name, options);
+      const callbacks = {
+        signal: controller.signal,
+        onProgress: (message: string, completed: number) => setSyncStatusMessage(`${message} · ${completed} lotes concluídos`),
+        onWarnings: setSyncWarnings,
+      };
+      const totals = workedHours
+        ? await syncWorkedHoursInSteps(invoke, { ...callbacks, days: buildDateChunks(dateFrom, dateTo) })
+        : await syncReportsInSteps(invoke, { ...callbacks, situationIds: situacaoIds });
+      const summary = `${workedHours ? "" : `${totals.orders} OS atualizadas, `}${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas`;
       if (totals.incomplete) {
         const pending = reportsSyncPendingSummary(totals.warnings);
-        setSyncStatusMessage(`Sincronização parcial: ${totals.orders} OS atualizadas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas. ${pending}. Registros existentes preservados.`);
+        setSyncStatusMessage(`Sincronização parcial: ${summary}. ${pending}. Registros existentes preservados.`);
         toast.warning(`${pending}. Os demais lotes foram processados.`, { duration: 15000 });
       } else {
-        setSyncStatusMessage(`Sincronização concluída: ${totals.orders} OS conferidas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas.`);
+        setSyncStatusMessage(`Sincronização concluída: ${summary}.`);
         toast.success("Sincronização concluída e dados gravados.");
       }
     } catch (error: any) {
@@ -180,6 +183,33 @@ export default function RelatoriosPage() {
     staleTime: 60_000,
     enabled: activeTab === "os-abertas",
   });
+
+  const referencedOsTaskIds = useMemo(() => [...new Set((tarefasOS || []).filter(isOpenOsSituation).flatMap(task => [
+    ...parseAuvoTaskIds(task.gc_os_tarefa_os), ...parseAuvoTaskIds(task.gc_os_tarefa_exec),
+  ]))].sort(), [tarefasOS]);
+  const { data: referencedOsTasks, isLoading: isLoadingReferencedTasks } = useQuery({
+    queryKey: ["relatorios-tarefas-referenciadas", referencedOsTaskIds.join(",")],
+    queryFn: async ({ signal }) => {
+      const rows: any[] = [];
+      for (let index = 0; index < referencedOsTaskIds.length; index += 200) {
+        rows.push(...await fetchAllTarefasCentral({ taskIds: referencedOsTaskIds.slice(index, index + 200), signal }));
+      }
+      return rows;
+    },
+    enabled: activeTab === "os-abertas" && referencedOsTaskIds.length > 0,
+    staleTime: 60_000,
+  });
+  // GC rows define the OS collection. Referenced base tasks supplement lookup
+  // only; an execution does not acquire a synthetic GC OS relationship.
+  const osAbertasTasks = useMemo(() => {
+    const rows = new Map<string, any>();
+    for (const row of [...(tarefasOS || []), ...(referencedOsTasks || [])]) {
+      const key = row.mirror_key || `${row.auvo_task_id}::os:${row.gc_os_id || ""}::orc:${row.gc_orcamento_id || ""}`;
+      const previous = rows.get(key);
+      if (!previous || String(row.atualizado_em || "") >= String(previous.atualizado_em || "")) rows.set(key, row);
+    }
+    return [...rows.values()];
+  }, [tarefasOS, referencedOsTasks]);
 
   // Dedicated fetch for Horas Trabalhadas tab: reads the local mirror directly.
   // Live Auvo refresh remains explicit per OS to avoid freezing the report UI.
@@ -218,8 +248,9 @@ export default function RelatoriosPage() {
 
   const equipamentoLookupTaskIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const task of tarefasOS || []) {
+    for (const task of osAbertasTasks) {
       if (task?.auvo_task_id) ids.add(String(task.auvo_task_id));
+      parseAuvoTaskIds(task?.gc_os_tarefa_os).forEach((id) => ids.add(id));
       parseAuvoTaskIds(task?.gc_os_tarefa_exec).forEach((id) => ids.add(id));
     }
     for (const task of horasData || []) {
@@ -227,7 +258,7 @@ export default function RelatoriosPage() {
       parseAuvoTaskIds((task as any)?.gc_os_tarefa_exec).forEach((id) => ids.add(id));
     }
     return Array.from(ids).sort();
-  }, [tarefasOS, horasData]);
+  }, [osAbertasTasks, horasData]);
 
   // Equipment links: auvo_task_id → { nome, id_serie } (fallback for tasks where
   // tarefas_central.equipamento_nome was not populated by the sync)
@@ -303,26 +334,27 @@ export default function RelatoriosPage() {
 
   // Map: auvo_task_id → status_auvo (to look up execution task status)
   // Uses ALL tasks so execution tasks not directly linked to an OS are still found
-  const osAbertasTasks = tarefasOS || [];
-
   const execTaskStatusMap = useMemo(() => {
     const source = osAbertasTasks;
     if (!source) return new Map<string, string>();
     const map = new Map<string, string>();
-    for (const t of source) {
-      // Derive a reliable status: only mark as "Finalizada" if check_out is true
-      let status = t.status_auvo || "";
-      if (status === "Finalizada" && !t.check_out) {
-        // Task was incorrectly marked — treat as in-progress or paused
-        status = t.check_in ? "Em andamento" : "Agendada";
-      }
-      map.set(t.auvo_task_id, status);
+    const byTask = new Map<string, any>();
+    const hydrated = (task: any) => !!task.status_auvo && !String(task.status_auvo).startsWith("Pendente vínculo");
+    for (const task of source) {
+      if (!task.auvo_task_id) continue;
+      const current = byTask.get(task.auvo_task_id);
+      if (!current || (hydrated(task) && !hydrated(current)) || (hydrated(task) === hydrated(current)
+        && String(task.atualizado_em || "") > String(current.atualizado_em || ""))) byTask.set(task.auvo_task_id, task);
+    }
+    for (const t of byTask.values()) {
+      // The provider's explicit status can confirm completion without checkout.
+      map.set(t.auvo_task_id, t.status_auvo || "");
     }
     return map;
   }, [osAbertasTasks]);
 
   const allClientes = useMemo(() => {
-    const source = horasData?.length ? horasData : osAbertasTasks;
+    const source = activeTab === "os-abertas" ? osAbertasTasks : horasData || [];
     if (!source.length) return [] as string[];
     const normalize = (s: string) =>
       s.trim().toUpperCase()
@@ -336,7 +368,7 @@ export default function RelatoriosPage() {
       if (!map.has(key)) map.set(key, raw);
     }
     return Array.from(map.values()).sort() as string[];
-  }, [horasData, osAbertasTasks]);
+  }, [activeTab, horasData, osAbertasTasks]);
 
   const allTecnicos = useMemo(() => {
     const source = horasData?.length ? horasData : osAbertasTasks;
@@ -366,44 +398,7 @@ export default function RelatoriosPage() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("gap-1.5 w-[130px] justify-start text-left font-normal")}>
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateFrom, "dd/MM/yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={dateFrom}
-                  onSelect={(d) => d && setDateFrom(d)}
-                  initialFocus
-                  locale={ptBR}
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-            <span className="text-sm text-muted-foreground">até</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("gap-1.5 w-[130px] justify-start text-left font-normal")}>
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateTo, "dd/MM/yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={dateTo}
-                  onSelect={(d) => d && setDateTo(d)}
-                  initialFocus
-                  locale={ptBR}
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button
+            {activeTab !== "config" && <Button
               variant="outline"
               size="sm"
               className="gap-1.5"
@@ -411,8 +406,8 @@ export default function RelatoriosPage() {
               disabled={syncing}
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Sincronizando..." : "Sincronizar"}
-            </Button>
+              {syncing ? "Sincronizando..." : activeTab === "horas" ? "Sincronizar horas" : "Sincronizar OS"}
+            </Button>}
           </div>
           {(syncing || syncStatusMessage) && (
             <div className="w-72 space-y-1.5">
@@ -431,6 +426,11 @@ export default function RelatoriosPage() {
                       <p className="font-medium">Dias Auvo não confirmados</p>
                       <ul className="mt-1 space-y-1">{syncDayWarnings.map(warning =>
                         <li key={`${warning.start_date}:${warning.end_date}`}>{warning.message}</li>)}</ul>
+                    </div>}
+                    {syncTaskWarnings.length > 0 && <div>
+                      <p className="font-medium">Tarefas Auvo não confirmadas</p>
+                      <ul className="mt-1 space-y-1">{syncTaskWarnings.map(warning =>
+                        <li key={warning.task_id}>{warning.message}</li>)}</ul>
                     </div>}
                   </div>
                 </details>
@@ -460,7 +460,7 @@ export default function RelatoriosPage() {
           <OSAbertasTab
             data={osAbertas}
             allTasks={osAbertasTasks}
-            isLoading={isLoadingOS}
+            isLoading={isLoadingOS || isLoadingReferencedTasks}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
             onSync={(situacaoIds) => handleSync(situacaoIds)}
