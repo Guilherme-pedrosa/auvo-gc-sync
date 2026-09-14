@@ -1,3 +1,4 @@
+// Scheduling sync: partial balances and safe GC status reconciliation (2026-09-14).
 // Hourly imports persist complete days; interactive imports require the whole period.
 // Controle OS: bounded report steps preserve Auvo assignments and report confirmed progress.
 import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
@@ -555,11 +556,17 @@ async function loadAuvoEquipmentCatalog(
 
 // The transport retains the existing date filter and server-side credentials.
 async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<AuvoTaskFetchResult> {
-  return fetchAuvoTaskWindows((date, page) => {
-    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: date + "T00:00:00", endDate: date + "T23:59:59" }));
-    const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
-    return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
-  }, startDate, endDate);
+  return fetchAuvoTaskWindows(
+    (date, page) => {
+      const paramFilter = encodeURIComponent(
+        JSON.stringify({ startDate: date + "T00:00:00", endDate: date + "T23:59:59" }),
+      );
+      const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
+      return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
+    },
+    startDate,
+    endDate,
+  );
 }
 
 type DeletedTaskReconciliation = {
@@ -2188,11 +2195,13 @@ async function reconcileOpenOsMirror(
     const freshList = await Promise.all(
       batch.map(async (osId) => {
         try {
-          const result = await readGcOsForReconciliation(osId, (id) => rateLimitedFetch(
-            `${GC_BASE_URL}/api/ordens_servicos/${id}`,
-            { headers: gcHeaders, signal: AbortSignal.timeout(15_000) },
-            "gc",
-          ));
+          const result = await readGcOsForReconciliation(osId, (id) =>
+            rateLimitedFetch(
+              `${GC_BASE_URL}/api/ordens_servicos/${id}`,
+              { headers: gcHeaders, signal: AbortSignal.timeout(15_000) },
+              "gc",
+            ),
+          );
           if (result.kind === "unavailable") {
             console.warn(`[central-sync] ${result.warning.message}`);
             return null;
@@ -2760,8 +2769,15 @@ async function runCentralSync(body: CentralSyncBody = {}) {
   if (body?.reports_only === true) {
     // Only asynchronous jobs may keep confirmed days while another day fails.
     // wait/fast/lite are synchronous modes and retain the strict report contract.
-    return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate,
-      body?.reconcile_open_os !== false, body?.wait !== true && body?.fast !== true && body?.lite !== true);
+    return await runReportsOnlySync(
+      sbClient,
+      bearerToken,
+      gcH,
+      startDate,
+      endDate,
+      body?.reconcile_open_os !== false,
+      body?.wait !== true && body?.fast !== true && body?.lite !== true,
+    );
   }
 
   // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
