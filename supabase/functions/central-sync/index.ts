@@ -1,3 +1,4 @@
+// Controle OS: confirm empty Auvo 404 days and continue report synchronization (2026-09-14).
 // Budget execution scheduling: discover unassigned Auvo tasks from GC (2026-09-14).
 // Scheduling sync: partial balances and safe GC status reconciliation (2026-09-14).
 // Hourly imports persist complete days; interactive imports require the whole period.
@@ -561,12 +562,7 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
     const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
     return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
   };
-  return fetchAuvoTaskWindows(
-    (date, page) => fetchRange(date, date, page),
-    startDate,
-    endDate,
-    { fetchRange },
-  );
+  return fetchAuvoTaskWindows((date, page) => fetchRange(date, date, page), startDate, endDate, { fetchRange });
 }
 
 type DeletedTaskReconciliation = {
