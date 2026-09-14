@@ -30,7 +30,7 @@ describe("Controle OS — sincronização em lotes", () => {
     expect(bodies[3].budget_codes).toHaveLength(3);
     expect(bodies[4].budget_codes).toEqual(["4"]);
     expect(bodies.slice(-2).every(body => body.reconcile_open_os === false && body.wait === true)).toBe(true);
-    expect(totals).toEqual({ orders: 50, tasks: 60, saved: 60, transitioned: 1 });
+    expect(totals).toEqual({ orders: 50, tasks: 60, saved: 60, transitioned: 1, incomplete: false, warnings: [] });
     expect(progress.mock.lastCall).toEqual(["Todos os lotes foram concluídos e gravados.", 7]);
   });
 
@@ -44,11 +44,34 @@ describe("Controle OS — sincronização em lotes", () => {
     expect(await error.context.json()).toMatchObject({ code: "IDLE_TIMEOUT" });
   });
 
+  it("continua orçamentos e Auvo após uma OS sem permissão e informa a pendência ao final", async () => {
+    const warning = { os_id: "389831437", status: 400,
+      message: "OS 389831437: HTTP 400 — Você não possui permissão para acessar este pedido!. Registro preservado." };
+    const invoke = vi.fn(async (_name, { body }) => {
+      if (body.report_step === "os_page") return { data: { success: true, report_step: "os_page",
+        os_ids: ["77"], budget_codes: ["6686"], upserted: 1, next_page: null }, error: null };
+      if (body.report_step === "os_reconcile") return { data: { success: true, report_step: "os_reconcile",
+        transitioned: 2, incomplete: true, warnings: [warning], next_after: body.after_os_id ? null : "389831437" }, error: null };
+      return { data: { success: true, report_step: body.report_step, auvo_tarefas: 12, upserted: 12 }, error: null };
+    });
+    const progress = vi.fn();
+    const onWarnings = vi.fn();
+    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"],
+      days: [{ start: "2026-09-14", end: "2026-09-14" }], onProgress: progress, onWarnings });
+    expect(invoke.mock.calls.map(([, { body }]) => body.report_step || "auvo"))
+      .toEqual(["os_page", "os_reconcile", "os_reconcile", "budgets", "auvo"]);
+    expect(totals).toEqual({ orders: 1, tasks: 12, saved: 12, transitioned: 4, incomplete: true, warnings: [warning] });
+    expect(onWarnings).toHaveBeenLastCalledWith([warning]);
+    expect(progress.mock.lastCall).toEqual(["Lotes processados; 1 OS ficaram pendentes de conferência. Registros preservados.", 5]);
+    expect(progress).not.toHaveBeenCalledWith("Todos os lotes foram concluídos e gravados.", expect.anything());
+  });
+
   it.each([
     { success: true, errors: 1 },
     { success: true, background: true },
     { success: false, error: "Gravação recusada" },
     { success: true, report_step: "serviço antigo" },
+    { success: true, report_step: "os_page", incomplete: true },
   ])("não confirma uma etapa incompleta: %j", async data => {
     const invoke = vi.fn(async () => ({ data, error: null }));
     const progress = vi.fn();
@@ -178,15 +201,50 @@ describe("etapas reais do backend", () => {
     expect(deps.fetchBudgets).not.toHaveBeenCalled();
   });
 
-  it("preserva a OS quando a consulta individual retorna 400 ou identidade inválida", async () => {
+  it("preserva a OS e sinaliza pendência quando a consulta retorna 400 ou identidade inválida", async () => {
     for (const response of [new Response("erro", { status: 400 }), Response.json({ data: {} })]) {
       const deps = dependencies(); deps.getOs.mockResolvedValue(response);
       const update = vi.fn();
       const query: any = { in: () => query, not: () => query, order: () => query,
         range: async () => ({ data: [{ gc_os_id: "77" }], error: null }) };
       const sb = { from: () => ({ select: () => query, update }) };
-      await expect(runBoundedReportStep(sb, {}, { report_step: "os_reconcile", situacao_ids: ["7063705"], known_os_ids: [] }, deps)).rejects.toThrow(/preservado/i);
+      const result = await runBoundedReportStep(sb, {}, { report_step: "os_reconcile", situacao_ids: ["7063705"], known_os_ids: [] }, deps);
+      expect(result).toMatchObject({ success: true, incomplete: true, transitioned: 0, checked: 1, next_after: null,
+        warnings: [{ os_id: "77", message: expect.stringMatching(/preservado/i) }] });
       expect(update).not.toHaveBeenCalled();
     }
+  });
+
+  it("não deixa a OS 389831437 bloquear as demais OS nem repetir a mesma página", async () => {
+    const deps = dependencies();
+    const blockedId = "389831437";
+    const rows = Array.from({ length: 6 }, (_, index) => ({ gc_os_id: String(Number(blockedId) + index) }));
+    deps.getOs.mockImplementation(async id => id === blockedId ? Response.json({ code: 400, status: "error",
+      data: { erro: "Bad Request", mensagem: "Você não possui permissão para acessar este pedido!" } }, { status: 400 })
+      : Response.json({ data: { id, nome_situacao: "EXECUTADO" } }));
+    const writes: any[] = [];
+    const query: any = { in: () => query, not: () => query, order: () => query,
+      range: async () => ({ data: rows, error: null }) };
+    const sb = { from: () => ({ select: () => query, update: patch => ({ eq: async (_key: string, id: string) => {
+      writes.push({ id, patch }); return { error: null };
+    } }) }) };
+    const body = { report_step: "os_reconcile", situacao_ids: ["7063705"], known_os_ids: [] };
+    const first = await runBoundedReportStep(sb, {}, body, deps);
+    expect(first).toMatchObject({ transitioned: 4, checked: 5, incomplete: true, next_after: "389831441",
+      warnings: [{ os_id: blockedId, status: 400, message: expect.stringContaining("não possui permissão") }] });
+    const second = await runBoundedReportStep(sb, {}, { ...body, after_os_id: first.next_after }, deps);
+    expect(second).toMatchObject({ transitioned: 1, checked: 1, incomplete: false, warnings: [], next_after: null });
+    expect(writes.map(write => write.id)).toEqual(rows.slice(1).map(row => row.gc_os_id));
+    expect(deps.getOs.mock.calls.filter(([id]) => id === blockedId)).toHaveLength(1);
+  });
+
+  it("uma falha de gravação continua interrompendo o lote em vez de virar aviso", async () => {
+    const deps = dependencies();
+    const query: any = { in: () => query, not: () => query, order: () => query,
+      range: async () => ({ data: [{ gc_os_id: "77" }], error: null }) };
+    const sb = { from: () => ({ select: () => query,
+      update: () => ({ eq: async () => ({ error: { message: "statement timeout" } }) }) }) };
+    await expect(runBoundedReportStep(sb, {}, { report_step: "os_reconcile", situacao_ids: ["7063705"] }, deps))
+      .rejects.toThrow("Falha ao atualizar situação da OS 77: statement timeout");
   });
 });

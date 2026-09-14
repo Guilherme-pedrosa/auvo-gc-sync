@@ -18,6 +18,21 @@ export type PickPackPendingItem = {
   pending_quantity: number;
 };
 
+export type PartialBalanceStatus = "verified" | "not_found" | "unavailable" | "not_applicable";
+
+type PartialArrivalProduct = {
+  quantidade: number;
+  pedidos_compra?: Array<{ estado: string; data_chegada: string | null }>;
+};
+
+export type PartialWriteoffArrival = {
+  saldo_baixa_parcial_encerrado: boolean;
+  tem_saldo_pendente: boolean | null;
+  data_chegada: string | null;
+  proxima_reposicao: string | null;
+  pode_agendar: boolean;
+};
+
 function normalizedId(value: unknown): string {
   const id = String(value ?? "").trim();
   return ["", "0", "null", "undefined"].includes(id.toLowerCase()) ? "" : id;
@@ -30,6 +45,51 @@ export function normalizePartialBudgetCode(value: unknown): string {
 /** Impede que o Pick & Pack interfira em qualquer fluxo que não seja baixa parcial. */
 export function shouldUsePickPackPartialBalance(group: unknown): boolean {
   return String(group ?? "").trim() === "baixa_parcial";
+}
+
+/**
+ * Datas de uma baixa anterior não prometem a reposição do saldo restante.
+ * Ausência de saldo no serviço também não comprova que o saldo foi encerrado.
+ */
+export function resolvePartialWriteoffArrival(input: {
+  group: unknown;
+  status: PartialBalanceStatus;
+  pendingProducts: PartialArrivalProduct[];
+  missingProducts: PartialArrivalProduct[];
+  allInStock: boolean;
+  today: string;
+}): PartialWriteoffArrival | null {
+  if (!shouldUsePickPackPartialBalance(input.group)) return null;
+
+  const verified = input.status === "verified";
+  const hasPending = verified
+    ? input.pendingProducts.some(product => Number(product.quantidade) > 0.000001)
+    : null;
+  const closed = verified && !hasPending;
+  const canSchedule = hasPending === true && input.allInStock;
+  const datesByMissingProduct = hasPending === true
+    ? input.missingProducts
+      .filter(product => Number(product.quantidade) > 0.000001)
+      .map(product => (product.pedidos_compra ?? [])
+        .filter(order => order.estado === "pendente" && order.data_chegada)
+        .map(order => String(order.data_chegada).slice(0, 10))
+        .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))
+    : [];
+  // O prazo global representa o saldo inteiro; a chegada de uma peça não
+  // confirma a reposição das demais. Os prazos individuais ficam nos produtos.
+  const everyMissingProductHasDate = datesByMissingProduct.length > 0
+    && datesByMissingProduct.every(dates => dates.length > 0);
+  const replacementDate = everyMissingProductHasDate
+    ? datesByMissingProduct.flat().sort().at(-1) ?? null
+    : null;
+
+  return {
+    saldo_baixa_parcial_encerrado: closed,
+    tem_saldo_pendente: hasPending,
+    data_chegada: canSchedule ? input.today : replacementDate,
+    proxima_reposicao: replacementDate,
+    pode_agendar: canSchedule,
+  };
 }
 
 export function partialProductKey(productId: unknown, variationId?: unknown): string {

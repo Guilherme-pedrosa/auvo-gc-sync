@@ -50,6 +50,7 @@ import {
   fetchPrevisoesChegada,
   PREVISAO_CHEGADA_QUERY_KEY,
 } from "@/lib/previsaoChegada";
+import { isPartialBalanceForecast, PARTIAL_BALANCE_FORECAST, partialBalanceConversionStatus, partialBalancePlanningStatus } from "@/lib/partialBalancePlanning";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -104,6 +105,7 @@ export default function AgendamentoEquipeDialog({
     refetchOnWindowFocus: true,
   });
   const chegadaAtual = agendamento ? chegadaDoAgendamento(agendamento, chegadas) : null;
+  const previsaoSaldo = Boolean(agendamento && isPartialBalanceForecast(agendamento, chegadaAtual));
   const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
   const previsaoAtrasada = Boolean(data && dataChegadaAtual && data < dataChegadaAtual);
   const previsaoNoMesmoDia = Boolean(data && dataChegadaAtual && data === dataChegadaAtual);
@@ -238,6 +240,10 @@ export default function AgendamentoEquipeDialog({
   const lista = tecnicos.length > 0 ? tecnicos : colaboradores.filter((c) => c.ativo);
 
   const handleSave = async () => {
+    if (previsaoSaldo && (chegadaAtual?.saldo_baixa_parcial_encerrado || chegadaAtual?.saldo_baixa_parcial_status !== "verified")) {
+      toast.error(partialBalancePlanningStatus(chegadaAtual));
+      return;
+    }
     const nome = lista.find((c) => c.id === colaboradorId)?.nome ?? "";
     const colab = lista.find((c) => c.id === colaboradorId);
     if (!data || !colaboradorId || !cliente.trim()) {
@@ -338,7 +344,8 @@ export default function AgendamentoEquipeDialog({
         auvo_task_id: agendamento?.auvo_task_id ?? null,
         origem: agendamento ? agendamento.origem : "MANUAL",
         status: agendamento ? agendamento.status : "PREVISAO",
-        previsao_tipo: agendamento ? agendamento.previsao_tipo : "CONTINUACAO",
+        previsao_tipo: previsaoSaldo ? PARTIAL_BALANCE_FORECAST : agendamento ? agendamento.previsao_tipo : "CONTINUACAO",
+        ...(previsaoSaldo ? { conversao_status: partialBalanceConversionStatus(chegadaAtual), conversao_erro: null } : {}),
         gc_os_codigo: agendamento?.gc_os_codigo,
         gc_orcamento_codigo: agendamento?.gc_orcamento_codigo,
         previsao_continuidade: ehPrevisao,
@@ -522,6 +529,13 @@ export default function AgendamentoEquipeDialog({
 
           {ehPrevisao && (
             <div className="space-y-3 p-3 bg-primary/5 rounded-md border border-primary/20">
+              {previsaoSaldo && <div className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <strong>{partialBalancePlanningStatus(chegadaAtual)}</strong>
+                <p>Reserva para o saldo do orçamento {agendamento?.gc_orcamento_codigo}.
+                  {agendamento?.gc_os_codigo ? ` A OS ${agendamento.gc_os_codigo} pertence a uma baixa anterior.` : ""}
+                  {chegadaAtual?.saldo_baixa_parcial_encerrado ? " Não há peças restantes para uma nova chegada." : " A execução anterior permanece no histórico."}
+                </p>
+              </div>}
               {ehPrevisaoOrcamento && (
                   <div className={cn(
                     "space-y-2 rounded-md border p-3",

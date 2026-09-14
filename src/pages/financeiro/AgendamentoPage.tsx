@@ -19,13 +19,14 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, CHEGADAS_QUERY_POLICY, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates, isForecastDelayedByParts,
+  latestForecastForDocument, missingPartArrivalDates, isForecastDelayedByParts,
 
   type ChegadaItem, type ChegadaStatus,
   type PrevisaoAgendamento,
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
 import AgendamentoAiPanel from "@/components/financeiro/AgendamentoAiPanel";
+import { normalizeChegadaForPlanning, partialBalancePlanningStatus } from "@/lib/partialBalancePlanning";
 import {
   chegadaItemKey, chegadaSituacao, isPedidoCompra, matchesChegadaDocumentType,
   matchesChegadaSearch, normalizeChegadaSearch, type ChegadaDocumentType,
@@ -84,12 +85,7 @@ async function fetchChegadas(force = false): Promise<ChegadaItem[]> {
     ultimoStatusChegadas = { cache: data?.cache, mensagem: data?.mensagem, gerado_em: data?.gerado_em };
 
 
-    let itens = ((data?.itens || []) as ChegadaItem[]).map((item) => {
-      const maiorPrazo = latestMissingPartsArrival(item.pecas_em_falta);
-      return maiorPrazo
-        ? { ...item, data_chegada: maiorPrazo, proxima_reposicao: maiorPrazo }
-        : item;
-    });
+    let itens = ((data?.itens || []) as ChegadaItem[]).map(normalizeChegadaForPlanning);
     console.log("[AgendamentoPage] Itens recebidos:", itens.length);
 
     // Buscar previsões locais para marcar nos cards
@@ -234,7 +230,8 @@ export default function AgendamentoPage() {
 
 
   const termoCliente = normalizeChegadaSearch(buscaCliente);
-  const itensDoTipo = useMemo(() => itens.filter(i => matchesChegadaDocumentType(i, tipoDoc)), [itens, tipoDoc]);
+  const itensAtivos = useMemo(() => itens.filter(i => !i.saldo_baixa_parcial_encerrado), [itens]);
+  const itensDoTipo = useMemo(() => itensAtivos.filter(i => matchesChegadaDocumentType(i, tipoDoc)), [itensAtivos, tipoDoc]);
   const filtrados = useMemo(() => {
     return itensDoTipo.filter(i =>
       !excludedSituacoes.has(chegadaSituacao(i))
@@ -244,10 +241,10 @@ export default function AgendamentoPage() {
   }, [itensDoTipo, busca, termoCliente, excludedSituacoes]);
 
   const totaisTipo = useMemo(() => ({
-    todos: itens.length,
-    orcamentos: itens.filter((i) => !isPedidoCompra(i)).length,
-    pedidos: itens.filter((i) => isPedidoCompra(i)).length,
-  }), [itens]);
+    todos: itensAtivos.length,
+    orcamentos: itensAtivos.filter((i) => !isPedidoCompra(i)).length,
+    pedidos: itensAtivos.filter((i) => isPedidoCompra(i)).length,
+  }), [itensAtivos]);
 
   const allSituacoes = useMemo(() => {
     return Array.from(new Set(itensDoTipo.map(chegadaSituacao))).sort();
@@ -336,10 +333,15 @@ export default function AgendamentoPage() {
   }, [filtrados, atrasadas, semData]);
 
   const abrirPrevisao = (i: ChegadaItem) => {
+    if (i.grupo === "baixa_parcial" && (i.saldo_baixa_parcial_encerrado || i.saldo_baixa_parcial_status !== "verified")) {
+      toast.error(partialBalancePlanningStatus(i));
+      return;
+    }
     const semEstoque = i.pode_agendar === false;
     const dataReposicaoConfirmada = semEstoque ? (i.proxima_reposicao || null) : null;
     setAlvo({
       previsao_id: i.previsao_id || null,
+      saldo_baixa_parcial: i.grupo === "baixa_parcial" ? i : null,
       auvo_task_id: null,
       exec_task_id: null,
       gc_os_codigo: i.os_codigo || (i.vinculo_tipo === "os" ? i.vinculo_codigo : null),
@@ -499,6 +501,7 @@ export default function AgendamentoPage() {
             </Badge>
           )}
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
+          {i.grupo === "baixa_parcial" && <p className="text-[11px] font-medium text-amber-800">{partialBalancePlanningStatus(i)}</p>}
           {i.fornecedor && <Badge variant="outline" className="max-w-[160px] truncate text-[10px]">{i.fornecedor}</Badge>}
           {i.equipamento && <Badge variant="outline" className="max-w-[180px] truncate text-[10px]">{i.equipamento}</Badge>}
         </div>
@@ -540,7 +543,9 @@ export default function AgendamentoPage() {
             <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>
-                <strong>OS já lançada</strong> para este orçamento (OS {i.os_codigo}). A previsão é somente interna e não cria outra tarefa no Auvo ou no GestãoClick.
+                {i.grupo === "baixa_parcial"
+                  ? <>OS {i.os_codigo} de uma baixa anterior. O planejamento abaixo considera somente o saldo restante do orçamento.</>
+                  : <><strong>OS já lançada</strong> para este orçamento (OS {i.os_codigo}). A previsão é somente interna e não cria outra tarefa no Auvo ou no GestãoClick.</>}
               </span>
             </div>
           )}
@@ -551,7 +556,7 @@ export default function AgendamentoPage() {
             )}>
               <div className="flex items-center justify-between">
                 <span className={cn("font-bold uppercase tracking-wider", execucaoAtrasadaPelaPeca ? "text-destructive" : "text-emerald-900")}>
-                  {execucaoAtrasadaPelaPeca ? "🚨 Execução Atrasada por Peças" : "📅 Previsão de Execução"}
+                  {i.grupo === "baixa_parcial" ? "Reserva para saldo restante" : execucaoAtrasadaPelaPeca ? "🚨 Execução Atrasada por Peças" : "📅 Previsão de Execução"}
                 </span>
                 {i.previsao_hora && <span className="text-muted-foreground font-medium">{i.previsao_hora}</span>}
               </div>
@@ -583,12 +588,13 @@ export default function AgendamentoPage() {
               variant={i.previsao_data ? "outline" : "default"}
               className="h-7 flex-1 text-[11px]" 
               onClick={() => abrirPrevisao(i)}
+              disabled={i.grupo === "baixa_parcial" && i.saldo_baixa_parcial_status !== "verified"}
               title={i.pode_agendar === false
                 ? "Criar previsão interna para depois da chegada das peças"
                 : "Criar previsão interna de execução"}
             >
               <CalendarClock className="mr-1 h-3 w-3" /> 
-              {i.previsao_data ? "Alterar previsão" : "Criar previsão"}
+              {i.grupo === "baixa_parcial" ? i.saldo_baixa_parcial_status !== "verified" ? "Confirmar saldo no Pick & Pack" : "Planejar saldo restante" : i.previsao_data ? "Alterar previsão" : "Criar previsão"}
             </Button>
             
             {i.os_codigo && (

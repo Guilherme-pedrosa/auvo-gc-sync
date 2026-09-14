@@ -27,10 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { forecastDateMeetsMinimum, forecastInitialDate, todayISO } from "@/lib/agendamento";
+import { forecastDateMeetsMinimum, forecastInitialDate, todayISO, type ChegadaItem } from "@/lib/agendamento";
+import { PARTIAL_BALANCE_FORECAST, partialBalanceConversionStatus, partialBalancePlanningStatus } from "@/lib/partialBalancePlanning";
 import { useColaboradores } from "@/hooks/rh/useRh";
 
 export type AgendarAlvo = {
+  saldo_baixa_parcial?: ChegadaItem | null;
   previsao_id?: string | null;
   auvo_task_id: string | null;
   mirror_key?: string | null;
@@ -135,6 +137,11 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
   const handleSaveForecast = async () => {
     if (!alvo) return;
+    if (alvo.saldo_baixa_parcial && (alvo.saldo_baixa_parcial.saldo_baixa_parcial_encerrado
+      || alvo.saldo_baixa_parcial.saldo_baixa_parcial_status !== "verified")) {
+      toast.error(partialBalancePlanningStatus(alvo.saldo_baixa_parcial));
+      return;
+    }
     if (!dateISO || !tecnicoId) {
       toast.error("Informe a data e o técnico.");
       return;
@@ -169,8 +176,9 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         gc_os_codigo: alvo.gc_os_codigo || null,
         gc_orcamento_codigo: alvo.gc_orcamento_codigo || null,
         previsao_continuidade: true,
-        previsao_tipo: alvo.gc_orcamento_codigo ? "ORCAMENTO_EXECUCAO" : "OS_EXECUCAO",
-        conversao_status: alvo.gc_orcamento_codigo
+        previsao_tipo: alvo.saldo_baixa_parcial ? PARTIAL_BALANCE_FORECAST
+          : alvo.gc_orcamento_codigo ? "ORCAMENTO_EXECUCAO" : "OS_EXECUCAO",
+        conversao_status: alvo.saldo_baixa_parcial ? partialBalanceConversionStatus(alvo.saldo_baixa_parcial) : alvo.gc_orcamento_codigo
           ? (alvo.gc_os_codigo ? "AGUARDANDO_TAREFA" : "AGUARDANDO_OS")
           : null,
         conversao_erro: null,
@@ -191,7 +199,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         if (alvo.gc_orcamento_codigo) {
           consulta = consulta
             .eq("gc_orcamento_codigo", alvo.gc_orcamento_codigo)
-            .eq("previsao_tipo", "ORCAMENTO_EXECUCAO");
+            .eq("previsao_tipo", payload.previsao_tipo);
         } else if (alvo.gc_os_codigo) {
           consulta = consulta
             .eq("gc_os_codigo", alvo.gc_os_codigo)
@@ -210,11 +218,19 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
       const wasUpdate = Boolean(previsaoId);
       if (previsaoId) {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("agenda_agendamentos")
           .update(payload)
-          .eq("id", previsaoId);
+          .eq("id", previsaoId)
+          .eq("previsao_continuidade", true)
+          .is("auvo_task_id", null)
+          .select("id")
+          .maybeSingle();
         if (error) throw error;
+        if (!updated?.id) {
+          void qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+          throw new Error("Esta previsão já mudou ou foi convertida em tarefa. Atualize a agenda e abra o agendamento atual.");
+        }
       } else {
         const { data: inserted, error } = await supabase
           .from("agenda_agendamentos")
@@ -251,10 +267,10 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4" /> Previsão de execução
+            <CalendarClock className="h-4 w-4" /> {alvo?.saldo_baixa_parcial ? "Planejar saldo da baixa parcial" : "Previsão de execução"}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            {alvo?.gc_os_codigo ? <strong>OS {alvo.gc_os_codigo} · </strong> : null}
+            {alvo?.gc_os_codigo ? <strong>{alvo.saldo_baixa_parcial ? "OS anterior " : "OS "}{alvo.gc_os_codigo} · </strong> : null}
             {!alvo?.gc_os_codigo && alvo?.gc_orcamento_codigo
               ? <strong>Orçamento {alvo.gc_orcamento_codigo} · </strong>
               : null}
@@ -264,6 +280,10 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         </DialogHeader>
 
         <div className="space-y-2">
+          {alvo?.saldo_baixa_parcial && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+            <strong>{partialBalancePlanningStatus(alvo.saldo_baixa_parcial)}</strong>
+            <p>Planejamento das peças restantes do orçamento {alvo.gc_orcamento_codigo}. A execução de uma baixa anterior permanece no histórico.</p>
+          </div>}
           <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
             Esta ação cria somente uma previsão interna no Agendamento Equipe. Nenhuma tarefa será criada ou alterada no Auvo ou no GestãoClick.
           </div>
