@@ -68,6 +68,51 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe("atividades da célula real da agenda", () => {
+  it("reúne três visitas vinculadas em um selo e abre a visita escolhida sem alterar horas ou tarefas", async () => {
+    const task: AgendaAgendamento = {
+      ...activities()[0], id: "task-79241724", auvo_task_id: "79241724", gc_os_codigo: "10169",
+      cliente: "1929 TRATTORIA MODERNA", data: "2026-09-16", duracao_planejada_minutos: 60,
+    };
+    const plans = [4, 5, 7].map(number => contractFor(task, {
+      id: `visit-${number}`, contrato_nome: "TRATTORIA MODERNA", contrato_tipo_nome: "Manutenção Preventiva",
+      contrato_visita_config_id: "trattoria-config", contrato_visita_numero: number,
+      data: number === 7 ? task.data : "2026-09-08",
+      contrato_visita_execucao_id: number === 7 ? null : `execution-${number}`,
+      contrato_visita_realizada_em: number === 7 ? null : "2026-09-08",
+      contrato_visita_tarefas_detalhes: number === 7 ? [] : [{ tarefa_id: `other-${number}`, horas: 4 }],
+    }));
+    const source = [task, ...plans];
+    source.forEach(Object.freeze);
+    Object.freeze(source);
+    const before = JSON.stringify(source);
+    const contractIndicators = buildAgendaContractIndicators(source);
+    expect(contractIndicators.indicatorsByItemId.get(task.id)).toHaveLength(3);
+    const { container, handlers, activityButton, visibleIds } = renderCell([task], { contractIndicators });
+    expect(visibleIds()).toEqual([task.id]);
+    const badges = container.querySelectorAll("[data-contract-visit-recognition]");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent("Contrato");
+    expect(badges[0]).not.toHaveAttribute("draggable", "true");
+    const hoursBefore = screen.getByTitle("Abrir resumo de horas do dia").textContent;
+    fireEvent.keyDown(badges[0], { key: "Enter" });
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /7ª visita/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "7ª visita · 1929 TRATTORIA MODERNA" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Editar previsão" }));
+    expect(handlers.onAbrirAgendamento).toHaveBeenCalledWith(plans[2]);
+    fireEvent.click(activityButton(task.id));
+    expect(handlers.onAbrirTarefa).toHaveBeenCalledWith(task);
+    expect(screen.getByTitle("Abrir resumo de horas do dia").textContent).toBe(hoursBefore);
+    expect(handlers.onSalvar).not.toHaveBeenCalled();
+    expect(handlers.onDragStart).not.toHaveBeenCalled();
+    expect(JSON.stringify(source)).toBe(before);
+    expect(db.from).not.toHaveBeenCalled();
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(db.invoke).not.toHaveBeenCalled();
+  });
+
   it("destaca a reserva de saldo no filtro Previsão Orç. e mantém a edição disponível", () => {
     const task = activities()[0];
     const forecast: AgendaAgendamento = {
