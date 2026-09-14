@@ -26,6 +26,10 @@ import {
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
 import AgendamentoAiPanel from "@/components/financeiro/AgendamentoAiPanel";
+import {
+  chegadaItemKey, chegadaSituacao, isPedidoCompra, matchesChegadaDocumentType,
+  matchesChegadaSearch, normalizeChegadaSearch, type ChegadaDocumentType,
+} from "@/lib/chegadas-filters";
 
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -139,12 +143,6 @@ function documentoLabel(item: ChegadaItem): string {
   return item.vinculo_texto ? item.vinculo_texto.slice(0, 40) : "Sem vínculo";
 }
 
-/** Tipo real do documento: preferimos o campo do backend, com fallback pelo código de compra. */
-function isPedidoCompra(i: ChegadaItem): boolean {
-  if (i.doc_tipo) return i.doc_tipo === "compra";
-  return Boolean(i.compra_id || i.compra_codigo);
-}
-
 export default function AgendamentoPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -159,9 +157,10 @@ export default function AgendamentoPage() {
   const [buscaSemPrevisao, setBuscaSemPrevisao] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
-    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "orcamentos",
-  );
+  const [tipoDoc, setTipoDoc] = useState<ChegadaDocumentType>(() => {
+    const saved = localStorage.getItem("agendamento:tipoDoc");
+    return saved === "todos" || saved === "pedidos" ? saved : "orcamentos";
+  });
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
@@ -234,48 +233,15 @@ export default function AgendamentoPage() {
   }, [queryClient]);
 
 
-  const termo = busca.trim().toLowerCase();
-  const termoCliente = buscaCliente.trim().toLowerCase();
+  const termoCliente = normalizeChegadaSearch(buscaCliente);
+  const itensDoTipo = useMemo(() => itens.filter(i => matchesChegadaDocumentType(i, tipoDoc)), [itens, tipoDoc]);
   const filtrados = useMemo(() => {
-    let result = itens;
-
-    // Filtro por tipo de documento (Orçamento GC x Pedido de Compra GC)
-    if (tipoDoc !== "todos") {
-      result = result.filter((i) => (tipoDoc === "pedidos" ? isPedidoCompra(i) : !isPedidoCompra(i)));
-    }
-
-    // Filtro por situação
-    if (excludedSituacoes.size > 0) {
-      result = result.filter((i) => !excludedSituacoes.has(i.situacao));
-    }
-
-    // Filtro por busca textual geral (CABEÇALHO)
-    if (termo || termoCliente) {
-      result = result.filter((i) => {
-        const matchGeral = !termo || [
-          i.compra_codigo,
-          i.cliente,
-          i.fornecedor,
-          i.vinculo_texto,
-          i.situacao,
-          i.equipamento,
-          i.orcamento_codigo,
-          i.vinculo_codigo,
-          i.os_codigo,
-          ...(i.pedidos_compra ?? []),
-          ...(i.pedidos_detalhes ?? []).map((p) => p.situacao),
-          ...(i.pedidos_detalhes ?? []).map((p) => p.codigo),
-          ...i.produtos.map((p) => p.nome)
-        ].some((v) => String(v || "").toLowerCase().includes(termo));
-
-        const matchCliente = !termoCliente || String(i.cliente || "").toLowerCase().includes(termoCliente);
-
-        return matchGeral && matchCliente;
-      });
-    }
-
-    return result;
-  }, [itens, termo, termoCliente, excludedSituacoes, tipoDoc]);
+    return itensDoTipo.filter(i =>
+      !excludedSituacoes.has(chegadaSituacao(i))
+      && matchesChegadaSearch(i, busca)
+      && (!termoCliente || normalizeChegadaSearch(i.cliente).includes(termoCliente)),
+    );
+  }, [itensDoTipo, busca, termoCliente, excludedSituacoes]);
 
   const totaisTipo = useMemo(() => ({
     todos: itens.length,
@@ -284,18 +250,32 @@ export default function AgendamentoPage() {
   }), [itens]);
 
   const allSituacoes = useMemo(() => {
-    return Array.from(new Set(itens.map((i) => i.situacao).filter(Boolean))).sort();
-  }, [itens]);
+    return Array.from(new Set(itensDoTipo.map(chegadaSituacao))).sort();
+  }, [itensDoTipo]);
+
+  const situacoesSelecionadas = allSituacoes.filter(sit => !excludedSituacoes.has(sit)).length;
 
   const filteredSituacoes = useMemo(() => {
-    if (!searchSituacao) return allSituacoes;
-    const s = searchSituacao.toLowerCase();
-    return allSituacoes.filter((sit) => sit.toLowerCase().includes(s));
+    const s = normalizeChegadaSearch(searchSituacao);
+    return allSituacoes.filter((sit) => normalizeChegadaSearch(sit).includes(s));
   }, [allSituacoes, searchSituacao]);
+
+  const limparFiltros = () => {
+    setBusca("");
+    setBuscaCliente("");
+    setBuscaPrevista("");
+    setBuscaAtrasada("");
+    setBuscaSemPrevisao("");
+    setExcludedSituacoes(new Set());
+    setSearchSituacao("");
+    setTipoDoc("todos");
+    localStorage.setItem("agendamento:tipoDoc", "todos");
+  };
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
     filtrados.forEach((i) => {
+      if (getChegadaStatus(i.data_chegada) === "sem_data") return;
       const dia = String(i.data_chegada ?? "").slice(0, 10);
       if (!dia) return;
       const arr = map.get(dia) ?? [];
@@ -306,32 +286,23 @@ export default function AgendamentoPage() {
     return map;
   }, [filtrados]);
 
-  const semData = useMemo(() => filtrados.filter((i) => !i.data_chegada), [filtrados]);
+  const semData = useMemo(() => filtrados.filter((i) => getChegadaStatus(i.data_chegada) === "sem_data"), [filtrados]);
   const atrasadas = useMemo(
     () => filtrados.filter((i) => getChegadaStatus(i.data_chegada) === "atrasada")
       .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada))),
     [filtrados],
   );
 
-  const filterByKanbanSearch = (list: ChegadaItem[], term: string) => {
-    if (!term.trim()) return list;
-    const s = term.toLowerCase();
-    return list.filter(i => 
-      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento, i.os_codigo]
-        .some(v => String(v || "").toLowerCase().includes(s))
-    );
-  };
-
   const previstaFiltrada = useMemo(() => 
-    filterByKanbanSearch(filtrados.filter(i => i.data_chegada && ["hoje", "futura"].includes(getChegadaStatus(i.data_chegada))), buscaPrevista), 
+    filtrados.filter(i => ["hoje", "futura"].includes(getChegadaStatus(i.data_chegada)) && matchesChegadaSearch(i, buscaPrevista)),
     [filtrados, buscaPrevista]
   );
   const atrasadaFiltrada = useMemo(() => 
-    filterByKanbanSearch(atrasadas, buscaAtrasada), 
+    atrasadas.filter(i => matchesChegadaSearch(i, buscaAtrasada)),
     [atrasadas, buscaAtrasada]
   );
   const semDataFiltrada = useMemo(() => 
-    filterByKanbanSearch(semData, buscaSemPrevisao), 
+    semData.filter(i => matchesChegadaSearch(i, buscaSemPrevisao)),
     [semData, buscaSemPrevisao]
   );
 
@@ -398,7 +369,7 @@ export default function AgendamentoPage() {
     const saldoParcialNaoConfirmado = i.grupo === "baixa_parcial"
       && i.saldo_baixa_parcial_status !== "verified";
     const osJaLancada = !ehPedido && Boolean(String(i.os_codigo || "").trim());
-    const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
+    const chave = chegadaItemKey(i);
 
     // Alerta de atraso de peças em relação à execução
     const execucaoAtrasadaPelaPeca = isForecastDelayedByParts(i);
@@ -676,18 +647,10 @@ export default function AgendamentoPage() {
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar cliente..."
+              aria-label="Filtrar chegadas por cliente"
               value={buscaCliente}
               onChange={(e) => setBuscaCliente(e.target.value)}
               className="h-8 w-48 pl-8 text-xs"
-            />
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Geral..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="h-8 w-40 pl-8 text-xs"
             />
           </div>
           <div className="flex items-center rounded-md border border-border p-0.5">
@@ -701,8 +664,11 @@ export default function AgendamentoPage() {
                 type="button"
                 onClick={() => {
                   setTipoDoc(opt.id);
+                  setExcludedSituacoes(new Set());
+                  setSearchSituacao("");
                   localStorage.setItem("agendamento:tipoDoc", opt.id);
                 }}
+                aria-pressed={tipoDoc === opt.id}
                 className={cn(
                   "rounded px-2 py-1 text-[11px] font-medium transition",
                   tipoDoc === opt.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
@@ -716,10 +682,10 @@ export default function AgendamentoPage() {
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
                 <Filter className="h-3.5 w-3.5" />
-                Situações
-                {excludedSituacoes.size > 0 && (
+                Situação do documento
+                {situacoesSelecionadas < allSituacoes.length && (
                   <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                    {allSituacoes.length - excludedSituacoes.size}
+                    {situacoesSelecionadas}/{allSituacoes.length}
                   </Badge>
                 )}
               </Button>
@@ -727,14 +693,14 @@ export default function AgendamentoPage() {
             <PopoverContent className="w-64 p-2" align="end">
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-2 pb-1 border-b">
-                  <span className="text-xs font-semibold">Filtrar Situações</span>
+                  <span className="text-xs font-semibold">Situação do documento</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 px-1.5 text-[10px]"
                     onClick={() => setExcludedSituacoes(new Set())}
                   >
-                    Limpar
+                    Selecionar todas
                   </Button>
                 </div>
                 <div className="relative">
@@ -783,9 +749,13 @@ export default function AgendamentoPage() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Nº Orçamento, Cliente, PC, Peça..."
+              aria-label="Buscar em todas as chegadas"
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
+          <Button size="sm" variant="ghost" onClick={limparFiltros}>
+            Limpar filtros
+          </Button>
           <Button size="sm" variant="outline" onClick={handleAtualizar} disabled={isFetching}>
             {isFetching ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Atualizar
@@ -819,14 +789,13 @@ export default function AgendamentoPage() {
               <CalendarClock className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Nenhum orçamento encontrado</h2>
+              <h2 className="text-lg font-semibold">Nenhum documento encontrado</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Não há orçamentos pendentes nas situações de compra/chegada para os filtros selecionados.
+                Não há documentos de chegada para os filtros selecionados.
               </p>
             </div>
-            <Button variant="outline" onClick={handleAtualizar} className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Tentar novamente
+            <Button variant="outline" onClick={limparFiltros} className="gap-2">
+              Limpar filtros e ver todos
             </Button>
           </div>
         </div>
@@ -930,16 +899,20 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
+            <p className="text-[11px] text-muted-foreground">
+              Filtros do topo: calendário e listas. As buscas abaixo filtram somente a própria coluna, em todas as datas.
+            </p>
             <div className="flex w-full gap-3 overflow-x-auto pb-4 custom-scrollbar">
               {/* Orçamentos com data de chegada */}
               <section className="flex h-[750px] w-[380px] shrink-0 flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <div className="mb-2 flex items-center justify-between">
-                  <h2 className="text-xs font-semibold">Orçamentos com chegada prevista ({previstaFiltrada.length})</h2>
+                  <h2 className="text-xs font-semibold">{tipoDoc === "pedidos" ? "Pedidos" : tipoDoc === "todos" ? "Documentos" : "Orçamentos"} com chegada prevista ({previstaFiltrada.length})</h2>
                 </div>
                 <div className="relative mb-2">
                   <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                   <Input 
                     placeholder="Pesquisar..." 
+                    aria-label="Buscar nas chegadas previstas"
                     className="h-7 pl-7 text-[10px]" 
                     value={buscaPrevista}
                     onChange={(e) => setBuscaPrevista(e.target.value)}
@@ -947,9 +920,9 @@ export default function AgendamentoPage() {
                 </div>
                 <div className="flex flex-1 flex-col space-y-2 overflow-y-auto pr-1">
                   {previstaFiltrada.length === 0
-                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhum orçamento encontrado.</p>
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma chegada prevista encontrada.</p>
                     : previstaFiltrada
-                        .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)))
+                        .slice().sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)))
                         .map((i) => renderItem(i))}
                 </div>
               </section>
@@ -957,7 +930,7 @@ export default function AgendamentoPage() {
               {/* Atrasadas */}
               <section className="flex h-[750px] w-[380px] shrink-0 flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <div className="mb-2 flex items-center justify-between">
-                  <h2 className="text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadaFiltrada.length})</h2>
+                  <h2 className="text-xs font-semibold text-destructive">{tipoDoc === "pedidos" ? "Pedidos" : tipoDoc === "todos" ? "Documentos" : "Orçamentos"} atrasados ({atrasadaFiltrada.length})</h2>
                 </div>
                 <div className="relative mb-2">
                   <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -965,12 +938,13 @@ export default function AgendamentoPage() {
                     placeholder="Pesquisar..." 
                     className="h-7 pl-7 text-[10px]" 
                     value={buscaAtrasada}
+                    aria-label="Buscar nas chegadas atrasadas"
                     onChange={(e) => setBuscaAtrasada(e.target.value)}
                   />
                 </div>
                 <div className="flex flex-1 flex-col space-y-2 overflow-y-auto pr-1">
                   {atrasadaFiltrada.length === 0
-                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma chegada atrasada encontrada para esta busca.</p>
                     : atrasadaFiltrada.map((i) => renderItem(i))}
                 </div>
               </section>
@@ -986,6 +960,7 @@ export default function AgendamentoPage() {
                     placeholder="Pesquisar..." 
                     className="h-7 pl-7 text-[10px]" 
                     value={buscaSemPrevisao}
+                    aria-label="Buscar nas chegadas sem previsão"
                     onChange={(e) => setBuscaSemPrevisao(e.target.value)}
                   />
                 </div>
