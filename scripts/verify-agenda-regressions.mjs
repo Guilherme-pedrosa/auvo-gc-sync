@@ -13,6 +13,11 @@ const files = [
   'src/test/budget-forecast-promotion.test.ts',
   'src/test/budget-forecast-reconciliation.test.ts',
   'src/test/budget-execution-link-guard.test.ts',
+  'src/test/central-sync-auvo-pagination.test.ts',
+  'src/test/auvo-empty-day-confirmation.test.ts',
+  'src/test/reports-sync.test.ts',
+  'src/test/reports-sync-page.test.tsx',
+  'src/test/reports-sync-day-recovery.test.ts',
 ];
 for (const file of files) accessSync(file);
 const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', ...files], { stdio: 'inherit' });
