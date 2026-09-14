@@ -18,6 +18,7 @@ import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 const REPORTS_SYNC_CHUNK_DAYS = 1;
+const REPORTS_SYNC_REFRESH_MS = 8_000;
 const TAREFAS_CENTRAL_REPORT_COLUMNS = [
   "mirror_key", "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
   "orientacao", "pendencia", "descricao", "endereco", "auvo_link", "auvo_task_url", "auvo_survey_url",
@@ -139,6 +140,28 @@ export default function RelatoriosPage() {
     setSyncFailed(false);
     setSyncWarnings([]);
     const workedHours = !situacaoIds?.length && activeTab === "horas";
+    let lastRefreshAt = -Infinity;
+    let pendingRefresh: ReturnType<typeof setTimeout> | null = null;
+    const clearPendingRefresh = () => {
+      if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+      pendingRefresh = null;
+    };
+    const refreshSavedRows = () => {
+      clearPendingRefresh();
+      if (controller.signal.aborted) return;
+      lastRefreshAt = Date.now();
+      // Show committed batches while the remaining requests are still running.
+      // Keep existing reads in flight and avoid restarting all lookups per batch.
+      void queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] }, { cancelRefetch: false });
+      void queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-referenciadas"] }, { cancelRefetch: false });
+    };
+    const onSaved = () => {
+      if (controller.signal.aborted) return;
+      const remaining = REPORTS_SYNC_REFRESH_MS - (Date.now() - lastRefreshAt);
+      if (remaining <= 0) refreshSavedRows();
+      else if (pendingRefresh === null) pendingRefresh = setTimeout(refreshSavedRows, remaining);
+    };
+    controller.signal.addEventListener("abort", clearPendingRefresh, { once: true });
     setSyncStatusMessage(workedHours ? "Atualizando horas do período selecionado..." : "Buscando OS do GC e suas tarefas vinculadas...");
     try {
       const invoke = (name: string, options: { body: Record<string, unknown> }) => supabase.functions.invoke(name, options);
@@ -146,6 +169,7 @@ export default function RelatoriosPage() {
         signal: controller.signal,
         onProgress: (message: string, completed: number) => setSyncStatusMessage(`${message} · ${completed} lotes concluídos`),
         onWarnings: setSyncWarnings,
+        onSaved: workedHours ? undefined : onSaved,
       };
       const totals = workedHours
         ? await syncWorkedHoursInSteps(invoke, { ...callbacks, days: buildDateChunks(dateFrom, dateTo) })
@@ -167,6 +191,8 @@ export default function RelatoriosPage() {
         toast.error(message, { duration: 15000 });
       }
     } finally {
+      clearPendingRefresh();
+      controller.signal.removeEventListener("abort", clearPendingRefresh);
       if (syncController.current === controller) syncController.current = null;
       if (!controller.signal.aborted) {
         setSyncing(false);

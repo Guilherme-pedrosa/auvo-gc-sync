@@ -3,21 +3,22 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transferableAbortController } from "node:util";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn(), rows: [] as any[], referenced: [] as any[] }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn(), rows: [] as any[], referenced: [] as any[] }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
   functions: { invoke: mocks.invoke },
   from: (table: string) => {
     let byTask = false;
     const query: any = { select: () => query, order: () => query, range: () => query, not: () => query,
       eq: () => query, in: (column: string) => { byTask = column === "auvo_task_id"; return query; }, abortSignal: () => query,
-      then: (resolve: any) => Promise.resolve({ data: table === "tarefas_central" ? byTask ? mocks.referenced : mocks.rows : [], error: null }).then(resolve) };
+      then: (resolve: any) => { mocks.read(table, byTask); return Promise.resolve({ data: table === "tarefas_central" ? byTask ? mocks.referenced : mocks.rows : [], error: null }).then(resolve); } };
     return query;
   },
 } }));
 vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error, warning: mocks.warning } }));
 vi.mock("@/components/LastSyncBadge", () => ({ default: () => null }));
-vi.mock("@/components/relatorios/OSAbertasTab", () => ({ default: ({ onSync, syncing, allTasks, execTaskStatusMap }: any) => <div>
+vi.mock("@/components/relatorios/OSAbertasTab", () => ({ default: ({ data, onSync, syncing, allTasks, execTaskStatusMap }: any) => <div>
   OS preservadas na tela<button disabled={syncing} onClick={() => onSync(["7063705"])}>Sincronizar OS da aba</button>
+  {data?.map((task: any) => <span key={task.mirror_key}>OS visível: {task.gc_os_codigo}</span>)}
   {allTasks?.filter((task: any) => task.auvo_task_id === "79721161").map((task: any, index: number) =>
     <span key={index}>Execução vinculada: {task.tecnico} / {execTaskStatusMap.get(task.auvo_task_id)}</span>)}
 </div> }));
@@ -40,10 +41,59 @@ describe("página real do Controle OS", () => {
       os_ids: [], budget_codes: [], auvo_task_ids: body.report_step === "os_page" ? ["79721161"] : [], upserted: 1, auvo_tarefas: 1,
     }, error: null }));
   });
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
   const mount = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <RelatoriosPage />
   </QueryClientProvider>);
+
+  const syncedOrder = (code: string) => ({ mirror_key: `79667772::os:${code}`, auvo_task_id: "79667772",
+    gc_os_id: code, gc_os_codigo: code, gc_os_situacao_id: "7063705", gc_os_tarefa_exec: "79667772" });
+  const stepResult = (step: string) => ({ data: { success: true, report_step: step, next_page: null,
+    next_after: null, os_ids: ["397842014"], budget_codes: [], auvo_task_ids: ["79667772"], upserted: 1 }, error: null });
+
+  it("mostra OS 10222 gravada durante a sincronização antes de terminar as tarefas Auvo", async () => {
+    let finishTasks: (result: any) => void;
+    mocks.invoke.mockImplementation(async (_name, { body }) => {
+      if (body.report_step === "os_page") mocks.rows = [syncedOrder("10222")];
+      if (body.report_step === "os_tasks") return new Promise(resolve => { finishTasks = resolve; });
+      return stepResult(body.report_step);
+    });
+    mount();
+    await waitFor(() => expect(mocks.read).toHaveBeenCalledWith("tarefas_central", false));
+    expect(screen.queryByText("OS visível: 10222")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sincronizar OS da aba" }));
+    expect(await screen.findByText("OS visível: 10222")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Sincronizando..." })).toBeDisabled();
+    expect(mocks.success).not.toHaveBeenCalled();
+    expect(mocks.read.mock.calls.filter(([table, byTask]) => table === "tarefas_central" && !byTask)).toHaveLength(2);
+    await act(async () => { finishTasks!(stepResult("os_tasks")); });
+    await waitFor(() => expect(mocks.success).toHaveBeenCalled());
+  });
+
+  it("agrupa lotes em oito segundos, atualiza o lote pendente e limpa o timer ao sair", async () => {
+    let finishTasks: (result: any) => void;
+    mocks.invoke.mockImplementation(async (_name, { body }) => body.report_step === "os_tasks"
+      ? new Promise(resolve => { finishTasks = resolve; }) : stepResult(body.report_step));
+    const { unmount } = mount();
+    await waitFor(() => expect(mocks.read).toHaveBeenCalledWith("tarefas_central", false));
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const countOsReads = () => mocks.read.mock.calls.filter(([table, byTask]) => table === "tarefas_central" && !byTask).length;
+    fireEvent.click(screen.getByRole("button", { name: "Sincronizar OS da aba" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(countOsReads()).toBe(2);
+    mocks.rows = [syncedOrder("10222")];
+    await act(async () => { await vi.advanceTimersByTimeAsync(7_999); });
+    expect(countOsReads()).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(countOsReads()).toBe(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByText("OS visível: 10222")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Sincronizando..." })).toBeDisabled();
+    unmount();
+    await act(async () => { finishTasks!(stepResult("os_tasks")); await vi.advanceTimersByTimeAsync(16_000); });
+    expect(countOsReads()).toBe(3);
+    expect(mocks.success).not.toHaveBeenCalled();
+  });
 
   it("exibe a causa real do 504, mantém as OS e libera o botão sem anunciar conclusão", async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: { message: "Edge Function returned a non-2xx status code",
