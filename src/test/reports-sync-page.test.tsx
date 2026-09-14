@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transferableAbortController } from "node:util";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), success: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {
   functions: { invoke: mocks.invoke },
   from: () => {
@@ -13,7 +13,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {
     return query;
   },
 } }));
-vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error, warning: mocks.warning } }));
 vi.mock("@/components/LastSyncBadge", () => ({ default: () => null }));
 vi.mock("@/components/relatorios/OSAbertasTab", () => ({ default: () => <div>OS preservadas na tela</div> }));
 vi.mock("@/components/relatorios/HorasTrabalhadasTab", () => ({ default: () => null }));
@@ -60,6 +60,27 @@ describe("página real do Controle OS", () => {
     await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("Sincronização concluída e dados gravados."));
     expect(screen.getByRole("status")).toHaveTextContent("Sincronização concluída:");
     expect(mocks.invoke.mock.calls.length).toBeGreaterThan(11);
+    expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it("segue após falha no dia 4 e mostra resultado parcial, data e causa na tela", async () => {
+    mocks.invoke.mockImplementation(async (_name, { body }) => ({ data: body.reports_only && body.start_date.endsWith("-04")
+      ? { success: false, error: "Primeira página Auvo respondeu 404 após 3 tentativas" }
+      : { success: true, report_step: body.report_step, next_page: null, next_after: null,
+        os_ids: [], budget_codes: [], upserted: 1, auvo_tarefas: 1 }, error: null }));
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Sincronizar" }));
+    await waitFor(() => expect(mocks.warning).toHaveBeenCalled());
+    expect(screen.getByRole("status")).toHaveTextContent("Sincronização parcial:");
+    expect(screen.getByRole("status")).toHaveTextContent("1 dia Auvo não confirmado");
+    expect(screen.getByRole("button", { name: "Sincronizar" })).toBeEnabled();
+    fireEvent.click(screen.getByText("Ver pendências da sincronização (1)"));
+    expect(screen.getByText(/Primeira página Auvo respondeu 404 após 3 tentativas/)).toBeVisible();
+    expect(screen.getByText("OS preservadas na tela")).toBeVisible();
+    const queriedDays = mocks.invoke.mock.calls.filter(([, { body }]) => body.reports_only).map(([, { body }]) => body.start_date);
+    expect(queriedDays.length).toBeGreaterThanOrEqual(28);
+    expect(queriedDays[4]).toMatch(/-05$/);
+    expect(mocks.success).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
   });
 });

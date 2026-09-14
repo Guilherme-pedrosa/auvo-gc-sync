@@ -15,16 +15,20 @@ export type AuvoTaskFetchResult = {
 };
 
 type FetchPage = (date: string, page: number) => Promise<Response>;
+type FetchRange = (startDate: string, endDate: string, page: number) => Promise<Response>;
 type Options = {
   sleep?: (ms: number) => Promise<void>;
   log?: (message: string) => void;
+  fetchRange?: FetchRange;
 };
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 30;
 const MAX_ATTEMPTS = 3;
 
-async function fetchDay(fetchPage: FetchPage, date: string, options: Required<Options>) {
+type RuntimeOptions = Required<Pick<Options, "sleep" | "log">>;
+
+async function fetchDay(fetchPage: FetchPage, date: string, options: RuntimeOptions, strictConfirmation = false) {
   const tasks: AuvoTask[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     let response: Response | undefined;
@@ -48,11 +52,11 @@ async function fetchDay(fetchPage: FetchPage, date: string, options: Required<Op
       await response.body?.cancel().catch(() => undefined);
       // A first-page 404 remains ambiguous even after retry. It must never
       // authorize deletion or turn a failed day into a confirmed empty day.
-      return page === 1
-        ? { tasks, complete: false, error: "primeira página respondeu 404 após 3 tentativas" }
+      return page === 1 || strictConfirmation
+        ? { tasks, complete: false, error: page === 1 ? "primeira página respondeu 404 após 3 tentativas" : `página ${page} respondeu 404 sem confirmar o fim da conferência` }
         : { tasks, complete: true };
     }
-    if (!response.ok) {
+    if (!response.ok || (strictConfirmation && response.status !== 200)) {
       const status = response.status;
       await response.body?.cancel().catch(() => undefined);
       return { tasks, complete: false, error: `página ${page} respondeu ${status}` };
@@ -73,6 +77,26 @@ async function fetchDay(fetchPage: FetchPage, date: string, options: Required<Op
     if (list.length < PAGE_SIZE) return { tasks, complete: true };
   }
   return { tasks, complete: false, error: `limite de ${MAX_PAGES} páginas atingido` };
+}
+
+/** A 404 alone is ambiguous. Confirm the date using a fully read adjacent window. */
+async function confirmDayFromAdjacentWindow(fetchRange: FetchRange, date: string, options: RuntimeOptions) {
+  const boundary = new Date(`${date}T00:00:00Z`);
+  boundary.setUTCDate(boundary.getUTCDate() - 1);
+  const start = boundary.toISOString().slice(0, 10);
+  boundary.setUTCDate(boundary.getUTCDate() + 2);
+  const end = boundary.toISOString().slice(0, 10);
+  const result = await fetchDay((_date, page) => fetchRange(start, end, page), `${start} a ${end}`, options, true);
+  if (!result.complete) return { tasks: [] as AuvoTask[], complete: false, error: `conferência ${start} a ${end}: ${result.error}` };
+  // Missing/out-of-range dates mean the response cannot confirm our original day.
+  // Never import adjacent-day rows or interpret an invalid payload as empty.
+  if (result.tasks.some(task => {
+    const taskDate = String(task?.taskDate ?? "").slice(0, 10);
+    return !/^\d{4}-\d{2}-\d{2}$/.test(taskDate) || taskDate < start || taskDate > end;
+  })) return { tasks: [] as AuvoTask[], complete: false, error: "conferência retornou tarefas sem data válida no período" };
+  const tasks = result.tasks.filter(task => String(task.taskDate).slice(0, 10) === date);
+  options.log(`Auvo ${date}: ${tasks.length} tarefas confirmadas pela consulta completa ${start} a ${end}`);
+  return { tasks, complete: true };
 }
 
 // Keep each Auvo request to one day. Complete-day rows are kept separately
@@ -99,7 +123,13 @@ export async function fetchAuvoTaskWindows(
   const windows: AuvoTaskFetchWindow[] = [];
   for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) {
     const date = current.toISOString().slice(0, 10);
-    const result = await fetchDay(fetchPage, date, deps);
+    let result = await fetchDay(fetchPage, date, deps);
+    if (!result.complete && result.error === "primeira página respondeu 404 após 3 tentativas" && options.fetchRange) {
+      const confirmation = await confirmDayFromAdjacentWindow(options.fetchRange, date, deps);
+      result = confirmation.complete ? confirmation : {
+        ...result, error: `${result.error}; ${confirmation.error}`,
+      };
+    }
     windows.push({ startDate: date, endDate: date, complete: result.complete, error: result.error });
     for (const task of result.tasks) {
       const id = String(task?.taskID ?? "").trim();

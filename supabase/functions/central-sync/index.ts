@@ -554,16 +554,18 @@ async function loadAuvoEquipmentCatalog(
 
 // The transport retains the existing date filter and server-side credentials.
 async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<AuvoTaskFetchResult> {
+  const fetchRange = (start: string, end: string, page: number) => {
+    const paramFilter = encodeURIComponent(
+      JSON.stringify({ startDate: start + "T00:00:00", endDate: end + "T23:59:59" }),
+    );
+    const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
+    return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
+  };
   return fetchAuvoTaskWindows(
-    (date, page) => {
-      const paramFilter = encodeURIComponent(
-        JSON.stringify({ startDate: date + "T00:00:00", endDate: date + "T23:59:59" }),
-      );
-      const url = AUVO_BASE_URL + "/tasks/?page=" + page + "&pageSize=100&order=desc&paramFilter=" + paramFilter;
-      return rateLimitedFetch(url, { headers: auvoHeaders(bearerToken), signal: AbortSignal.timeout(15_000) }, "auvo");
-    },
+    (date, page) => fetchRange(date, date, page),
     startDate,
     endDate,
+    { fetchRange },
   );
 }
 

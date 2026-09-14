@@ -11,7 +11,7 @@ import { FileText, Clock, Settings, RefreshCw, CalendarIcon } from "lucide-react
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isOpenOsSituation } from "@/lib/osOpenStatuses";
-import { syncReportsInSteps, type ReportsSyncWarning } from "@/lib/reportsSync";
+import { reportsSyncPendingSummary, syncReportsInSteps, type ReportsSyncWarning } from "@/lib/reportsSync";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
@@ -112,6 +112,8 @@ export default function RelatoriosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
   const [syncWarnings, setSyncWarnings] = useState<ReportsSyncWarning[]>([]);
+  const syncOsWarnings = syncWarnings.filter(warning => warning.kind !== "auvo_day");
+  const syncDayWarnings = syncWarnings.filter(warning => warning.kind === "auvo_day");
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("os-abertas");
@@ -147,8 +149,9 @@ export default function RelatoriosPage() {
         },
       );
       if (totals.incomplete) {
-        setSyncStatusMessage(`Sincronização concluída com pendências: ${totals.orders} OS atualizadas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas. ${totals.warnings.length} OS não puderam ser conferidas; registros preservados.`);
-        toast.warning(`${totals.warnings.length} OS pendentes de conferência. Os demais lotes foram processados.`, { duration: 15000 });
+        const pending = reportsSyncPendingSummary(totals.warnings);
+        setSyncStatusMessage(`Sincronização parcial: ${totals.orders} OS atualizadas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas. ${pending}. Registros existentes preservados.`);
+        toast.warning(`${pending}. Os demais lotes foram processados.`, { duration: 15000 });
       } else {
         setSyncStatusMessage(`Sincronização concluída: ${totals.orders} OS conferidas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas.`);
         toast.success("Sincronização concluída e dados gravados.");
@@ -418,10 +421,18 @@ export default function RelatoriosPage() {
               </p>
               {syncWarnings.length > 0 && (
                 <details className="mt-1 max-w-2xl text-xs text-amber-700">
-                  <summary className="cursor-pointer text-right">Ver OS pendentes de conferência ({syncWarnings.length})</summary>
-                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2">
-                    {syncWarnings.map(warning => <li key={warning.os_id}>{warning.message}</li>)}
-                  </ul>
+                  <summary className="cursor-pointer text-right">Ver pendências da sincronização ({syncWarnings.length})</summary>
+                  <div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2">
+                    {syncOsWarnings.length > 0 && <div>
+                      <p className="font-medium">OS pendentes de conferência</p>
+                      <ul className="mt-1 space-y-1">{syncOsWarnings.map(warning => <li key={warning.os_id}>{warning.message}</li>)}</ul>
+                    </div>}
+                    {syncDayWarnings.length > 0 && <div>
+                      <p className="font-medium">Dias Auvo não confirmados</p>
+                      <ul className="mt-1 space-y-1">{syncDayWarnings.map(warning =>
+                        <li key={`${warning.start_date}:${warning.end_date}`}>{warning.message}</li>)}</ul>
+                    </div>}
+                  </div>
                 </details>
               )}
             </div>

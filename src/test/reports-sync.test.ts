@@ -101,14 +101,19 @@ describe("Controle OS — sincronização em lotes", () => {
     expect(await describeSyncError({ context: new Response("indisponível", { status: 503 }) })).toContain("HTTP 503");
   });
 
-  it("não anuncia sucesso nem avança a data após uma consulta Auvo incompleta", async () => {
+  it("avança os demais dias sem anunciar sucesso completo após consulta Auvo incompleta", async () => {
     const invoke = vi.fn(async (_name, { body }) => ({ data: body.reports_only
       ? { success: true, auvo_tarefas: 0, upserted: 0, errors: 0, auvo_paginacao_completa: false }
       : { success: true, report_step: body.report_step, next_page: null, next_after: null }, error: null }));
     const progress = vi.fn();
-    await expect(syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress,
-      days: [{ start: "2026-09-06", end: "2026-09-06" }, { start: "2026-09-07", end: "2026-09-07" }] })).rejects.toThrow(/Auvo não confirmou/);
-    expect(invoke.mock.calls.filter(([, { body }]) => body.reports_only)).toHaveLength(1);
+    const totals = await syncReportsInSteps(invoke, { situationIds: ["7063705"], onProgress: progress,
+      days: [{ start: "2026-09-06", end: "2026-09-06" }, { start: "2026-09-07", end: "2026-09-07" }] });
+    expect(totals).toMatchObject({ incomplete: true, tasks: 0, saved: 0 });
+    expect(totals.warnings).toEqual([
+      expect.objectContaining({ kind: "auvo_day", start_date: "2026-09-06", message: expect.stringContaining("Auvo não confirmou") }),
+      expect.objectContaining({ kind: "auvo_day", start_date: "2026-09-07", message: expect.stringContaining("Auvo não confirmou") }),
+    ]);
+    expect(invoke.mock.calls.filter(([, { body }]) => body.reports_only)).toHaveLength(2);
     expect(progress).not.toHaveBeenCalledWith("Todos os lotes foram concluídos e gravados.", expect.anything());
   });
 });
