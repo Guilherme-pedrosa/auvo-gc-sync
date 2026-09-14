@@ -1,3 +1,4 @@
+// Controle OS: fetch explicit GC-linked Auvo tasks independently of dates (2026-09-14).
 // Controle OS: confirm empty Auvo 404 days and continue report synchronization (2026-09-14).
 // Budget execution scheduling: discover unassigned Auvo tasks from GC (2026-09-14).
 // Scheduling sync: partial balances and safe GC status reconciliation (2026-09-14).
@@ -1242,7 +1243,9 @@ async function upsertGcOsShellRows(
       .filter(Boolean);
     // Controle OS starts from the GC order and its execution task (73344).
     // Diagnosis remains a separate relationship, never execution progress.
-    const executionId = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean)[0];
+    const executionId = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec)
+      .split("/")
+      .filter(Boolean)[0];
     const realTaskId = (options?.executionFirst ? executionId : "") || taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
@@ -1262,7 +1265,9 @@ async function upsertGcOsShellRows(
       cliente: (osPayload as any).gc_os_cliente || "Cliente não identificado",
       tecnico: "",
       tecnico_id: "",
-      data_tarefa: options?.executionFirst ? null : (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
+      data_tarefa: options?.executionFirst
+        ? null
+        : (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
       status_auvo: semTarefa ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
       orientacao: "",
       pendencia: "",
@@ -2558,9 +2563,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           getTask: async (taskId) => {
             let response: Response;
             for (let attempt = 0; ; attempt++) {
-              response = await rateLimitedFetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
-                headers: auvoHeaders(token), signal: AbortSignal.timeout(15_000),
-              }, "auvo");
+              response = await rateLimitedFetch(
+                `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`,
+                {
+                  headers: auvoHeaders(token),
+                  signal: AbortSignal.timeout(15_000),
+                },
+                "auvo",
+              );
               if (attempt >= 1 || ![429, 502, 503, 504].includes(response.status)) return response;
               await new Promise((resolve) => setTimeout(resolve, 1_000));
             }
@@ -2582,15 +2592,20 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           afterSave: async (task) => {
             const equipmentIds = extractAuvoEquipmentIds(task);
             if (!equipmentIds.length) return;
-            const { error } = await sbClient.from("equipamento_tarefas_auvo").upsert(equipmentIds.map((id) => ({
-              auvo_equipment_id: id, auvo_task_id: String(task.taskID),
-              auvo_task_type_id: auvoTaskTypeId(task) || null,
-              auvo_task_type_description: resolveTaskType(task) || null,
-              data_tarefa: normalizeDate(task.taskDate),
-              tecnico: resolveAuvoTechnicianName(task),
-              cliente: String(task.customerDescription || task.customerName || ""),
-              source: "native_equipment_relation", synced_at: new Date().toISOString(),
-            })), { onConflict: "auvo_equipment_id,auvo_task_id" });
+            const { error } = await sbClient.from("equipamento_tarefas_auvo").upsert(
+              equipmentIds.map((id) => ({
+                auvo_equipment_id: id,
+                auvo_task_id: String(task.taskID),
+                auvo_task_type_id: auvoTaskTypeId(task) || null,
+                auvo_task_type_description: resolveTaskType(task) || null,
+                data_tarefa: normalizeDate(task.taskDate),
+                tecnico: resolveAuvoTechnicianName(task),
+                cliente: String(task.customerDescription || task.customerName || ""),
+                source: "native_equipment_relation",
+                synced_at: new Date().toISOString(),
+              })),
+              { onConflict: "auvo_equipment_id,auvo_task_id" },
+            );
             if (error) throw new Error(`Falha ao atualizar equipamentos da tarefa ${task.taskID}: ${error.message}`);
           },
         });
