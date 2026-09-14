@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import { latestMissingPartsArrival, type ChegadaItem } from "@/lib/agendamento";
+import { type ChegadaItem } from "@/lib/agendamento";
+import { normalizeChegadaForPlanning } from "./partialBalancePlanning";
 
 export const PREVISAO_CHEGADA_QUERY_KEY = ["compras-chegadas"] as const;
 
@@ -8,12 +9,7 @@ export async function fetchPrevisoesChegada(): Promise<ChegadaItem[]> {
   if (error) throw error;
   if (data?.ok === false) throw new Error(data?.error || "Falha ao consultar a chegada das peças");
 
-  return ((data?.itens || []) as ChegadaItem[]).map((item) => {
-    const maiorPrazo = latestMissingPartsArrival(item.pecas_em_falta);
-    return maiorPrazo
-      ? { ...item, data_chegada: maiorPrazo, proxima_reposicao: maiorPrazo }
-      : item;
-  });
+  return ((data?.itens || []) as ChegadaItem[]).map(normalizeChegadaForPlanning);
 }
 
 export function chegadaDoAgendamento(
@@ -23,9 +19,13 @@ export function chegadaDoAgendamento(
   const orcamento = String(agendamento.gc_orcamento_codigo || "").trim();
   const os = String(agendamento.gc_os_codigo || "").trim();
 
-  return chegadas.find((item) => {
+  // Orçamento identifica o saldo; a OS pode pertencer a uma baixa anterior.
+  if (orcamento) return chegadas.find((item) => {
     const itemOrcamento = String(item.orcamento_codigo || (item.vinculo_tipo === "orcamento" ? item.vinculo_codigo : "")).trim();
+    return itemOrcamento === orcamento;
+  }) ?? null;
+  return chegadas.find((item) => {
     const itemOs = String(item.os_codigo || (item.vinculo_tipo === "os" ? item.vinculo_codigo : "")).trim();
-    return Boolean((orcamento && itemOrcamento === orcamento) || (os && itemOs === os));
+    return Boolean(os && itemOs === os);
   }) ?? null;
 }

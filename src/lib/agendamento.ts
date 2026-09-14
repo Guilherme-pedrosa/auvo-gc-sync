@@ -127,6 +127,8 @@ export type ChegadaItem = {
   }[];
   pedidos_todos_chegaram?: boolean;
   saldo_baixa_parcial_status?: "verified" | "not_found" | "unavailable" | "not_applicable";
+  saldo_baixa_parcial_encerrado?: boolean;
+  tem_saldo_pendente?: boolean | null;
   estoque_verificado?: boolean;
   todos_em_estoque?: boolean;
   pode_agendar?: boolean;
@@ -191,9 +193,9 @@ export function latestForecastForDocument(
   const os = String(item.os_codigo || (item.vinculo_tipo === "os" ? item.vinculo_codigo : "") || "");
 
   return forecasts
-    .filter((forecast) =>
-      (orcamento && String(forecast.gc_orcamento_codigo || "") === orcamento)
-      || (os && String(forecast.gc_os_codigo || "") === os),
+    .filter((forecast) => orcamento
+      ? String(forecast.gc_orcamento_codigo || "") === orcamento
+      : Boolean(os && String(forecast.gc_os_codigo || "") === os),
     )
     .sort((a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)))[0] ?? null;
 }

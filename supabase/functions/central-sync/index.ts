@@ -7,6 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 import { selectAuvoReportTasks, persistGcShells, persistReportTasks } from "./report-persistence.ts";
 import { runBoundedReportStep } from "./report-steps.ts";
+import { readGcOsForReconciliation } from "./gc-os-reconciliation.ts";
 import { fetchAuvoTaskWindows, type AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
@@ -2167,8 +2168,8 @@ async function reconcileOpenOsMirror(
   let transitionedChecked = 0;
   let transitionedReconciled = 0;
   let transitionedMissing = 0;
-  // OS apagada no GC: a API responde 400/404/410. Marcamos como excluída para
-  // que ela saia das etapas abertas em vez de ficar pendente para sempre.
+  // Apenas uma exclusão confirmada remove a OS das etapas abertas. O GC
+  // também responde 400 quando o usuário da API não pode acessar o pedido.
   const markMissing = async (osId: string) => {
     const { error } = await sbClient
       .from("tarefas_central")
@@ -2187,29 +2188,23 @@ async function reconcileOpenOsMirror(
     const freshList = await Promise.all(
       batch.map(async (osId) => {
         try {
-          const response = await rateLimitedFetch(
-            `${GC_BASE_URL}/api/ordens_servicos/${osId}`,
-            { headers: gcHeaders },
+          const result = await readGcOsForReconciliation(osId, (id) => rateLimitedFetch(
+            `${GC_BASE_URL}/api/ordens_servicos/${id}`,
+            { headers: gcHeaders, signal: AbortSignal.timeout(15_000) },
             "gc",
-          );
-          if (!response.ok) {
-            if ([400, 404, 410].includes(response.status)) {
-              console.log(
-                `[central-sync] OS ${osId} não existe mais no GC (HTTP ${response.status}) — marcando como excluída`,
-              );
-              if (await markMissing(osId)) transitionedMissing++;
-              return "missing" as const;
-            }
-            console.warn(`[central-sync] OS ${osId} ausente do retrato aberto retornou HTTP ${response.status}`);
+          ));
+          if (result.kind === "unavailable") {
+            console.warn(`[central-sync] ${result.warning.message}`);
             return null;
           }
-          const data = await response.json().catch(() => null);
-          const os = data?.data || data;
-          if (!os?.id) {
-            if (await markMissing(osId)) transitionedMissing++;
-            return "missing" as const;
+          if (result.kind === "missing") {
+            if (await markMissing(osId)) {
+              transitionedMissing++;
+              return "missing" as const;
+            }
+            return null;
           }
-          return mapGcOsToMirrorPayload(os);
+          return mapGcOsToMirrorPayload(result.os);
         } catch (error) {
           console.error(`[central-sync] Falha ao reconciliar OS ${osId}: ${(error as Error).message}`);
           return null;

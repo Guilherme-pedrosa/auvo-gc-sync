@@ -2,7 +2,11 @@ import { OPEN_OS_SITUATIONS } from "./osOpenStatuses";
 
 type Invoke = (name: string, options: { body: Record<string, unknown> }) => PromiseLike<{ data: any; error: any }>;
 type Day = { start: string; end: string };
-export type ReportsSyncTotals = { tasks: number; saved: number; orders: number; transitioned: number };
+export type ReportsSyncWarning = { os_id: string; status: number | null; message: string };
+export type ReportsSyncTotals = {
+  tasks: number; saved: number; orders: number; transitioned: number;
+  warnings: ReportsSyncWarning[]; incomplete: boolean;
+};
 
 export async function describeSyncError(error: any): Promise<string> {
   const response = error?.context;
@@ -27,10 +31,11 @@ export async function syncReportsInSteps(
     situationIds?: string[];
     onProgress: (message: string, completed: number) => void;
     onSaved?: () => void;
+    onWarnings?: (warnings: ReportsSyncWarning[]) => void;
     signal?: AbortSignal;
   },
 ): Promise<ReportsSyncTotals> {
-  const totals = { tasks: 0, saved: 0, orders: 0, transitioned: 0 };
+  const totals: ReportsSyncTotals = { tasks: 0, saved: 0, orders: 0, transitioned: 0, warnings: [], incomplete: false };
   const ids = options.situationIds?.length ? options.situationIds : OPEN_OS_SITUATIONS.map(row => row.id);
   const knownIds = new Set<string>();
   const budgetCodes = new Set<string>();
@@ -49,6 +54,9 @@ export async function syncReportsInSteps(
     }
     if (body.report_step && data.report_step !== body.report_step) {
       throw new Error("A atualização do serviço de sincronização ainda não está disponível. Tente novamente após a publicação.");
+    }
+    if (data?.incomplete && (body.report_step !== "os_reconcile" || !Array.isArray(data.warnings) || !data.warnings.length)) {
+      throw new Error(`${label}: o servidor não confirmou a conclusão deste lote.`);
     }
     completed++;
     options.onSaved?.();
@@ -77,6 +85,16 @@ export async function syncReportsInSteps(
       report_step: "os_reconcile", situacao_ids: ids, known_os_ids: [...knownIds], after_os_id: after,
     });
     totals.transitioned += Number(data.transitioned || 0);
+    if (Array.isArray(data.warnings) && data.warnings.length) {
+      for (const warning of data.warnings) {
+        if (!warning || typeof warning.os_id !== "string" || typeof warning.message !== "string") {
+          throw new Error("O serviço retornou uma pendência de conferência inválida.");
+        }
+        if (!totals.warnings.some(existing => existing.os_id === warning.os_id)) totals.warnings.push(warning);
+      }
+      totals.incomplete = true;
+      options.onWarnings?.([...totals.warnings]);
+    }
     const next = data.next_after ?? null;
     if (next !== null && (typeof next !== "string" || (after !== null && next <= after))) throw new Error("Paginação de conferência inválida.");
     after = next;
@@ -95,6 +113,8 @@ export async function syncReportsInSteps(
     totals.tasks += Number(data.auvo_tarefas || 0);
     totals.saved += Number(data.upserted || 0);
   }
-  options.onProgress("Todos os lotes foram concluídos e gravados.", completed);
+  options.onProgress(totals.incomplete
+    ? `Lotes processados; ${totals.warnings.length} OS ficaram pendentes de conferência. Registros preservados.`
+    : "Todos os lotes foram concluídos e gravados.", completed);
   return totals;
 }

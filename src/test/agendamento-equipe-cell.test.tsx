@@ -43,6 +43,7 @@ function contractFor(task: AgendaAgendamento, changes: Partial<AgendaAgendamento
 
 function renderCell(items: AgendaAgendamento[], options: {
   tagsPorAgendamento?: Map<string, AgendaTag[]>; tagsSelecionadas?: string[];
+  apenasPrevisaoOrcamento?: boolean;
   contractIndicators?: ReturnType<typeof buildAgendaContractIndicators>;
 } = {}) {
   const handlers = {
@@ -50,6 +51,7 @@ function renderCell(items: AgendaAgendamento[], options: {
     onNovaTarefaAuvo: vi.fn(), onPreverProximoDia: vi.fn(), onDragStart: vi.fn(), onDrop: vi.fn(),
   };
   const rendered = render(<table><tbody><tr><Celula itens={items} {...handlers} contractIndicators={options.contractIndicators}
+    apenasPrevisaoOrcamento={options.apenasPrevisaoOrcamento}
     tagsPorAgendamento={options.tagsPorAgendamento ?? new Map()} tagsSelecionadas={options.tagsSelecionadas ?? []} />
   </tr></tbody></table>);
   const visibleIds = () => [...rendered.container.querySelectorAll("[data-agenda-item]")]
@@ -66,6 +68,24 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe("atividades da célula real da agenda", () => {
+  it("destaca a reserva de saldo no filtro Previsão Orç. e mantém a edição disponível", () => {
+    const task = activities()[0];
+    const forecast: AgendaAgendamento = {
+      ...task, id: "saldo-5334", origem: "MANUAL", auvo_task_id: null,
+      status: "PREVISAO", previsao_continuidade: true, previsao_tipo: "SALDO_BAIXA_PARCIAL",
+      gc_orcamento_codigo: "5334", gc_os_codigo: "9044",
+    };
+    const { container, handlers, activityButton } = renderCell([forecast, task], { apenasPrevisaoOrcamento: true });
+    const forecastCard = container.querySelector('[data-agenda-item="saldo-5334"]');
+    expect(forecastCard).toHaveClass("ring-2");
+    expect(forecastCard).not.toHaveClass("opacity-20");
+    expect(container.querySelector(`[data-agenda-item="${task.id}"]`)).toHaveClass("opacity-20");
+    fireEvent.click(activityButton(forecast.id));
+    expect(handlers.onAbrirAgendamento).toHaveBeenCalledWith(forecast);
+    expect(db.from).not.toHaveBeenCalled();
+    expect(db.invoke).not.toHaveBeenCalled();
+  });
+
   it("expande oito atividades a partir de cinco e recolhe sem alterar os dados nem salvar", () => {
     const items = activities();
     const before = JSON.stringify(items);

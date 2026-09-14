@@ -83,6 +83,7 @@ import {
   sortAgendaItemsWithContractPlanFirst,
 } from "@/lib/agendaContractVisits";
 import { formatDiaBR, type ChegadaItem } from "@/lib/agendamento";
+import { isPartialBalanceForecast, partialBalancePlanningStatus } from "@/lib/partialBalancePlanning";
 import {
   chegadaDoAgendamento,
   fetchPrevisoesChegada,
@@ -343,6 +344,7 @@ export function Celula({
         )}
         {itensVisiveis.map((a) => {
           const chegadaAtual = a.previsao_continuidade ? chegadaDoAgendamento(a, chegadas) : null;
+          const previsaoSaldo = isPartialBalanceForecast(a, chegadaAtual);
           const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
           const dataPrevista = a.data;
           const previsaoAtrasada = Boolean(dataChegadaAtual && dataPrevista < dataChegadaAtual);
@@ -367,7 +369,7 @@ export function Celula({
           const clienteDivergente = Boolean(
             a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
-          const documentoLabel = a.gc_os_codigo ? `OS ${a.gc_os_codigo}`
+          const documentoLabel = previsaoSaldo ? `Saldo Orç ${a.gc_orcamento_codigo || ""}` : a.gc_os_codigo ? `OS ${a.gc_os_codigo}`
             : a.gc_orcamento_codigo ? `Orç ${a.gc_orcamento_codigo}`
             : a.auvo_task_id ? `#${a.auvo_task_id}` : null;
           const tarefaTitle = [a.cliente, tipoTarefa,
@@ -382,8 +384,8 @@ export function Celula({
               data-agenda-item={a.id}
               className={cn(
                 "group/item relative flex min-w-0 flex-col items-stretch rounded-sm transition-all",
-                ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO")) && "opacity-20 grayscale",
-                ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo === "ORCAMENTO_EXECUCAO")) && "ring-2 ring-primary/70 ring-offset-1",
+                ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO" && !previsaoSaldo)) && "opacity-20 grayscale",
+                ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && (a.previsao_tipo === "ORCAMENTO_EXECUCAO" || previsaoSaldo))) && "ring-2 ring-primary/70 ring-offset-1",
               )}
             >
               <button
@@ -504,7 +506,10 @@ export function Celula({
                       {previsaoAntesDaChegada ? " · REAGENDAR" : ""}
                     </span>
                   )}
-                  {a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && a.conversao_status && (
+                  {previsaoSaldo && <span className="text-[10px] font-medium normal-case text-amber-800">
+                    {partialBalancePlanningStatus(chegadaAtual)}
+                  </span>}
+                  {a.previsao_tipo === "ORCAMENTO_EXECUCAO" && !previsaoSaldo && a.previsao_continuidade && a.conversao_status && (
                     <span className="text-[9px] font-normal normal-case opacity-80 truncate">
                       {a.conversao_status === "AGUARDANDO_OS" && "Aguardando geração da OS"}
                       {a.conversao_status === "AGUARDANDO_TAREFA" && `OS ${a.gc_os_codigo || ""} · aguardando tarefa de execução`}
@@ -1163,6 +1168,9 @@ export default function AgendamentoEquipePage() {
     const search = filtroTexto.trim() ? norm(filtroTexto) : "";
 
     for (const a of data?.agendamentos ?? []) {
+      const chegada = chegadaDoAgendamento(a, chegadas);
+      if (isPartialBalanceForecast(a, chegada)
+        && (chegada?.saldo_baixa_parcial_encerrado || chegada?.saldo_baixa_parcial_status !== "verified")) continue;
       // Filtro de Previsões / Visitas Contratuais
       const isPrevisao = Boolean(a.previsao_continuidade || a.status === "PREVISAO");
       const isVisita = Boolean(a.previsao_tipo === "CONTRATO" || a.previsao_tipo === "CONTRATO_REALIZADO" || a.origem === "CONTRATO");
@@ -1193,7 +1201,13 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
+  }, [data, chegadas, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
+
+  const reservasSaldoParaRevisar = useMemo(() => (data?.agendamentos ?? []).filter(item => {
+    const chegada = chegadaDoAgendamento(item, chegadas);
+    return isPartialBalanceForecast(item, chegada)
+      && (chegada?.saldo_baixa_parcial_encerrado || chegada?.saldo_baixa_parcial_status !== "verified");
+  }), [data?.agendamentos, chegadas]);
 
   // A busca por OS/técnico não remove a evidência do contrato. A faixa só
   // some quando a tarefa correspondente também está na grade filtrada.
@@ -1434,6 +1448,16 @@ export default function AgendamentoEquipePage() {
       </header>
 
       <div className="flex-1 overflow-auto p-3 md:p-6 space-y-4 md:space-y-6">
+        {reservasSaldoParaRevisar.length > 0 && <details className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          <summary className="cursor-pointer font-medium">{reservasSaldoParaRevisar.length} reserva(s) de baixa parcial fora da escala · conferir saldo</summary>
+          <p className="my-2">Estas reservas não entram como execução pendente. As tarefas reais permanecem nas datas em que foram executadas ou agendadas.</p>
+          <div className="space-y-1">{reservasSaldoParaRevisar.map(item => <button key={item.id} type="button"
+            className="block w-full rounded p-1 text-left hover:bg-amber-100"
+            onClick={() => { setSelectedAgendamento(item); setDialogOpen(true); }}>
+            Orç {item.gc_orcamento_codigo} · {item.cliente} · reserva {formatDiaBR(item.data)}
+            {item.gc_os_codigo ? ` · OS anterior ${item.gc_os_codigo}` : ""} · {partialBalancePlanningStatus(chegadaDoAgendamento(item, chegadas))}
+          </button>)}</div>
+        </details>}
         {agendaReadFailed && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-destructive p-3 text-sm text-destructive">
             <p>Não foi possível carregar a agenda completa. {data ? "Os dados exibidos são da última leitura concluída." : "Tente carregar novamente."}</p>

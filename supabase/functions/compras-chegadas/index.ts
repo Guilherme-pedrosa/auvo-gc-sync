@@ -4,8 +4,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
 import {
   normalizePartialBudgetCode,
+  partialProductKey,
   pendingProductsFromPickPack,
+  resolvePartialWriteoffArrival,
   shouldUsePickPackPartialBalance,
+  type PartialBalanceStatus,
   type PickPackPendingItem,
 } from "../_shared/partial-writeoff-balance.ts";
 
@@ -273,7 +276,6 @@ async function fetchDocumentoCompleto(endpoint: string, id: string): Promise<any
   }
 }
 
-type PartialBalanceStatus = "verified" | "not_found" | "unavailable" | "not_applicable";
 type PickPackBalance = {
   budget_id: string;
   budget_code: string;
@@ -597,6 +599,7 @@ async function computeChegadas(): Promise<any> {
     }
 
     const purchasesByProduct = new Map<string, PedidoDetalhe[]>();
+    const purchasesByProductVariation = new Map<string, PedidoDetalhe[]>();
     for (const { doc } of relatedOpenPurchases) {
       const rawDate = dataPedidoRaw(doc);
       const referenceDate = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
@@ -616,6 +619,10 @@ async function computeChegadas(): Promise<any> {
         const current = purchasesByProduct.get(product.produto_id) ?? [];
         if (!current.some((item) => item.codigo === detail.codigo)) current.push(detail);
         purchasesByProduct.set(product.produto_id, current);
+        const variationKey = partialProductKey(product.produto_id, product.variacao_id);
+        const variationOrders = purchasesByProductVariation.get(variationKey) ?? [];
+        if (!variationOrders.some((item) => item.codigo === detail.codigo)) variationOrders.push(detail);
+        purchasesByProductVariation.set(variationKey, variationOrders);
       }
     }
 
@@ -659,7 +666,10 @@ async function computeChegadas(): Promise<any> {
         const stockConflict = stock.verificado
           && openDemand.documentos.size > 1
           && openDemand.quantidade > stock.estoque;
-        const purchaseOrders = product.produto_id ? (purchasesByProduct.get(product.produto_id) ?? []) : [];
+        const purchaseOrders = !product.produto_id ? []
+          : shouldUsePickPackPartialBalance(situacao.grupo)
+            ? (purchasesByProductVariation.get(partialProductKey(product.produto_id, product.variacao_id)) ?? [])
+            : (purchasesByProduct.get(product.produto_id) ?? []);
         return {
           ...product,
           estoque_atual: stock.estoque,
@@ -679,6 +689,7 @@ async function computeChegadas(): Promise<any> {
       const estoqueVerificado = !semSaldoParcialConfiavel
         && (produtos.length === 0 ? saldoParcialVerificado : produtos.every((product) => product.estoque_verificado));
       const todosEmEstoque = estoqueVerificado
+        && (!shouldUsePickPackPartialBalance(situacao.grupo) || produtos.length > 0)
         && produtos.every((product) => product.deficit <= 0 && !product.conflito_estoque);
       const pecasEmFalta = produtos.filter((product) => !product.estoque_verificado || product.deficit > 0 || product.conflito_estoque);
 
@@ -690,7 +701,17 @@ async function computeChegadas(): Promise<any> {
           .filter((order) => order.estado !== "cancelado" && order.estado !== "chegou" && order.data_chegada)
           .map((order) => String(order.data_chegada).slice(0, 10)),
       )].sort();
-      const proximaReposicao = datasReposicao.at(-1) ?? null;
+      const partialArrival = resolvePartialWriteoffArrival({
+        group: situacao.grupo,
+        status: partialBalanceStatus,
+        pendingProducts: produtos,
+        missingProducts: pecasEmFalta,
+        allInStock: todosEmEstoque,
+        today,
+      });
+      const proximaReposicao = partialArrival
+        ? partialArrival.proxima_reposicao
+        : datasReposicao.at(-1) ?? null;
 
       const relatedDetails = pecasEmFalta.flatMap((product) => product.pedidos_compra);
       const detalhes = [...new Map(
@@ -703,11 +724,14 @@ async function computeChegadas(): Promise<any> {
       );
       const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
       const maiorDataPedido = datasPedidos.sort().at(-1) ?? null;
-      const dataChegada = todosEmEstoque
-        ? today
-        : (proximaReposicao ?? maiorDataPedido ?? dataChegadaOrcamento);
-      const semPrevisaoConfiavel = !todosEmEstoque && !dataChegada;
-      const motivoBloqueio = semSaldoParcialConfiavel
+      const dataChegada = partialArrival
+        ? partialArrival.data_chegada
+        : todosEmEstoque ? today : (proximaReposicao ?? maiorDataPedido ?? dataChegadaOrcamento);
+      const podeAgendar = partialArrival ? partialArrival.pode_agendar : todosEmEstoque;
+      const semPrevisaoConfiavel = !partialArrival?.saldo_baixa_parcial_encerrado && !podeAgendar && !dataChegada;
+      const motivoBloqueio = partialArrival?.saldo_baixa_parcial_encerrado
+        ? "O saldo da baixa parcial foi encerrado no Pick & Pack; não há peças restantes para esta previsão."
+        : semSaldoParcialConfiavel
         ? partialBalanceStatus === "not_found"
           ? "O saldo desta baixa parcial não foi localizado no Pick & Pack."
           : "Não foi possível consultar agora o saldo da baixa parcial no Pick & Pack."
@@ -730,9 +754,11 @@ async function computeChegadas(): Promise<any> {
         pedidos_todos_chegaram: todosChegaram,
         pedidos_sem_previsao: semPrevisaoConfiavel,
         saldo_baixa_parcial_status: partialBalanceStatus,
+        saldo_baixa_parcial_encerrado: partialArrival?.saldo_baixa_parcial_encerrado ?? false,
+        tem_saldo_pendente: partialArrival?.tem_saldo_pendente ?? null,
         estoque_verificado: estoqueVerificado,
         todos_em_estoque: todosEmEstoque,
-        pode_agendar: todosEmEstoque,
+        pode_agendar: podeAgendar,
         motivo_bloqueio: motivoBloqueio,
         proxima_reposicao: proximaReposicao,
         pecas_em_falta: pecasEmFalta,
@@ -743,7 +769,7 @@ async function computeChegadas(): Promise<any> {
         grupo: situacao.grupo,
         data_emissao: doc?.data_emissao || doc?.data || null,
         data_chegada: dataChegada,
-        data_chegada_texto: dataChegadaRaw,
+        data_chegada_texto: partialArrival ? dataChegada ?? "" : dataChegadaRaw,
         vinculo_tipo: tipo === "orcamento" ? "orcamento" : vinculo.tipo,
         vinculo_codigo: orcCodigo,
         vinculo_texto: tipo === "orcamento" ? `Orçamento ${doc.codigo}` : vinculo.original,

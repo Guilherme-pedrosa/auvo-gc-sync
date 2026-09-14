@@ -11,7 +11,7 @@ import { FileText, Clock, Settings, RefreshCw, CalendarIcon } from "lucide-react
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isOpenOsSituation } from "@/lib/osOpenStatuses";
-import { syncReportsInSteps } from "@/lib/reportsSync";
+import { syncReportsInSteps, type ReportsSyncWarning } from "@/lib/reportsSync";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
@@ -111,6 +111,7 @@ export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
+  const [syncWarnings, setSyncWarnings] = useState<ReportsSyncWarning[]>([]);
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("os-abertas");
@@ -132,6 +133,7 @@ export default function RelatoriosPage() {
     syncController.current = controller;
     setSyncing(true);
     setSyncFailed(false);
+    setSyncWarnings([]);
     setSyncStatusMessage("Iniciando sincronização em lotes...");
     try {
       const totals = await syncReportsInSteps(
@@ -141,10 +143,16 @@ export default function RelatoriosPage() {
           situationIds: situacaoIds,
           signal: controller.signal,
           onProgress: (message, completed) => setSyncStatusMessage(`${message} · ${completed} lotes concluídos`),
+          onWarnings: setSyncWarnings,
         },
       );
-      setSyncStatusMessage(`Sincronização concluída: ${totals.orders} OS conferidas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas.`);
-      toast.success("Sincronização concluída e dados gravados.");
+      if (totals.incomplete) {
+        setSyncStatusMessage(`Sincronização concluída com pendências: ${totals.orders} OS atualizadas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas. ${totals.warnings.length} OS não puderam ser conferidas; registros preservados.`);
+        toast.warning(`${totals.warnings.length} OS pendentes de conferência. Os demais lotes foram processados.`, { duration: 15000 });
+      } else {
+        setSyncStatusMessage(`Sincronização concluída: ${totals.orders} OS conferidas, ${totals.tasks} tarefas Auvo e ${totals.saved} tarefas gravadas.`);
+        toast.success("Sincronização concluída e dados gravados.");
+      }
     } catch (error: any) {
       if (!controller.signal.aborted) {
         setSyncFailed(true);
@@ -405,9 +413,17 @@ export default function RelatoriosPage() {
           </div>
           {(syncing || syncStatusMessage) && (
             <div className="w-72 space-y-1.5">
-              <p role="status" aria-live="polite" className={cn("text-xs text-right", syncFailed ? "text-destructive" : "text-muted-foreground")}>
+              <p role="status" aria-live="polite" className={cn("text-xs text-right", syncFailed ? "text-destructive" : syncWarnings.length ? "text-amber-700" : "text-muted-foreground")}>
                 {syncStatusMessage || "Iniciando..."}
               </p>
+              {syncWarnings.length > 0 && (
+                <details className="mt-1 max-w-2xl text-xs text-amber-700">
+                  <summary className="cursor-pointer text-right">Ver OS pendentes de conferência ({syncWarnings.length})</summary>
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2">
+                    {syncWarnings.map(warning => <li key={warning.os_id}>{warning.message}</li>)}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
         </div>

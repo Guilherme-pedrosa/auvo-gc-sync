@@ -1,3 +1,5 @@
+import { readGcOsForReconciliation, type GcOsReconciliationWarning } from "./gc-os-reconciliation.ts";
+
 type Dependencies = {
   fetchOs: (headers: Record<string, string>, options: any) => Promise<any>;
   saveOs: (sb: any, result: any) => Promise<number>;
@@ -58,22 +60,26 @@ export async function runBoundedReportStep(sb: any, headers: Record<string, stri
     }
     const candidates = [...pending].sort();
     const batch = candidates.slice(0, 5);
+    const warnings: GcOsReconciliationWarning[] = [];
+    let transitioned = 0;
     for (const id of batch) {
-      const response = await deps.getOs(id);
+      const result = await readGcOsForReconciliation(id, deps.getOs);
+      if (result.kind === "unavailable") {
+        warnings.push(result.warning);
+        continue;
+      }
       let patch;
-      if ([404, 410].includes(response.status)) {
+      if (result.kind === "missing") {
         patch = { gc_os_situacao: "EXCLUÍDA NO GC", gc_os_situacao_id: "", atualizado_em: new Date().toISOString() };
       } else {
-        if (!response.ok) throw new Error(`Conferência da OS ${id}: HTTP ${response.status}. Registro preservado.`);
-        const payload = await response.json();
-        const os = payload?.data || payload;
-        if (String(os?.id || "") !== id) throw new Error(`Resposta da OS ${id} não confirmada. Registro preservado.`);
-        patch = deps.mirrorPatch(deps.mapOs(os));
+        patch = deps.mirrorPatch(deps.mapOs(result.os));
       }
       const { error } = await sb.from("tarefas_central").update(patch).eq("gc_os_id", id);
       if (error) throw new Error(`Falha ao atualizar situação da OS ${id}: ${error.message}`);
+      transitioned++;
     }
-    return { success: true, report_step: stage, transitioned: batch.length, next_after: candidates.length > batch.length ? batch.at(-1) : null };
+    return { success: true, report_step: stage, checked: batch.length, transitioned, warnings,
+      incomplete: warnings.length > 0, next_after: candidates.length > batch.length ? batch.at(-1) : null };
   }
   throw new Error("Etapa de sincronização desconhecida.");
 }

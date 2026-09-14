@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase as sb } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -9,6 +10,11 @@ import {
 } from "@/lib/clientLinkStatus";
 import { attachContractVisitProgress } from "@/lib/agendaContractVisits";
 import { fetchAgendaPages } from "@/lib/agendaPagination";
+import {
+  AGENDA_FORECAST_POLL_MS, AGENDA_FORECAST_STATE_FIELDS,
+  agendaForecastStateChanged, agendaForecastStateKey, pendingAgendaForecasts,
+  type AgendaForecastState,
+} from "@/lib/agendaForecastRefresh";
 
 /**
  * Carrega o cadastro oficial de RH > Clientes uma única vez por sincronização.
@@ -498,12 +504,14 @@ export interface AgendaVeiculoDia {
 }
 
 export function useAgendaSemana(dias: string[]) {
+  const queryClient = useQueryClient();
   const inicio = dias[0];
   const fim = dias[dias.length - 1];
-  return useQuery({
+  const query = useQuery({
     queryKey: ["agenda_semana", inicio, fim],
     enabled: !!inicio && !!fim,
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: "always",
     gcTime: 30 * 60 * 1000,
     placeholderData: (previousData) => previousData,
     queryFn: async () => {
@@ -523,6 +531,51 @@ export function useAgendaSemana(dias: string[]) {
       };
     },
   });
+  const pending = pendingAgendaForecasts(query.data?.agendamentos ?? []);
+  const pendingState = agendaForecastStateKey(pending);
+
+  useEffect(() => {
+    if (!inicio || !fim || query.isPlaceholderData || pending.length === 0) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const agendaKey = ["agenda_semana", inicio, fim];
+    const schedule = () => {
+      if (!stopped) timer = setTimeout(check, AGENDA_FORECAST_POLL_MS);
+    };
+    const check = async () => {
+      try {
+        if (document.visibilityState === "hidden" || queryClient.isFetching({ queryKey: agendaKey, exact: true })) return;
+        const states: AgendaForecastState[] = [];
+        for (let offset = 0; offset < pending.length; offset += 200) {
+          if (stopped) return;
+          const { data, error } = await sb.from("agenda_agendamentos")
+            .select(AGENDA_FORECAST_STATE_FIELDS.join(","))
+            .in("id", pending.slice(offset, offset + 200).map(row => row.id))
+            .order("id");
+          if (error) return; // Falha de leitura não comprova que uma reserva desapareceu.
+          states.push(...((data ?? []) as unknown as AgendaForecastState[]));
+        }
+        if (!stopped && agendaForecastStateChanged(pending, states)) {
+          await queryClient.invalidateQueries({ queryKey: agendaKey, exact: true });
+        }
+      } catch {
+        // A próxima leitura tenta novamente; uma interrupção de rede não invalida
+        // nem remove os dados já apresentados na agenda.
+      } finally {
+        schedule();
+      }
+    };
+    schedule();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+    // A assinatura contém os campos observados. Ignorar timestamps evita reiniciar
+    // o monitor a cada tentativa de conversão sem mudança no card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inicio, fim, pendingState, query.isPlaceholderData, queryClient]);
+
+  return query;
 }
 
 export function useSalvarCelulaTecnico() {
