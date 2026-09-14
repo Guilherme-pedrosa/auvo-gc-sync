@@ -1,3 +1,4 @@
+// Budget execution scheduling: discover unassigned Auvo tasks from GC (2026-09-14).
 // Scheduling sync: partial balances and safe GC status reconciliation (2026-09-14).
 // Hourly imports persist complete days; interactive imports require the whole period.
 // Controle OS: bounded report steps preserve Auvo assignments and report confirmed progress.
@@ -11,9 +12,7 @@ import { runBoundedReportStep } from "./report-steps.ts";
 import { readGcOsForReconciliation } from "./gc-os-reconciliation.ts";
 import { reconcileBudgetExecutionForecasts, type ForecastPromotionSummary } from "./budget-forecast-reconciliation.ts";
 import { fetchAuvoTaskWindows, type AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
-import {
-  normalizeGcDocumentCode,
-} from "../_shared/agenda-forecast-promotion.ts";
+import { normalizeGcDocumentCode } from "../_shared/agenda-forecast-promotion.ts";
 import { auvoTaskTypeDescription, auvoTaskTypeId } from "../_shared/auvo-task-type.ts";
 import {
   extractAuvoEquipmentIds,
@@ -1457,23 +1456,32 @@ async function reconcilePendingBudgetForecasts(
   gcHeaders: Record<string, string>,
   budgetCodes?: string[],
 ) {
-  return await reconcileBudgetExecutionForecasts(sbClient, {
-    readGc: async (path) => {
-      const response = await rateLimitedFetch(`${GC_BASE_URL}${path}`, {
-        headers: gcHeaders, signal: AbortSignal.timeout(15_000),
-      }, "gc");
-      if (!response.ok) throw new Error(`Conferência da previsão: GC HTTP ${response.status}`);
-      const json = await response.json();
-      if (json?.status === "error" || Number(json?.code || 200) >= 400) {
-        throw new Error(`Conferência da previsão: ${JSON.stringify(json).slice(0, 200)}`);
-      }
-      return json;
+  return await reconcileBudgetExecutionForecasts(
+    sbClient,
+    {
+      readGc: async (path) => {
+        const response = await rateLimitedFetch(
+          `${GC_BASE_URL}${path}`,
+          {
+            headers: gcHeaders,
+            signal: AbortSignal.timeout(15_000),
+          },
+          "gc",
+        );
+        if (!response.ok) throw new Error(`Conferência da previsão: GC HTTP ${response.status}`);
+        const json = await response.json();
+        if (json?.status === "error" || Number(json?.code || 200) >= 400) {
+          throw new Error(`Conferência da previsão: ${JSON.stringify(json).slice(0, 200)}`);
+        }
+        return json;
+      },
+      mapOs: (os) => ({
+        ...mapGcOsToMirrorPayload(os),
+        gc_os_orcamento_codigo: normalizeGcDocumentCode(getGcAttrValue(os.atributos || [], "81831")),
+      }),
     },
-    mapOs: (os) => ({
-      ...mapGcOsToMirrorPayload(os),
-      gc_os_orcamento_codigo: normalizeGcDocumentCode(getGcAttrValue(os.atributos || [], "81831")),
-    }),
-  }, budgetCodes);
+    budgetCodes,
+  );
 }
 
 type CentralSyncBody = {
@@ -2555,7 +2563,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
   if (body?.budget_forecasts_only === true) {
     const budgetCodes = Array.isArray(body.budget_codes)
-      ? body.budget_codes.map(normalizeGcDocumentCode).filter(Boolean) : undefined;
+      ? body.budget_codes.map(normalizeGcDocumentCode).filter(Boolean)
+      : undefined;
     const forecasts = await reconcilePendingBudgetForecasts(sbClient, gcH, budgetCodes);
     return { success: forecasts.errors === 0, mode: "budget-forecasts-only", previsoes_orcamento: forecasts };
   }
