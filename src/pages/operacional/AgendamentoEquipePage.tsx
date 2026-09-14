@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2, Link2, CircleCheckBig } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,8 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
-import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle, contractVisitActivity } from "@/components/operacional/ContractVisitCardContent";
+import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle } from "@/components/operacional/ContractVisitCardContent";
+import { AgendaContractBadge } from "@/components/operacional/AgendaContractBadge";
 import { buildAgendaContractIndicators, buildVisibleAgendaContractIndicators } from "@/lib/agendaContractIndicators";
 import { findManualAgendaEntry, selectFutureContractVisitMoves } from "@/lib/agendaCellActions";
 import { agendaDateIsInRange, scrollAgendaToDate } from "@/lib/agendaDateNavigation";
@@ -474,8 +475,8 @@ export function Celula({
                       })}
                     </span>
                   )}
-                  {(tipoTarefaResumido || tempoTrabalhado.hasCheckIn) && (
-                    <span className="flex min-w-0 items-center gap-1 text-[10px] font-medium normal-case opacity-90">
+                  {(tipoTarefaResumido || tempoTrabalhado.hasCheckIn || indicadoresContrato.length > 0) && (
+                    <span className={cn("flex min-h-3.5 min-w-0 items-center gap-1 text-[10px] font-medium normal-case opacity-90", indicadoresContrato.length > 0 && "pr-[78px]")}>
                       {tipoTarefaResumido && <span className="min-w-0 truncate" title={a.tipo_tarefa_auvo_descricao || tipoTarefaResumido}>{tipoTarefaResumido}</span>}
                       {tempoTrabalhado.hasCheckIn && <>
                         <Clock3 className="h-2.5 w-2.5 shrink-0" />
@@ -488,7 +489,7 @@ export function Celula({
                     </span>
                   )}
                   {a.previsao_detalhes && (
-                    <span className="text-[9px] font-normal lowercase opacity-80 truncate">
+                    <span className={cn("text-[9px] font-normal lowercase opacity-80 truncate", indicadoresContrato.length > 0 && "pr-[78px]")}>
                       {a.previsao_detalhes}
                     </span>
                   )}
@@ -525,31 +526,8 @@ export function Celula({
                   </span>
                 )}
               </button>
-              {indicadoresContrato.length > 0 && <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 px-1 py-0.5">
-                {indicadoresContrato.map((indicator) => {
-                  const contabilizada = indicator.status === "contabilizada";
-                  const aguardaValidacao = !contabilizada && agendaVisualStatus(a) === "finalizada";
-                  const label = contabilizada ? "Contabilizado" : aguardaValidacao ? "Aguardando validação" : "Conta no contrato";
-                  const activity = contractVisitActivity(indicator.contractCard);
-                  return <button key={indicator.contractCard.id} type="button" data-contract-visit-recognition
-                    draggable={indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO"}
-                    onDragStart={() => {
-                      if (indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO") onDragStart(indicator.contractCard);
-                    }}
-                    onClick={() => setVisitaDetalhe(indicator.contractCard)}
-                    aria-label={`${label} · ${activity} · ${a.cliente}`}
-                    title={`${contabilizada ? "Esta tarefa já foi reconhecida na execução do contrato." : aguardaValidacao ? "Tarefa concluída no Auvo, mas a execução ainda não foi validada neste contrato. As horas não foram contabilizadas neste vínculo." : "Tarefa vinculada à previsão do contrato; as horas serão reconhecidas após a execução válida."}\n${contractVisitCardTitle(indicator.contractCard)}`}
-                    className={cn("flex max-w-full items-center gap-1 rounded px-1 text-[10px] font-medium leading-4 normal-case hover:underline focus-visible:ring-2 focus-visible:ring-primary",
-                      contabilizada ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-                        : aguardaValidacao ? "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
-                        : "bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200")}
-                  >
-                    {contabilizada ? <CircleCheckBig className="h-3 w-3 shrink-0" /> : <Link2 className="h-3 w-3 shrink-0" />}
-                    <span className="shrink-0">{label}</span>
-                    <span className="truncate opacity-80">· {activity}</span>
-                  </button>;
-                })}
-              </div>}
+              <AgendaContractBadge task={a} indicators={indicadoresContrato}
+                onOpen={setVisitaDetalhe} onDragStart={onDragStart} />
               {!visitaContratualBloqueada && !visitaContratualPlanejada && <div className={cn(
                 "absolute z-20 hidden items-center gap-0.5 group-hover/item:flex",
                 visitaContratualPlanejada ? "bottom-0 right-0" : "-right-1 top-1/2 -translate-y-1/2",
