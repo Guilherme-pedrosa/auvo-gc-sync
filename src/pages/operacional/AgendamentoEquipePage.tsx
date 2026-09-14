@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, CircleCheckBig, Tags as TagsIcon, X, History, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2, Link2, CircleCheckBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,10 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
+import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle, contractVisitActivity } from "@/components/operacional/ContractVisitCardContent";
+import { buildAgendaContractIndicators, buildVisibleAgendaContractIndicators } from "@/lib/agendaContractIndicators";
+import { findManualAgendaEntry, selectFutureContractVisitMoves } from "@/lib/agendaCellActions";
+import { agendaDateIsInRange, scrollAgendaToDate } from "@/lib/agendaDateNavigation";
 import {
   AGENDA_TASK_SYNC_FIELDS,
   agendaTaskSnapshotChanged,
@@ -39,6 +43,7 @@ import {
   shouldHighlightPendingGcExecution,
 } from "@/lib/agendaTaskStatus";
 import { AgendaFilters } from "@/components/operacional/AgendaFilters";
+import { agendaMatchesClientFilter, agendaVisibleCollaborators, type AgendaClientFilter } from "@/lib/agendaClientFilter";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
@@ -93,17 +98,6 @@ const norm = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-
-const formatContractHours = (hours: number | null | undefined) =>
-  `${Number(hours || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h`;
-
-const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
-  const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  return txt.includes("tecnico") || txt.includes("auxiliar");
-};
 
 const PALETA = [
   // Azuis
@@ -189,6 +183,7 @@ const getStatusColor = (a: AgendaAgendamento) => {
 
 interface CelulaProps {
   itens: AgendaAgendamento[];
+  contractIndicators?: ReturnType<typeof buildAgendaContractIndicators>;
   onSalvar: (v: string) => void;
   onAbrirTarefa: (a: AgendaAgendamento) => void;
   onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
@@ -204,46 +199,9 @@ interface CelulaProps {
   chegadas?: ChegadaItem[];
 }
 
-type ContractVisitTaskDetail = {
-  tarefa_id?: string | number | null;
-  tecnico?: string | null;
-  horas?: string | number | null;
-};
-
-const summarizeContractVisitForTechnician = (item: AgendaAgendamento) => {
-  const details = Array.isArray(item.contrato_visita_tarefas_detalhes)
-    ? (item.contrato_visita_tarefas_detalhes as ContractVisitTaskDetail[])
-    : [];
-  const collaboratorName = norm(item.colaborador_nome);
-  const technicianDetails = details.filter((detail) => {
-    const technicianName = norm(String(detail.tecnico || ""));
-    return Boolean(
-      technicianName
-      && collaboratorName
-      && (
-        technicianName === collaboratorName
-        || collaboratorName.includes(technicianName)
-        || technicianName.includes(collaboratorName)
-      )
-    );
-  });
-  const selected = technicianDetails.length > 0 ? technicianDetails : details;
-  const hours = selected.reduce((total, detail) => {
-    const value = Number(detail.horas);
-    return total + (Number.isFinite(value) && value > 0 ? value : 0);
-  }, 0);
-  const taskIds = [...new Set(selected
-    .map((detail) => String(detail.tarefa_id || "").trim())
-    .filter(Boolean))];
-  return {
-    hours: hours > 0 ? hours : Number(item.contrato_visita_horas_realizadas || 0),
-    taskIds: taskIds.length > 0 ? taskIds : (item.contrato_visita_tarefa_ids ?? []),
-    technicianMatched: technicianDetails.length > 0,
-  };
-};
-
-function Celula({
+export function Celula({
   itens,
+  contractIndicators,
   onSalvar,
   onAbrirTarefa,
   onAbrirAgendamento,
@@ -259,8 +217,17 @@ function Celula({
   chegadas = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
+  const [visitaDetalhe, setVisitaDetalhe] = useState<AgendaAgendamento | null>(null);
+  const [mostrarTodas, setMostrarTodas] = useState(false);
+  const { indicatorsByItemId, hiddenContractCardIds } = useMemo(
+    () => contractIndicators ?? buildAgendaContractIndicators(itens), [contractIndicators, itens],
+  );
+  const itensApresentados = itens.filter((item) => !hiddenContractCardIds.has(item.id)
+    || (tagsPorAgendamento.get(item.id)?.length ?? 0) > 0);
+  const itensVisiveis = mostrarTodas ? itensApresentados : itensApresentados.slice(0, 5);
+  const itensOcultos = itensApresentados.length - itensVisiveis.length;
 
-  const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
+  const manual = findManualAgendaEntry(itens);
 
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
   const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
@@ -311,14 +278,20 @@ function Celula({
         e.currentTarget.classList.remove("bg-primary/5");
         onDrop();
       }}
-      className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
+      data-agenda-day-cell
+      className="group relative min-w-0 overflow-hidden border border-border p-1 align-top h-16 transition-colors"
     >
-      <div className="flex flex-col gap-0.5 h-full">
+      <div className="flex min-w-0 flex-col gap-0.5">
         {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0 || horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
-          <div className="flex flex-wrap gap-1 normal-case">
+          <details className="mb-0.5 min-w-0 text-[11px] leading-4 normal-case">
+            <summary className="cursor-pointer truncate text-muted-foreground" title="Abrir resumo de horas do dia">
+              Prev. {formatWorkedMinutes(comparativoOs.plannedMinutes)} · Real {formatWorkedMinutes(horasTrabalhadas.totalMinutes)}
+              {comparativoOs.missingPlannedOsCount > 0 && <span className="text-amber-700 dark:text-amber-300"> · {comparativoOs.missingPlannedOsCount} sem duração</span>}
+            </summary>
+            <div className="mt-1 space-y-1 rounded border bg-muted/40 p-2">
             {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0) && (
               <div
-                className="flex items-center gap-1 rounded-sm border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                className="flex flex-wrap items-center gap-1 text-[11px] text-indigo-800 dark:text-indigo-200"
                 title="Soma a duração planejada de todas as tarefas do dia (OS do GestãoClick, Preventivas no Auvo, Contratos e Previsões)."
               >
                 <CalendarClock className="h-3 w-3 shrink-0" />
@@ -339,7 +312,7 @@ function Celula({
             )}
             {(horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
               <div
-                className="flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-1 text-[10px] font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                className="flex flex-wrap items-center gap-1 text-[11px] text-sky-800 dark:text-sky-200"
                 title="Tempo efetivamente trabalhado no Auvo. Previsões e duração planejada não entram neste total."
               >
                 <Clock3 className="h-3 w-3 shrink-0" />
@@ -352,7 +325,7 @@ function Celula({
             {comparativoOs.completedOsCount > 0 && (
               <div
                 className={cn(
-                  "flex items-center gap-1 rounded-sm border px-1.5 py-1 text-[10px] font-bold",
+                  "flex flex-wrap items-center gap-1 text-[11px] font-medium",
                   comparativoOs.differenceMinutes > 0
                     ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
                     : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
@@ -365,9 +338,10 @@ function Celula({
                 <span>· {formatSignedAgendaMinutes(comparativoOs.differenceMinutes)}</span>
               </div>
             )}
-          </div>
+            </div>
+          </details>
         )}
-        {itens.map((a) => {
+        {itensVisiveis.map((a) => {
           const chegadaAtual = a.previsao_continuidade ? chegadaDoAgendamento(a, chegadas) : null;
           const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
           const dataPrevista = a.data;
@@ -376,24 +350,8 @@ function Celula({
           const previsaoAntesDaChegada = previsaoAtrasada;
           const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
-          const visitaContratualCumprida = visitaContratualPlanejada
-            && Boolean(a.contrato_visita_execucao_id || a.contrato_visita_realizada_em);
-          const visitaContratualComExecucaoNoMes = visitaContratualPlanejada
-            && Number(a.contrato_visitas_cumpridas || 0) > 0;
-          const cargaContratualMensalCumprida = visitaContratualPlanejada
-            && contractMonthlyHoursAreFulfilled(a);
-          const visitaContratualAlinhada = visitaContratualPlanejada
-            && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada;
-          const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
-          const horasContratuaisDisponiveis = Math.max(
-            0,
-            Number(a.contrato_horas_previstas || 0) - Number(a.contrato_horas_cumpridas || 0),
-          );
-          const dataRealizadaLabel = a.contrato_visita_realizada_em
-            ? format(parseISO(a.contrato_visita_realizada_em.slice(0, 10)), "dd/MM/yyyy")
-            : null;
-          const ultimaRealizadaLabel = dataRealizadaLabel;
+          const indicadoresContrato = indicatorsByItemId.get(a.id) ?? [];
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
@@ -401,35 +359,29 @@ function Celula({
           const tipoTarefa = a.auvo_task_id
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
+          const tipoTarefaResumido = tipoTarefa === "HIGIENIZAÇÃO DE COIFAS" ? "Higienização de coifas"
+            : tipoTarefa === "TIPO NÃO INFORMADO" ? null : tipoTarefa;
           const situacaoGc = String(a.gc_os_situacao || "").trim();
           const destacarSituacaoGc = shouldHighlightPendingGcExecution(a);
           const clienteGc = String(a.gc_os_cliente || "").trim();
           const clienteDivergente = Boolean(
             a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
-          const identificadoresAntesSituacao = [
-            visitaContratualRealizada
-              ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · REALIZADA`
-              : visitaContratualPlanejada
-                ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · ${visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"}`
-                : null,
-            tipoTarefa,
-            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
-          ].filter(Boolean);
-          const identificadoresDepoisSituacao = [
-            a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
-            !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
-              ? `Orç ${a.gc_orcamento_codigo}`
-              : null,
-          ].filter(Boolean);
-          const possuiIdentificador = identificadoresAntesSituacao.length > 0
-            || identificadoresDepoisSituacao.length > 0;
+          const documentoLabel = a.gc_os_codigo ? `OS ${a.gc_os_codigo}`
+            : a.gc_orcamento_codigo ? `Orç ${a.gc_orcamento_codigo}`
+            : a.auvo_task_id ? `#${a.auvo_task_id}` : null;
+          const tarefaTitle = [a.cliente, tipoTarefa,
+            a.tipo_tarefa_auvo_descricao !== tipoTarefa ? a.tipo_tarefa_auvo_descricao : null, documentoLabel,
+            a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : null,
+            situacaoGc ? `Situação GC: ${situacaoGc}` : null, a.descricao,
+          ].filter(Boolean).join(" · ");
 
           return (
             <div
               key={a.id}
+              data-agenda-item={a.id}
               className={cn(
-                "group/item relative flex items-center rounded-sm transition-all",
+                "group/item relative flex min-w-0 flex-col items-stretch rounded-sm transition-all",
                 ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO")) && "opacity-20 grayscale",
                 ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo === "ORCAMENTO_EXECUCAO")) && "ring-2 ring-primary/70 ring-offset-1",
               )}
@@ -440,19 +392,15 @@ function Celula({
                 onDragStart={() => {
                   if (!visitaContratualBloqueada) onDragStart(a);
                 }}
-                title={visitaContratualRealizada
-                  ? `${a.contrato_visita_numero || ""}ª visita contratual realizada · ${formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} ${resumoVisita?.technicianMatched ? "do técnico" : "da visita"} contabilizadas`
-                  : visitaContratualComExecucaoNoMes
-                    ? `${formatContractHours(a.contrato_horas_cumpridas)} já cumpridas no mês · última visita em ${ultimaRealizadaLabel || "data não informada"} · ${formatContractHours(horasContratuaisDisponiveis)} disponíveis`
+                title={visitaContratualRealizada || visitaContratualPlanejada
+                  ? contractVisitCardTitle(a)
                   : a.origem === "CONTRATO"
                   ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
-                  : a.auvo_task_id
-                    ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
-                    : "Agendamento manual"}
+                  : tarefaTitle || "Agendamento manual"}
                 onClick={() => {
-                  if (visitaContratualBloqueada) return;
+                  if (visitaContratualPlanejada || visitaContratualRealizada) { setVisitaDetalhe(a); return; }
                   if (a.auvo_task_id) onAbrirTarefa(a);
                   else onAbrirAgendamento(a);
                 }}
@@ -462,9 +410,9 @@ function Celula({
                   }
                 }}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
-                  visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-violet-500 shadow-sm",
-                  visitaContratualAlinhada && "border-2 border-sky-500 shadow-sm",
+                  "min-w-0 w-full overflow-hidden text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
+                  visitaContratualRealizada && "cursor-pointer active:cursor-pointer border-violet-500",
+                  (visitaContratualPlanejada || visitaContratualRealizada) && "py-0.5 cursor-pointer active:cursor-pointer",
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   previsaoAntesDaChegada && "border-2 border-destructive bg-destructive/10 text-destructive ring-2 ring-destructive/30",
@@ -474,59 +422,30 @@ function Celula({
                   clienteDivergente && "border-2 border-destructive ring-1 ring-destructive/50",
                 )}
               >
-                <div className="flex flex-col">
-                  <span className="truncate">
-                    {identificadoresAntesSituacao.join(" · ")}
-                    {situacaoGc && a.gc_os_codigo && (
-                      <>
-                        {" "}
-                        <span
-                          className={cn(
-                            destacarSituacaoGc
-                              && "font-extrabold text-yellow-600 dark:text-yellow-300",
-                          )}
-                          title={destacarSituacaoGc
-                            ? "Tarefa finalizada no Auvo, mas a OS ainda não está executada no GestãoClick."
-                            : undefined}
-                        >
-                          [{situacaoGc}]
-                        </span>
-                      </>
-                    )}
-                    {identificadoresDepoisSituacao.length > 0 && (
-                      <>
-                        {identificadoresAntesSituacao.length > 0 ? " · " : ""}
-                        {identificadoresDepoisSituacao.join(" · ")}
-                      </>
-                    )}
-                    {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
-                  </span>
-                  {(visitaContratualPlanejada || visitaContratualRealizada) && (
-                    <span
-                      className="truncate text-[9px] font-extrabold normal-case"
-                      title={`Contrato seguido: ${a.contrato_nome || "não identificado"} · Tipo: ${a.contrato_tipo_nome || "não definido"}`}
-                    >
-                      Contrato seguido: {a.contrato_nome || "não identificado"} · Tipo: {a.contrato_tipo_nome || "não definido"}
-                    </span>
-                  )}
-                  {visitaContratualComExecucaoNoMes && (
-                    <span
-                      className={cn(
-                        "mt-1 flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] font-black normal-case",
-                        cargaContratualMensalCumprida
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-50"
-                          : "border-sky-300 bg-white/70 text-sky-950 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100",
-                      )}
-                    >
-                      {cargaContratualMensalCumprida
-                        ? <CircleCheckBig className="h-3 w-3 shrink-0" />
-                        : <Clock3 className="h-3 w-3 shrink-0" />}
-                      <span>
-                        {cargaContratualMensalCumprida ? "CARGA MENSAL CUMPRIDA" : "PROGRESSO NO MÊS"}: {formatContractHours(a.contrato_horas_cumpridas)} · {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas ?? 0} visita(s)
-                        {ultimaRealizadaLabel ? ` · última em ${ultimaRealizadaLabel}` : ""} · saldo: {formatContractHours(horasContratuaisDisponiveis)} disponíveis
+                {visitaContratualPlanejada || visitaContratualRealizada ? (
+                  <>
+                    <ContractVisitCardContent item={a} />
+                    {itemTags.length > 0 && (
+                      <span className="mt-0.5 flex gap-1 overflow-hidden normal-case">
+                        {itemTags.map((tag) => (
+                          <span key={tag.id} className="truncate rounded-full px-1.5 text-[11px] font-medium" title={tag.name}
+                            style={{ backgroundColor: normalizeAgendaTagColor(tag.color), color: agendaTagTextColor(tag.color) }}>
+                            {tag.name}
+                          </span>
+                        ))}
                       </span>
-                    </span>
-                  )}
+                    )}
+                  </>
+                ) : <div className="flex flex-col">
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate" title={a.cliente}>{a.cliente}</span>
+                    {documentoLabel && <span
+                      className={cn("shrink-0", destacarSituacaoGc && "font-extrabold text-yellow-600 dark:text-yellow-300")}
+                      title={destacarSituacaoGc
+                        ? `${documentoLabel} · Tarefa finalizada no Auvo, mas a OS ainda não está executada no GestãoClick.`
+                        : `${documentoLabel}${situacaoGc ? ` · ${situacaoGc}` : ""}`}
+                    >{documentoLabel}</span>}
+                  </span>
                   {clienteDivergente && a.vinculo_status !== "vinculado" && (
                     <span
                       className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
@@ -553,46 +472,20 @@ function Celula({
                       })}
                     </span>
                   )}
-                  {tempoTrabalhado.hasCheckIn && (
-                    <span className="flex items-center gap-1 text-[9px] font-semibold normal-case opacity-90 truncate">
-                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                      {formatWorkedClock(tempoTrabalhado.checkIn)} → {tempoTrabalhado.hasCheckOut
-                        ? formatWorkedClock(tempoTrabalhado.checkOut)
-                        : "em andamento"}
-                      {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
-                    </span>
-                  )}
-                  {visitaContratualRealizada && (
-                    <>
-                      <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case">
+                  {(tipoTarefaResumido || tempoTrabalhado.hasCheckIn) && (
+                    <span className="flex min-w-0 items-center gap-1 text-[10px] font-medium normal-case opacity-90">
+                      {tipoTarefaResumido && <span className="min-w-0 truncate" title={a.tipo_tarefa_auvo_descricao || tipoTarefaResumido}>{tipoTarefaResumido}</span>}
+                      {tempoTrabalhado.hasCheckIn && <>
                         <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                        {formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} contabilizadas
-                        {resumoVisita?.taskIds.length
-                          ? ` · ${resumoVisita.taskIds.length} tarefa(s)`
-                          : ""}
-                      </span>
-                      {resumoVisita?.technicianMatched ? (
-                        <span className="truncate text-[9px] font-medium normal-case">
-                          {a.colaborador_nome}
+                        <span className="min-w-0 truncate">
+                          {formatWorkedClock(tempoTrabalhado.checkIn)} → {tempoTrabalhado.hasCheckOut
+                            ? formatWorkedClock(tempoTrabalhado.checkOut) : "em andamento"}
+                          {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
                         </span>
-                      ) : null}
-                      {resumoVisita?.taskIds.length ? (
-                        <span className="truncate text-[9px] font-medium normal-case opacity-80" title={resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}>
-                          Tarefas: {resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}
-                        </span>
-                      ) : null}
-                    </>
-                  )}
-                  {visitaContratualPlanejada && a.contrato_visitas_previstas != null && (
-                    <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case text-sky-900 dark:text-sky-100">
-                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                      Cumprido: {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas} visitas
-                      {a.contrato_horas_previstas != null
-                        ? ` · ${formatContractHours(a.contrato_horas_cumpridas)}/${formatContractHours(a.contrato_horas_previstas)}`
-                        : ""}
+                      </>}
                     </span>
                   )}
-                  {a.previsao_detalhes && !visitaContratualRealizada && !visitaContratualCumprida && (
+                  {a.previsao_detalhes && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
                     </span>
@@ -620,14 +513,42 @@ function Celula({
                       {a.conversao_status === "ERRO" && `Erro na conversão${a.conversao_erro ? ` · ${a.conversao_erro}` : ""}`}
                     </span>
                   )}
-                </div>
-                {(visitaContratualPlanejada || a.previsao_continuidade) && (
+                </div>}
+                {a.previsao_continuidade && !visitaContratualPlanejada && !visitaContratualRealizada && (
                   <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">
                     {a.origem === "CONTRATO" ? "(contrato)" : "(previsão)"}
                   </span>
                 )}
               </button>
-              {!visitaContratualBloqueada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
+              {indicadoresContrato.length > 0 && <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 px-1 py-0.5">
+                {indicadoresContrato.map((indicator) => {
+                  const contabilizada = indicator.status === "contabilizada";
+                  const aguardaValidacao = !contabilizada && agendaVisualStatus(a) === "finalizada";
+                  const label = contabilizada ? "Contabilizado" : aguardaValidacao ? "Aguardando validação" : "Conta no contrato";
+                  const activity = contractVisitActivity(indicator.contractCard);
+                  return <button key={indicator.contractCard.id} type="button" data-contract-visit-recognition
+                    draggable={indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO"}
+                    onDragStart={() => {
+                      if (indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO") onDragStart(indicator.contractCard);
+                    }}
+                    onClick={() => setVisitaDetalhe(indicator.contractCard)}
+                    aria-label={`${label} · ${activity} · ${a.cliente}`}
+                    title={`${contabilizada ? "Esta tarefa já foi reconhecida na execução do contrato." : aguardaValidacao ? "Tarefa concluída no Auvo, mas a execução ainda não foi validada neste contrato. As horas não foram contabilizadas neste vínculo." : "Tarefa vinculada à previsão do contrato; as horas serão reconhecidas após a execução válida."}\n${contractVisitCardTitle(indicator.contractCard)}`}
+                    className={cn("flex max-w-full items-center gap-1 rounded px-1 text-[10px] font-medium leading-4 normal-case hover:underline focus-visible:ring-2 focus-visible:ring-primary",
+                      contabilizada ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                        : aguardaValidacao ? "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                        : "bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200")}
+                  >
+                    {contabilizada ? <CircleCheckBig className="h-3 w-3 shrink-0" /> : <Link2 className="h-3 w-3 shrink-0" />}
+                    <span className="shrink-0">{label}</span>
+                    <span className="truncate opacity-80">· {activity}</span>
+                  </button>;
+                })}
+              </div>}
+              {!visitaContratualBloqueada && !visitaContratualPlanejada && <div className={cn(
+                "absolute z-20 hidden items-center gap-0.5 group-hover/item:flex",
+                visitaContratualPlanejada ? "bottom-0 right-0" : "-right-1 top-1/2 -translate-y-1/2",
+              )}>
                 {(
                   <button
                     type="button"
@@ -658,19 +579,29 @@ function Celula({
             </div>
           );
         })}
+        {itensApresentados.length > 5 && (
+          <button
+            type="button"
+            className="py-1 text-left text-[11px] font-semibold text-primary hover:underline"
+            aria-expanded={mostrarTodas}
+            onClick={() => setMostrarTodas((value) => !value)}
+          >
+            {mostrarTodas ? "Recolher atividades" : `Ver mais ${itensOcultos} atividade${itensOcultos === 1 ? "" : "s"}`}
+          </button>
+        )}
         
         {/* Espaço clicável para nova tarefa sempre disponível, mesmo com itens */}
         <button
           type="button"
           onClick={() => onNovaTarefaAuvo()}
           className={cn(
-            "w-full text-[11px] opacity-25 hover:opacity-100 transition-opacity min-h-[1.5rem] flex-1 flex items-center justify-center hover:bg-primary/5 rounded-sm border border-transparent hover:border-primary/20",
-            itens.length > 0 && "mt-auto py-1"
+            "w-full text-[11px] opacity-25 hover:opacity-100 transition-opacity h-5 flex items-center justify-center hover:bg-primary/5 rounded-sm border border-transparent hover:border-primary/20"
           )}
           aria-label="Nova tarefa ou previsão"
         >
           <Plus className="h-3 w-3" />
         </button>
+        <ContractVisitDetailsDialog item={visitaDetalhe} onClose={() => setVisitaDetalhe(null)} onEdit={onAbrirAgendamento} onContinue={onPreverProximoDia} />
       </div>
     </td>
   );
@@ -742,8 +673,23 @@ export default function AgendamentoEquipePage() {
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [clienteId, setClienteId] = useState("todos");
+  const [clienteFiltro, setClienteFiltro] = useState<AgendaClientFilter | null>(null);
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
+  const [veiculosRecolhidos, setVeiculosRecolhidos] = useState(() => {
+    try { return localStorage.getItem("agenda-equipe:veiculos-recolhidos") === "true"; }
+    catch { return false; }
+  });
+  const alternarVeiculos = () => {
+    const recolhidos = !veiculosRecolhidos;
+    setVeiculosRecolhidos(recolhidos);
+    try { localStorage.setItem("agenda-equipe:veiculos-recolhidos", String(recolhidos)); }
+    catch { /* A seção continua utilizável se o navegador bloquear o armazenamento. */ }
+    if (!recolhidos) requestAnimationFrame(() => {
+      const grid = document.getElementById("agenda-veiculos-grade");
+      if (grid) scrollAgendaToDate(diaNavegacao || format(new Date(), "yyyy-MM-dd"), "auto", grid);
+    });
+  };
   const saveAgendamento = useSaveAgendamento();
   const [logExpanded, setLogExpanded] = useState(false);
 
@@ -789,6 +735,7 @@ export default function AgendamentoEquipePage() {
   const DIAS_FUTUROS = 90;
 
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
+  const [diaNavegacao, setDiaNavegacao] = useState(() => format(inicioEscala, "yyyy-MM-dd"));
 
   // A escala visível começa SEMPRE no dia de hoje.
   const diasFuturos = useMemo(
@@ -1136,22 +1083,14 @@ export default function AgendamentoEquipePage() {
 
         if (fetchErr) throw fetchErr;
 
-        if (futuras && futuras.length > 0) {
-          const futurasDoTecnico = futuras.filter((f) => (
-            item.colaborador_id
-              ? f.colaborador_id === item.colaborador_id
-              : f.colaborador_nome === item.colaborador_nome
-          ));
-
-          for (const futura of futurasDoTecnico) {
-            const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
-              p_agendamento_id: futura.id,
-              p_data: futura.id === item.id ? date : futura.data,
-              p_colaborador_id: colabId,
-              p_colaborador_nome: colab.nome,
-            });
-            if (moveError) throw moveError;
-          }
+        for (const futura of selectFutureContractVisitMoves(item, futuras ?? [])) {
+          const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+            p_agendamento_id: futura.id,
+            p_data: futura.id === item.id ? date : futura.data,
+            p_colaborador_id: colabId,
+            p_colaborador_nome: colab.nome,
+          });
+          if (moveError) throw moveError;
         }
       } else {
         // Movimentação individual (Lógica original)
@@ -1214,12 +1153,10 @@ export default function AgendamentoEquipePage() {
     }
   };
 
-  const tecnicosBase = useMemo(() => {
-    const ativos = colaboradores.filter((c) => c.ativo);
-    const t = ativos.filter(isTecnico);
-    const filtrados = t.length > 0 ? t : ativos;
-    return [...filtrados].sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores]);
+  const tecnicosBase = useMemo(
+    () => agendaVisibleCollaborators(colaboradores, data?.agendamentos ?? []),
+    [colaboradores, data?.agendamentos],
+  );
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
@@ -1233,21 +1170,7 @@ export default function AgendamentoEquipePage() {
       if (isPrevisao && !mostrarPrevisoes) continue;
       if (isVisita && !mostrarVisitasContratuais) continue;
 
-      // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
-      if (clienteId && clienteId !== "todos") {
-        // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
-        if (a.contrato_id && a.contrato_id !== clienteId) continue;
-        
-        // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
-        if (!a.contrato_id) {
-          const clienteSelecionado = rhClientes.find(c => c.id === clienteId);
-          // Correção: Se um cliente específico foi selecionado, a atividade DEVE corresponder a ele.
-          // Se não houver correspondência de nome, removemos da lista.
-          if (clienteSelecionado) {
-            if (!norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
-          }
-        }
-      }
+      if (!agendaMatchesClientFilter(a, clienteFiltro)) continue;
 
       // Filtro de Texto (Cliente, Técnico, Descrição ou OS) - Busca ampla por substring
       if (search) {
@@ -1270,7 +1193,14 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteId, rhClientes]);
+  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
+
+  // A busca por OS/técnico não remove a evidência do contrato. A faixa só
+  // some quando a tarefa correspondente também está na grade filtrada.
+  const contractIndicators = useMemo(
+    () => buildVisibleAgendaContractIndicators(data?.agendamentos ?? [], [...mapTec.values()].flat(), mostrarVisitasContratuais),
+    [data?.agendamentos, mapTec, mostrarVisitasContratuais],
+  );
 
   // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
   // tem atividade correspondente na agenda — ou quem bate pelo próprio nome.
@@ -1311,13 +1241,15 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
-  // Histórico: apenas dias passados que realmente possuem agendamento registrado.
+  // Além dos dias com registros, inclui o dia solicitado para permitir navegar
+  // a uma data passada vazia sem criar qualquer agendamento.
   const diasHistorico = useMemo(() => {
     const comDados = new Set<string>();
     for (const a of data?.agendamentos ?? []) comDados.add(a.data);
     for (const v of data?.veiculoDias ?? []) if (v.texto?.trim()) comDados.add(v.data);
+    if (diaNavegacao) comDados.add(diaNavegacao);
     return diasAnteriores.filter((d) => comDados.has(d));
-  }, [data, diasAnteriores]);
+  }, [data, diasAnteriores, diaNavegacao]);
 
   // Colunas renderizadas: sempre iniciam em hoje; o histórico entra antes só quando liberado.
   const dias = useMemo(
@@ -1363,47 +1295,58 @@ export default function AgendamentoEquipePage() {
 
   const carregando = isLoading || loadingCol || loadingVei;
 
-  // A visão sempre começa no dia atual, inclusive ao liberar o histórico.
+  const irParaHoje = () => {
+    const hoje = diasFuturos[0];
+    setDiaNavegacao(hoje);
+    scrollAgendaToDate(hoje, "smooth");
+  };
+  const navegarParaData = (date: string) => {
+    if (!date) { setDiaNavegacao(""); return; }
+    if (!agendaDateIsInRange(date, diasTodos[0], diasTodos[diasTodos.length - 1])) {
+      toast.error(`Escolha uma data entre ${formatDiaBR(diasTodos[0])} e ${formatDiaBR(diasTodos[diasTodos.length - 1])}.`);
+      return;
+    }
+    setDiaNavegacao(date);
+    if (date < diasFuturos[0]) setMostrarHistorico(true);
+  };
+
+  // Aguarda a coluna escolhida entrar no DOM ao abrir o histórico.
   useEffect(() => {
-    if (carregando) return;
+    if (carregando || !diaNavegacao) return;
     const id = window.setTimeout(() => {
-      document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
-        const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-        if (!container) return;
-        const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-        container.scrollLeft = Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0));
-      });
+      scrollAgendaToDate(diaNavegacao);
     }, 0);
     return () => window.clearTimeout(id);
-  }, [carregando, mostrarHistorico]);
+  }, [carregando, mostrarHistorico, diaNavegacao]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2 md:gap-3 md:px-6 md:py-4 border-b bg-card shrink-0">
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 md:gap-3">
           <h1 className="text-base md:text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
           <div className="hidden md:flex items-center bg-muted rounded-md p-1 gap-1">
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <LastSyncBadge />
-          <Button variant="outline" size="sm" onClick={() => {
-            document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
-              const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-              if (!container) return;
-              const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-              container.scrollTo({
-                left: Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0)),
-                behavior: "smooth",
-              });
-            });
-          }}>
+          <Button variant="outline" size="sm" onClick={irParaHoje}>
             Ir para Hoje
           </Button>
+          <label className="flex items-center gap-1.5 text-xs font-medium">
+            Data
+            <input type="date" aria-label="Ir para data" aria-describedby="agenda-date-range"
+              value={diaNavegacao} min={diasTodos[0]} max={diasTodos[diasTodos.length - 1]} disabled={carregando}
+              onChange={(event) => navegarParaData(event.target.value)}
+              className="h-8 w-[142px] rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          </label>
+          <span id="agenda-date-range" className="sr-only">Datas disponíveis: {formatDiaBR(diasTodos[0])} a {formatDiaBR(diasTodos[diasTodos.length - 1])}.</span>
           <Button
             variant={mostrarHistorico ? "secondary" : "outline"}
             size="sm"
-            onClick={() => setMostrarHistorico((v) => !v)}
+            onClick={() => {
+              if (mostrarHistorico && diaNavegacao < diasFuturos[0]) setDiaNavegacao(diasFuturos[0]);
+              setMostrarHistorico((value) => !value);
+            }}
             disabled={carregando || (!mostrarHistorico && diasHistorico.length === 0)}
             title={
               diasHistorico.length === 0
@@ -1508,7 +1451,10 @@ export default function AgendamentoEquipePage() {
             mostrarVisitasContratuais={mostrarVisitasContratuais}
             setMostrarVisitasContratuais={setMostrarVisitasContratuais}
             clienteId={clienteId}
-            setClienteId={(v: string) => setClienteId(v && v.trim() ? v : "todos")}
+            setClienteId={(value, filter) => {
+              setClienteId(value && value.trim() ? value : "todos");
+              setClienteFiltro(filter);
+            }}
           />
 
           <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
@@ -1535,10 +1481,18 @@ export default function AgendamentoEquipePage() {
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
               <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[70vh] md:max-h-[600px] overflow-y-auto">
-                <table className="w-full border-collapse">
+                <table
+                  data-agenda-team-grid
+                  className="max-w-none table-fixed border-collapse [--agenda-person-width:112px] [--agenda-day-width:180px] md:[--agenda-person-width:144px] md:[--agenda-day-width:240px]"
+                  style={{ width: `calc(var(--agenda-person-width) + ${dias.length} * var(--agenda-day-width))` }}
+                >
+                  <colgroup>
+                    <col style={{ width: "var(--agenda-person-width)" }} />
+                    {dias.map((dia) => <col key={dia} style={{ width: "var(--agenda-day-width)" }} />)}
+                  </colgroup>
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-28 md:w-60 sticky left-0 top-0 bg-muted z-20">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase sticky left-0 top-0 bg-muted z-20">
                         Técnico
                       </th>
                       {dias.map((diaStr) => {
@@ -1549,8 +1503,9 @@ export default function AgendamentoEquipePage() {
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
                             data-coluna-hoje={isHoje ? "1" : undefined}
+                            data-agenda-date={diaStr}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[170px] md:min-w-[240px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[11px] font-bold uppercase sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
@@ -1566,14 +1521,15 @@ export default function AgendamentoEquipePage() {
                   <tbody>
                     {tecnicos.map((t) => (
                       <tr key={t.id}>
-                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
+                        <td className="border border-border p-2 align-top break-words text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
                           {t.nome}
                         </td>
                         {dias.map((dia) => {
                           const itens = mapTec.get(`${t.id}|${dia}`) ?? [];
-                          const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
+                          const manual = findManualAgendaEntry(itens);
                           return (
                             <Celula
+                              contractIndicators={contractIndicators}
                               key={dia}
                               itens={itens}
                               clientesInfo={rhClientes}
@@ -1584,8 +1540,8 @@ export default function AgendamentoEquipePage() {
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
-                                 setSelectedDate(parseISO(dia));
-                                 setSelectedColabId(t.id);
+                                 setSelectedDate(parseISO(a?.data || dia));
+                                 setSelectedColabId(a?.colaborador_id || t.id);
                                  setDialogOpen(true);
                                }}
                               onSalvar={(v) =>
@@ -1674,11 +1630,17 @@ export default function AgendamentoEquipePage() {
 
             <section>
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-bold uppercase tracking-wide">Veículos</h2>
-                </div>
-                <div className="flex items-center gap-2">
+                <h2>
+                  <button type="button" onClick={alternarVeiculos}
+                    aria-expanded={!veiculosRecolhidos} aria-controls="agenda-veiculos-grade"
+                    className="flex items-center gap-2 rounded py-1 text-sm font-bold uppercase tracking-wide hover:text-primary focus-visible:ring-2 focus-visible:ring-primary">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Veículos
+                    <ChevronRight className={cn("h-4 w-4 transition-transform", !veiculosRecolhidos && "rotate-90")} />
+                    <span className="text-[11px] font-normal normal-case text-muted-foreground">{veiculosRecolhidos ? "Expandir" : "Recolher"}</span>
+                  </button>
+                </h2>
+                <div className={cn("flex items-center gap-2", veiculosRecolhidos && "hidden")}>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1694,7 +1656,7 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
+              <div id="agenda-veiculos-grade" hidden={veiculosRecolhidos} data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
@@ -1708,6 +1670,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             data-coluna-hoje={isHoje ? "1" : undefined}
+                            data-agenda-date={diaStr}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"

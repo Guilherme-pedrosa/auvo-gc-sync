@@ -28,6 +28,18 @@ describe("tipo da tarefa no Agendamento Equipe", () => {
     })).toBe("EXECUÇÃO");
   });
 
+  it("preserva higienização de coifas mesmo vinculada aos dois papéis da OS", () => {
+    expect(resolveAgendaTaskType({ taskId: "123", taskTypeId: "180795", taskTypeDescription: "HIGIENIZAÇÃO DE COIFAS",
+      gcExecutionTaskIds: "123", gcOsTaskIds: "123" })).toBe("HIGIENIZAÇÃO DE COIFAS");
+    expect(resolveAgendaTaskType({ taskId: "123", taskTypeId: "246954", taskTypeDescription: "[WEDO:180795:240] HIGIENIZAÇÃO DE COIFAS · 4h",
+      gcExecutionTaskIds: "123" })).toBe("HIGIENIZAÇÃO DE COIFAS");
+  });
+
+  it("mantém o tipo personalizado antes dos atributos GC e usa GC só com tipo ausente", () => {
+    expect(resolveAgendaTaskType({ taskId: "123", taskTypeDescription: "Instalação técnica", gcExecutionTaskIds: "123" })).toBe("INSTALAÇÃO TÉCNICA");
+    expect(resolveAgendaTaskType({ taskId: "123", taskTypeDescription: "Tipo não informado", gcExecutionTaskIds: "123" })).toBe("EXECUÇÃO");
+  });
+
   it("usa 73343 como fallback para tarefa OS", () => {
     expect(resolveAgendaTaskType({ taskId: "77898022", gcOsTaskIds: "77898022" })).toBe("OS");
   });

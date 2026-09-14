@@ -63,6 +63,7 @@ export interface AgendaAgendamento {
   contrato_visita_numero?: number | null;
   contrato_visita_execucao_id?: string | null;
   contrato_visita_realizada_em?: string | null;
+  contrato_visita_ultima_realizada_em?: string | null;
   contrato_visita_horas_realizadas?: number | null;
   contrato_visita_tarefa_ids?: string[] | null;
   contrato_visita_tecnicos?: string[] | null;

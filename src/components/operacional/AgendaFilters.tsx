@@ -8,6 +8,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { agendaClientNames, type AgendaClientFilter } from "@/lib/agendaClientFilter";
+import { normalizeClientName } from "@/lib/clientMatching";
+import { fetchAgendaPages } from "@/lib/agendaPagination";
 
 interface AgendaFiltersProps {
   filtroTexto: string;
@@ -17,7 +20,7 @@ interface AgendaFiltersProps {
   mostrarVisitasContratuais: boolean;
   setMostrarVisitasContratuais: (value: boolean) => void;
   clienteId: string;
-  setClienteId: (value: string) => void;
+  setClienteId: (value: string, filter: AgendaClientFilter | null) => void;
 }
 
 export function AgendaFilters({
@@ -34,13 +37,12 @@ export function AgendaFilters({
     queryKey: ["agenda-filters-clientes-rh"],
     queryFn: async () => {
       // Buscamos a lista oficial de clientes do banco de dados (rh_clientes)
-      const { data, error } = await supabase
+      const data = await fetchAgendaPages((from, to) => supabase
         .from("rh_clientes")
-        .select("id, nome")
+        .select("id,nome,nome_gc,nome_auvo,nome_fantasia")
         .eq("ativo", true)
-        .order("nome");
-      if (error) throw error;
-      return (data || []).map(c => ({ value: c.id, label: c.nome }));
+        .order("nome").order("id").range(from, to));
+      return data;
     },
   });
 
@@ -48,26 +50,31 @@ export function AgendaFilters({
     queryKey: ["agenda-filters-contratos"],
     queryFn: async () => {
       // Buscamos contratos ativos para complementar a lista
-      const { data, error } = await supabase
+      const data = await fetchAgendaPages((from, to) => supabase
         .from("contratos")
-        .select("id, nome")
+        .select("id,nome,cliente_nome")
         .eq("ativo", true)
-        .order("nome");
-      if (error) throw error;
-      return (data || []).map(c => ({ value: c.id, label: c.nome }));
+        .order("nome").order("id").range(from, to));
+      return data;
     },
   });
 
   const options = useMemo(() => {
-    const combined = [...clientesRh];
-    
-    // Adicionamos contratos que por ventura não estejam na rh_clientes (embora devam estar)
-    contratos.forEach(contrato => {
-      if (!combined.find(c => c.value === contrato.value)) {
-        combined.push(contrato);
-      }
+    const combined: Array<{ value: string; label: string; filter: AgendaClientFilter }> = clientesRh.map((client) => ({
+      value: `cliente:${client.id}`,
+      label: client.nome,
+      filter: { kind: "cliente", id: client.id, names: agendaClientNames(client) },
+    }));
+    contratos.forEach((contract) => {
+      const clientName = normalizeClientName(contract.cliente_nome);
+      const aliases = clientesRh.filter((client) => agendaClientNames(client).includes(clientName))
+        .flatMap(agendaClientNames);
+      combined.push({
+        value: `contrato:${contract.id}`,
+        label: `${contract.nome} (contrato)`,
+        filter: { kind: "contrato", id: contract.id, names: [contract.cliente_nome || "", ...aliases] },
+      });
     });
-
     return combined.sort((a, b) => a.label.localeCompare(b.label));
   }, [clientesRh, contratos]);
 
@@ -98,7 +105,7 @@ export function AgendaFilters({
           <SearchableSelect
             options={options}
             value={clienteId === "todos" ? "" : clienteId}
-            onValueChange={(val) => setClienteId(val || "todos")}
+            onValueChange={(val) => setClienteId(val || "todos", options.find((option) => option.value === val)?.filter ?? null)}
             placeholder="Filtrar por Cliente (Lista Completa)"
             searchPlaceholder="Buscar cliente..."
             icon={<Filter className="h-4 w-4 opacity-50" />}

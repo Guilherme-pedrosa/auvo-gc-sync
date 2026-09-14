@@ -23,7 +23,7 @@ export type ContractVisitForecast = {
   tecnicoIds: string[];
 };
 
-export type ContractVisitMonthStatus = "FORA_VIGENCIA" | "EM_DIA" | "FALTANDO" | "EXCEDENTE";
+export type ContractVisitMonthStatus = "FORA_VIGENCIA" | "SEM_VISITA_PREVISTA" | "EM_DIA" | "FALTANDO" | "EXCEDENTE";
 
 export type ContractVisitMonthSummary = {
   competencia: string;
@@ -340,6 +340,7 @@ export function summarizeContractVisitMonth(input: {
   competencia: string;
   visitasContratadas: number;
   horasContratadas: number;
+  mesesAtivos?: number[] | null;
   vigenciaInicio?: string | null;
   vigenciaFim?: string | null;
   forecasts: Array<{ contrato_visita_numero: number | null; hora_inicio: string; hora_fim: string }>;
@@ -361,6 +362,9 @@ export function summarizeContractVisitMonth(input: {
       horasRestantes: 0,
     };
   }
+  const hasScheduledVisit = !input.mesesAtivos?.length || input.mesesAtivos.includes(Number(input.competencia.slice(5, 7)));
+  const contractedVisits = hasScheduledVisit ? input.visitasContratadas : 0;
+  const contractedHours = hasScheduledVisit ? input.horasContratadas : 0;
   const plannedVisits = new Set(input.forecasts.map((row) => row.contrato_visita_numero).filter(Boolean));
   const realizedVisits = new Set((input.executions || []).map((row) => row.visita_numero).filter(Boolean));
   const coveredVisits = new Set([...plannedVisits, ...realizedVisits]);
@@ -370,29 +374,35 @@ export function summarizeContractVisitMonth(input: {
     return total + Math.max(0, end - start);
   }, 0);
   const plannedHours = plannedMinutes / 60;
+  // O card permanece na agenda após a execução. Na cobertura do mês, a carga
+  // real substitui a previsão do mesmo slot em vez de ser somada duas vezes.
+  const remainingPlannedMinutes = input.forecasts.reduce((total, row) => {
+    if (realizedVisits.has(row.contrato_visita_numero)) return total;
+    return total + Math.max(0, clockToMinutes(row.hora_fim) - clockToMinutes(row.hora_inicio));
+  }, 0);
   const realizedHours = (input.executions || []).reduce(
     (total, row) => total + Math.max(0, Number(row.horas_trabalhadas || 0)),
     0,
   );
-  const coveredHours = plannedHours + realizedHours;
+  const coveredHours = remainingPlannedMinutes / 60 + realizedHours;
   // A carga individual é armazenada em minutos inteiros. A tolerância abaixo
   // absorve somente esse arredondamento técnico, sem esconder uma hora faltante.
   const tolerance = Math.max(1 / 60, input.forecasts.length / 120 + Number.EPSILON);
-  const missing = coveredVisits.size < input.visitasContratadas || coveredHours < input.horasContratadas - tolerance;
-  const excess = coveredVisits.size > input.visitasContratadas || coveredHours > input.horasContratadas + tolerance;
+  const missing = coveredVisits.size < contractedVisits || coveredHours < contractedHours - tolerance;
+  const excess = coveredVisits.size > contractedVisits || coveredHours > contractedHours + tolerance;
   return {
     competencia: input.competencia,
-    status: missing ? "FALTANDO" : excess ? "EXCEDENTE" : "EM_DIA",
+    status: missing ? "FALTANDO" : excess ? "EXCEDENTE" : hasScheduledVisit ? "EM_DIA" : "SEM_VISITA_PREVISTA",
     visitasPrevistas: coveredVisits.size,
-    visitasContratadas: input.visitasContratadas,
+    visitasContratadas: contractedVisits,
     horasPrevistas: coveredHours,
-    horasContratadas: input.horasContratadas,
+    horasContratadas: contractedHours,
     visitasPlanejadas: plannedVisits.size,
     horasPlanejadas: plannedHours,
     visitasRealizadas: realizedVisits.size,
     horasRealizadas: realizedHours,
-    visitasRestantes: Math.max(0, input.visitasContratadas - realizedVisits.size),
-    horasRestantes: Math.max(0, input.horasContratadas - realizedHours),
+    visitasRestantes: Math.max(0, contractedVisits - realizedVisits.size),
+    horasRestantes: Math.max(0, contractedHours - realizedHours),
   };
 }
 

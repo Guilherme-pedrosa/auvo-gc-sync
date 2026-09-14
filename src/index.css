@@ -263,6 +263,7 @@
 }
 
 /* A escala usa colunas fixas (sticky): manter como <table> mesmo no mobile. */
+main table[data-agenda-team-grid] { max-width: none; }
 @media (max-width: 767px) {
   main [data-agenda-scroll="1"] table { display: table; }
   main [data-agenda-scroll="1"] table > thead,

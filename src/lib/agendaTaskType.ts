@@ -38,6 +38,9 @@ export function resolveAgendaTaskType(input: AgendaTaskTypeInput): string {
   const description = cleanAuvoTaskTypeDescription(input.taskTypeDescription);
   const normalizedDescription = normalize(description);
 
+  if (taskTypeId === "180795" || /^\[WEDO:180795:/i.test(String(input.taskTypeDescription || ""))) {
+    return "HIGIENIZAÇÃO DE COIFAS";
+  }
   if (PREVENTIVE_TASK_TYPE_IDS.has(taskTypeId) || normalizedDescription.includes("PREVENTIV")) {
     return "PREVENTIVA";
   }
@@ -53,12 +56,13 @@ export function resolveAgendaTaskType(input: AgendaTaskTypeInput): string {
     return "OS";
   }
 
+  // Para tipos personalizados, exibe o nome real cadastrado no Auvo em vez de
+  // substituí-lo pelo papel genérico no GC. O vínculo com a OS é separado.
+  if (description && !/^Tipo\s+\d+$/i.test(description) && normalizedDescription !== "TIPO NAO INFORMADO") {
+    return description.toUpperCase();
+  }
   if (taskId && splitTaskIds(input.gcExecutionTaskIds).includes(taskId)) return "EXECUÇÃO";
   if (taskId && splitTaskIds(input.gcOsTaskIds).includes(taskId)) return "OS";
-
-  // Para tipos personalizados, exibe o nome real cadastrado no Auvo em vez de
-  // inventar "SEM OS". O vínculo com a OS é uma informação separada.
-  if (description && !/^Tipo\s+\d+$/i.test(description)) return description.toUpperCase();
   return "TIPO NÃO INFORMADO";
 }
 

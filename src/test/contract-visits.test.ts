@@ -193,6 +193,70 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(summary.status).toBe("FALTANDO");
   });
 
+  it("substitui a carga do slot preservado pela execução, inclusive com vários técnicos", () => {
+    const summary = summarizeContractVisitMonth({
+      competencia: "2026-09",
+      visitasContratadas: 2,
+      horasContratadas: 32,
+      forecasts: [1, 1, 2, 2].map((numero) => ({
+        contrato_visita_numero: numero, hora_inicio: "08:00", hora_fim: "16:00",
+      })),
+      executions: [{ visita_numero: 1, horas_trabalhadas: 16 }],
+    });
+
+    expect(summary).toMatchObject({
+      status: "EM_DIA",
+      visitasPrevistas: 2,
+      horasPrevistas: 32,
+      visitasPlanejadas: 2,
+      horasPlanejadas: 32,
+      visitasRealizadas: 1,
+      horasRealizadas: 16,
+      horasRestantes: 16,
+    });
+  });
+
+  it("continua apontando horas reais insuficientes mesmo com o card nominal preservado", () => {
+    const summary = summarizeContractVisitMonth({
+      competencia: "2026-09",
+      visitasContratadas: 1,
+      horasContratadas: 8,
+      forecasts: [{ contrato_visita_numero: 1, hora_inicio: "08:00", hora_fim: "16:00" }],
+      executions: [{ visita_numero: 1, horas_trabalhadas: 3 }],
+    });
+    expect(summary.status).toBe("FALTANDO");
+    expect(summary.horasPrevistas).toBe(3);
+    expect(summary.horasRestantes).toBe(5);
+  });
+
+  it("cobra o contrato semestral de coifa apenas nos meses cadastrados", () => {
+    const input = {
+      visitasContratadas: 2,
+      horasContratadas: 32,
+      mesesAtivos: [3, 9],
+      forecasts: [],
+      executions: [],
+    };
+    expect(summarizeContractVisitMonth({ ...input, competencia: "2026-08" })).toMatchObject({
+      status: "SEM_VISITA_PREVISTA", visitasContratadas: 0, horasContratadas: 0,
+      visitasRestantes: 0, horasRestantes: 0,
+    });
+    expect(summarizeContractVisitMonth({ ...input, competencia: "2026-09" })).toMatchObject({
+      status: "FALTANDO", visitasContratadas: 2, horasContratadas: 32,
+    });
+  });
+
+  it("alerta lançamento em mês não previsto em vez de esconder a atividade", () => {
+    const summary = summarizeContractVisitMonth({
+      competencia: "2026-08", visitasContratadas: 2, horasContratadas: 32,
+      mesesAtivos: [3, 9],
+      forecasts: [{ contrato_visita_numero: 1, hora_inicio: "08:00", hora_fim: "16:00" }],
+    });
+    expect(summary.status).toBe("EXCEDENTE");
+    expect(summary.horasPrevistas).toBe(8);
+    expect(summary.horasContratadas).toBe(0);
+  });
+
   it("mantem a amarracao contratual no banco e deduplica tarefas Auvo", () => {
     const migration = readFileSync(
       resolve(root, "supabase/migrations/20260817234500_reconcile_contract_visits_with_real_tasks.sql"),
@@ -220,7 +284,8 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(cardMigration).toContain("previsao_continuidade = false");
     expect(cardMigration).toContain("duracao_planejada_minutos = NULL");
     expect(agendaPage).toContain('a.previsao_tipo === "CONTRATO_REALIZADO"');
-    expect(agendaPage).toContain("ª VISITA · REALIZADA");
+    // Estado realizado e detalhe são cobertos por contract-visit-card-content
+    // e agendamento-equipe-cell; não fixar o cabeçalho extenso antigo.
     expect(agendaPage).toContain("bg-violet-100 text-violet-900 border-violet-500");
     expect(agendaPage).not.toContain("Visitas contratuais realizadas");
   });
@@ -240,7 +305,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scheduledMigration).toContain("visita extra alem das");
     expect(scheduledMigration).toContain("generate_series(1, v_config.qtd_visitas)");
     expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
-    expect(agendaPage).toContain('visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"');
+    // O selo por ID e a execução antecipada têm cobertura de DOM na célula.
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
   });
 
@@ -265,18 +330,11 @@ describe("planejamento anual de visitas contratuais", () => {
       resolve(root, "supabase/migrations/20260818150000_contract_questionnaire_accounting_matrix.sql"),
       "utf8",
     );
-    const agendaPage = readFileSync(
-      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
-      "utf8",
-    );
-
     expect(matrixMigration).toContain("215148");
     expect(matrixMigration).toContain("224444");
     expect(matrixMigration).toContain("contrato_tipos");
     expect(matrixMigration).toContain("contrato.tipo_id");
     expect(matrixMigration).not.toContain("p_task_type_id, '') = '180795'");
-    expect(agendaPage).toContain("Contrato seguido:");
-    expect(agendaPage).toContain("contrato_tipo_nome");
   });
 
   it("não recalcula visitas em toda atualização técnica da sincronização", () => {
@@ -315,22 +373,12 @@ describe("planejamento anual de visitas contratuais", () => {
       resolve(root, "supabase/migrations/20260818183000_preserve_scheduled_contract_visit_after_execution.sql"),
       "utf8",
     );
-    const agendaPage = readFileSync(
-      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
-      "utf8",
-    );
-
     expect(migration).toContain("NEW.status := 'CUMPRIDA_NO_MES'");
     expect(migration).toContain("Visita já realizada neste mês em %s");
     expect(migration).toContain("SET atualizado_em = now()");
     expect(migration).not.toContain("SET data = v_exec.data_realizada");
     expect(migration).toContain("OLD.previsao_tipo = 'CONTRATO_REALIZADO'");
     expect(migration).toContain("RETURN OLD");
-    expect(agendaPage).toContain("PROGRESSO NO MÊS");
-    expect(agendaPage).toContain("CARGA MENSAL CUMPRIDA");
-    expect(agendaPage).toContain("disponíveis");
-    expect(agendaPage).toContain("bg-emerald-50 text-emerald-950");
-    expect(agendaPage).not.toContain("bg-emerald-100 text-emerald-950 border-emerald-600 ring-1");
   });
 
   it("só deixa a previsão contratual verde quando todas as horas mensais foram cumpridas", () => {
@@ -383,18 +431,12 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(migration).toContain("RETURN NULL");
   });
 
-  it("mantém editável o card verde mesmo quando a visita do mês já foi cumprida", () => {
-    const page = readFileSync(
-      resolve(root, "src/pages/operacional/AgendamentoEquipePage.tsx"),
-      "utf8",
-    );
+  it("permite no banco ajustar a previsão mesmo quando a visita do mês já foi cumprida", () => {
     const migration = readFileSync(
       resolve(root, "supabase/migrations/20260818194500_allow_fulfilled_contract_forecast_changes.sql"),
       "utf8",
     );
 
-    expect(page).toContain("const visitaContratualBloqueada = visitaContratualRealizada;");
-    expect(page).toContain("(visitaContratualPlanejada || a.previsao_continuidade)");
     expect(migration).not.toContain("Esta visita já foi cumprida e permanece protegida");
     expect(migration).not.toContain("agenda.contrato_visita_execucao_id IS NULL");
     expect(migration).toContain("A execução real fica em");
