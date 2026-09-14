@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, CircleCheckBig, Tags as TagsIcon, X, History, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
+import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle } from "@/components/operacional/ContractVisitCardContent";
 import {
   AGENDA_TASK_SYNC_FIELDS,
   agendaTaskSnapshotChanged,
@@ -39,6 +40,7 @@ import {
   shouldHighlightPendingGcExecution,
 } from "@/lib/agendaTaskStatus";
 import { AgendaFilters } from "@/components/operacional/AgendaFilters";
+import { agendaMatchesClientFilter, agendaVisibleCollaborators, type AgendaClientFilter } from "@/lib/agendaClientFilter";
 import {
   agendaTaskWorkedTime,
   formatWorkedClock,
@@ -93,17 +95,6 @@ const norm = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-
-const formatContractHours = (hours: number | null | undefined) =>
-  `${Number(hours || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h`;
-
-const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
-  const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  return txt.includes("tecnico") || txt.includes("auxiliar");
-};
 
 const PALETA = [
   // Azuis
@@ -204,44 +195,6 @@ interface CelulaProps {
   chegadas?: ChegadaItem[];
 }
 
-type ContractVisitTaskDetail = {
-  tarefa_id?: string | number | null;
-  tecnico?: string | null;
-  horas?: string | number | null;
-};
-
-const summarizeContractVisitForTechnician = (item: AgendaAgendamento) => {
-  const details = Array.isArray(item.contrato_visita_tarefas_detalhes)
-    ? (item.contrato_visita_tarefas_detalhes as ContractVisitTaskDetail[])
-    : [];
-  const collaboratorName = norm(item.colaborador_nome);
-  const technicianDetails = details.filter((detail) => {
-    const technicianName = norm(String(detail.tecnico || ""));
-    return Boolean(
-      technicianName
-      && collaboratorName
-      && (
-        technicianName === collaboratorName
-        || collaboratorName.includes(technicianName)
-        || technicianName.includes(collaboratorName)
-      )
-    );
-  });
-  const selected = technicianDetails.length > 0 ? technicianDetails : details;
-  const hours = selected.reduce((total, detail) => {
-    const value = Number(detail.horas);
-    return total + (Number.isFinite(value) && value > 0 ? value : 0);
-  }, 0);
-  const taskIds = [...new Set(selected
-    .map((detail) => String(detail.tarefa_id || "").trim())
-    .filter(Boolean))];
-  return {
-    hours: hours > 0 ? hours : Number(item.contrato_visita_horas_realizadas || 0),
-    taskIds: taskIds.length > 0 ? taskIds : (item.contrato_visita_tarefa_ids ?? []),
-    technicianMatched: technicianDetails.length > 0,
-  };
-};
-
 function Celula({
   itens,
   onSalvar,
@@ -259,6 +212,7 @@ function Celula({
   chegadas = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
+  const [visitaDetalhe, setVisitaDetalhe] = useState<AgendaAgendamento | null>(null);
 
   const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
 
@@ -378,22 +332,9 @@ function Celula({
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
           const visitaContratualCumprida = visitaContratualPlanejada
             && Boolean(a.contrato_visita_execucao_id || a.contrato_visita_realizada_em);
-          const visitaContratualComExecucaoNoMes = visitaContratualPlanejada
-            && Number(a.contrato_visitas_cumpridas || 0) > 0;
-          const cargaContratualMensalCumprida = visitaContratualPlanejada
-            && contractMonthlyHoursAreFulfilled(a);
           const visitaContratualAlinhada = visitaContratualPlanejada
             && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada;
-          const resumoVisita = visitaContratualRealizada ? summarizeContractVisitForTechnician(a) : null;
-          const horasContratuaisDisponiveis = Math.max(
-            0,
-            Number(a.contrato_horas_previstas || 0) - Number(a.contrato_horas_cumpridas || 0),
-          );
-          const dataRealizadaLabel = a.contrato_visita_realizada_em
-            ? format(parseISO(a.contrato_visita_realizada_em.slice(0, 10)), "dd/MM/yyyy")
-            : null;
-          const ultimaRealizadaLabel = dataRealizadaLabel;
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
@@ -440,10 +381,8 @@ function Celula({
                 onDragStart={() => {
                   if (!visitaContratualBloqueada) onDragStart(a);
                 }}
-                title={visitaContratualRealizada
-                  ? `${a.contrato_visita_numero || ""}ª visita contratual realizada · ${formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} ${resumoVisita?.technicianMatched ? "do técnico" : "da visita"} contabilizadas`
-                  : visitaContratualComExecucaoNoMes
-                    ? `${formatContractHours(a.contrato_horas_cumpridas)} já cumpridas no mês · última visita em ${ultimaRealizadaLabel || "data não informada"} · ${formatContractHours(horasContratuaisDisponiveis)} disponíveis`
+                title={visitaContratualRealizada || visitaContratualPlanejada
+                  ? contractVisitCardTitle(a)
                   : a.origem === "CONTRATO"
                   ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.previsao_continuidade
@@ -452,7 +391,7 @@ function Celula({
                     ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
                     : "Agendamento manual"}
                 onClick={() => {
-                  if (visitaContratualBloqueada) return;
+                  if (visitaContratualBloqueada) { setVisitaDetalhe(a); return; }
                   if (a.auvo_task_id) onAbrirTarefa(a);
                   else onAbrirAgendamento(a);
                 }}
@@ -463,7 +402,8 @@ function Celula({
                 }}
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
-                  visitaContratualRealizada && "cursor-default active:cursor-default border-2 border-violet-500 shadow-sm",
+                  visitaContratualRealizada && "cursor-pointer active:cursor-pointer border-violet-500",
+                  (visitaContratualPlanejada || visitaContratualRealizada) && "pr-7",
                   visitaContratualAlinhada && "border-2 border-sky-500 shadow-sm",
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
@@ -474,7 +414,21 @@ function Celula({
                   clienteDivergente && "border-2 border-destructive ring-1 ring-destructive/50",
                 )}
               >
-                <div className="flex flex-col">
+                {visitaContratualPlanejada || visitaContratualRealizada ? (
+                  <>
+                    <ContractVisitCardContent item={a} />
+                    {itemTags.length > 0 && (
+                      <span className="mt-0.5 flex gap-1 overflow-hidden normal-case">
+                        {itemTags.map((tag) => (
+                          <span key={tag.id} className="truncate rounded-full px-1.5 text-[11px] font-medium" title={tag.name}
+                            style={{ backgroundColor: normalizeAgendaTagColor(tag.color), color: agendaTagTextColor(tag.color) }}>
+                            {tag.name}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </>
+                ) : <div className="flex flex-col">
                   <span className="truncate">
                     {identificadoresAntesSituacao.join(" · ")}
                     {situacaoGc && a.gc_os_codigo && (
@@ -501,32 +455,6 @@ function Celula({
                     )}
                     {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
                   </span>
-                  {(visitaContratualPlanejada || visitaContratualRealizada) && (
-                    <span
-                      className="truncate text-[9px] font-extrabold normal-case"
-                      title={`Contrato seguido: ${a.contrato_nome || "não identificado"} · Tipo: ${a.contrato_tipo_nome || "não definido"}`}
-                    >
-                      Contrato seguido: {a.contrato_nome || "não identificado"} · Tipo: {a.contrato_tipo_nome || "não definido"}
-                    </span>
-                  )}
-                  {visitaContratualComExecucaoNoMes && (
-                    <span
-                      className={cn(
-                        "mt-1 flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] font-black normal-case",
-                        cargaContratualMensalCumprida
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-50"
-                          : "border-sky-300 bg-white/70 text-sky-950 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100",
-                      )}
-                    >
-                      {cargaContratualMensalCumprida
-                        ? <CircleCheckBig className="h-3 w-3 shrink-0" />
-                        : <Clock3 className="h-3 w-3 shrink-0" />}
-                      <span>
-                        {cargaContratualMensalCumprida ? "CARGA MENSAL CUMPRIDA" : "PROGRESSO NO MÊS"}: {formatContractHours(a.contrato_horas_cumpridas)} · {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas ?? 0} visita(s)
-                        {ultimaRealizadaLabel ? ` · última em ${ultimaRealizadaLabel}` : ""} · saldo: {formatContractHours(horasContratuaisDisponiveis)} disponíveis
-                      </span>
-                    </span>
-                  )}
                   {clienteDivergente && a.vinculo_status !== "vinculado" && (
                     <span
                       className="mt-0.5 flex items-center gap-1 rounded-sm bg-destructive/15 px-1 py-0.5 text-[9px] font-bold normal-case text-destructive"
@@ -562,36 +490,6 @@ function Celula({
                       {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
                     </span>
                   )}
-                  {visitaContratualRealizada && (
-                    <>
-                      <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case">
-                        <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                        {formatWorkedMinutes(Math.round(Number(resumoVisita?.hours || 0) * 60))} contabilizadas
-                        {resumoVisita?.taskIds.length
-                          ? ` · ${resumoVisita.taskIds.length} tarefa(s)`
-                          : ""}
-                      </span>
-                      {resumoVisita?.technicianMatched ? (
-                        <span className="truncate text-[9px] font-medium normal-case">
-                          {a.colaborador_nome}
-                        </span>
-                      ) : null}
-                      {resumoVisita?.taskIds.length ? (
-                        <span className="truncate text-[9px] font-medium normal-case opacity-80" title={resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}>
-                          Tarefas: {resumoVisita.taskIds.map((id) => `#${id}`).join(" · ")}
-                        </span>
-                      ) : null}
-                    </>
-                  )}
-                  {visitaContratualPlanejada && a.contrato_visitas_previstas != null && (
-                    <span className="flex items-center gap-1 text-[9px] font-extrabold normal-case text-sky-900 dark:text-sky-100">
-                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                      Cumprido: {a.contrato_visitas_cumpridas ?? 0}/{a.contrato_visitas_previstas} visitas
-                      {a.contrato_horas_previstas != null
-                        ? ` · ${formatContractHours(a.contrato_horas_cumpridas)}/${formatContractHours(a.contrato_horas_previstas)}`
-                        : ""}
-                    </span>
-                  )}
                   {a.previsao_detalhes && !visitaContratualRealizada && !visitaContratualCumprida && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
@@ -620,13 +518,20 @@ function Celula({
                       {a.conversao_status === "ERRO" && `Erro na conversão${a.conversao_erro ? ` · ${a.conversao_erro}` : ""}`}
                     </span>
                   )}
-                </div>
-                {(visitaContratualPlanejada || a.previsao_continuidade) && (
+                </div>}
+                {a.previsao_continuidade && !visitaContratualPlanejada && !visitaContratualRealizada && (
                   <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">
                     {a.origem === "CONTRATO" ? "(contrato)" : "(previsão)"}
                   </span>
                 )}
               </button>
+              {(visitaContratualPlanejada || visitaContratualRealizada) && (
+                <button type="button" className="absolute right-0.5 top-0.5 rounded p-1 text-current opacity-70 hover:bg-black/5 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-primary"
+                  aria-label={`Detalhes da ${a.contrato_visita_numero || ""}ª visita de ${a.cliente}`} title="Detalhes da visita"
+                  onClick={() => setVisitaDetalhe(a)}>
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              )}
               {!visitaContratualBloqueada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
                 {(
                   <button
@@ -671,6 +576,7 @@ function Celula({
         >
           <Plus className="h-3 w-3" />
         </button>
+        <ContractVisitDetailsDialog item={visitaDetalhe} onClose={() => setVisitaDetalhe(null)} onEdit={onAbrirAgendamento} />
       </div>
     </td>
   );
@@ -742,6 +648,7 @@ export default function AgendamentoEquipePage() {
   const [apenasPrevisaoOrcamento, setApenasPrevisaoOrcamento] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [clienteId, setClienteId] = useState("todos");
+  const [clienteFiltro, setClienteFiltro] = useState<AgendaClientFilter | null>(null);
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
   const saveAgendamento = useSaveAgendamento();
@@ -1214,12 +1121,10 @@ export default function AgendamentoEquipePage() {
     }
   };
 
-  const tecnicosBase = useMemo(() => {
-    const ativos = colaboradores.filter((c) => c.ativo);
-    const t = ativos.filter(isTecnico);
-    const filtrados = t.length > 0 ? t : ativos;
-    return [...filtrados].sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [colaboradores]);
+  const tecnicosBase = useMemo(
+    () => agendaVisibleCollaborators(colaboradores, data?.agendamentos ?? []),
+    [colaboradores, data?.agendamentos],
+  );
 
   const mapTec = useMemo(() => {
     const m = new Map<string, AgendaAgendamento[]>();
@@ -1233,21 +1138,7 @@ export default function AgendamentoEquipePage() {
       if (isPrevisao && !mostrarPrevisoes) continue;
       if (isVisita && !mostrarVisitasContratuais) continue;
 
-      // Filtro de Cliente (ID específico se selecionado no SearchableSelect)
-      if (clienteId && clienteId !== "todos") {
-        // Se o agendamento tem um contrato_id (visita contratual), deve bater exatamente
-        if (a.contrato_id && a.contrato_id !== clienteId) continue;
-        
-        // Se for manual/AUVO, tentamos bater pelo nome normalizado do cliente se não tivermos ID direto
-        if (!a.contrato_id) {
-          const clienteSelecionado = rhClientes.find(c => c.id === clienteId);
-          // Correção: Se um cliente específico foi selecionado, a atividade DEVE corresponder a ele.
-          // Se não houver correspondência de nome, removemos da lista.
-          if (clienteSelecionado) {
-            if (!norm(a.cliente).includes(norm(clienteSelecionado.nome))) continue;
-          }
-        }
-      }
+      if (!agendaMatchesClientFilter(a, clienteFiltro)) continue;
 
       // Filtro de Texto (Cliente, Técnico, Descrição ou OS) - Busca ampla por substring
       if (search) {
@@ -1270,7 +1161,7 @@ export default function AgendamentoEquipePage() {
       arr.splice(0, arr.length, ...ordenados);
     }
     return m;
-  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteId, rhClientes]);
+  }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
 
   // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
   // tem atividade correspondente na agenda — ou quem bate pelo próprio nome.
@@ -1508,7 +1399,10 @@ export default function AgendamentoEquipePage() {
             mostrarVisitasContratuais={mostrarVisitasContratuais}
             setMostrarVisitasContratuais={setMostrarVisitasContratuais}
             clienteId={clienteId}
-            setClienteId={(v: string) => setClienteId(v && v.trim() ? v : "todos")}
+            setClienteId={(value, filter) => {
+              setClienteId(value && value.trim() ? value : "todos");
+              setClienteFiltro(filter);
+            }}
           />
 
           <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">

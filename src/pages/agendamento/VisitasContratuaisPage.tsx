@@ -57,6 +57,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { fetchAgendaPages } from "@/lib/agendaPagination";
 
 type Contract = Database["public"]["Tables"]["contratos"]["Row"];
 type VisitConfig = Database["public"]["Tables"]["contratos_visitas_config"]["Row"];
@@ -243,16 +244,16 @@ export default function VisitasContratuaisPage() {
   const forecastsQuery = useQuery({
     queryKey: ["contractual-visits", "forecasts", year],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAgendaPages<ContractForecast>((from, to) => supabase
         .from("agenda_agendamentos")
         .select("*")
         .eq("origem", "CONTRATO")
         .gte("data", `${year}-01-01`)
         .lte("data", `${year}-12-31`)
         .order("data")
-        .order("hora_inicio");
-      if (error) throw error;
-      return data as ContractForecast[];
+        .order("hora_inicio")
+        .order("id")
+        .range(from, to));
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -261,14 +262,14 @@ export default function VisitasContratuaisPage() {
     queryKey: ["contractual-visits", "executions", year],
     queryFn: async () => {
       const start = `${year}-01-01`;
-      const { data, error } = await supabase
+      return fetchAgendaPages<ContractExecution>((from, to) => supabase
         .from("contratos_visitas_execucoes")
         .select("*")
         .gte("competencia", start)
         .lte("competencia", `${year}-12-31`)
-        .order("data_realizada", { ascending: false });
-      if (error) throw error;
-      return data as ContractExecution[];
+        .order("data_realizada", { ascending: false })
+        .order("id")
+        .range(from, to));
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
@@ -399,9 +400,10 @@ export default function VisitasContratuaisPage() {
           competencia: competence,
           visitasContratadas: config.qtd_visitas,
           horasContratadas: hoursContratadas,
+          mesesAtivos: config.meses_ativos,
           vigenciaInicio: contract.vigencia_inicio,
           vigenciaFim: contract.vigencia_fim,
-          forecasts: rows.filter((row) => row.data.slice(0, 7) === competence),
+          forecasts: rows.filter((row) => (row.contrato_visita_competencia || row.data).slice(0, 7) === competence),
           executions: realized
             .filter((row) => row.competencia.slice(0, 7) === competence)
             .map((row) => ({ visita_numero: row.visita_numero, horas_trabalhadas: row.horas_trabalhadas })),
@@ -413,6 +415,9 @@ export default function VisitasContratuaisPage() {
 
   const planYear = useMutation({
     mutationFn: async (configIds?: string[]) => {
+      if (!contractsQuery.isSuccess || !configsQuery.isSuccess || !forecastsQuery.isSuccess || !executionsQuery.isSuccess || !techniciansQuery.isSuccess) {
+        throw new Error("Aguarde o carregamento completo do planejamento antes de recalcular as visitas.");
+      }
       const selected = configs.filter((config) => config.ativo && (!configIds || configIds.includes(config.id)));
       if (!selected.length) throw new Error("Nenhuma configuração ativa para planejar.");
       if (year <= currentYear) {
@@ -581,12 +586,12 @@ export default function VisitasContratuaisPage() {
     const contract = contractById.get(config.contrato_id);
     if (!contract || !MONTHS.some((_, month) => contractMonthIsActive(monthCompetence(year, month), contract.vigencia_inicio, contract.vigencia_fim))) return false;
     return config.planejamento_pendente
-      || stackedConfigIds.has(config.id)
+      || (!config.visitas_consecutivas && stackedConfigIds.has(config.id))
       || (year >= currentYear && !(forecastsByConfig.get(config.id)?.length || executionsByConfig.get(config.id)?.length));
   }).map((config) => config.id), [configs, contractById, forecastsByConfig, executionsByConfig, stackedConfigIds, year, currentYear]);
 
   useEffect(() => {
-    if (configsQuery.isLoading || forecastsQuery.isLoading || executionsQuery.isLoading || techniciansQuery.isLoading || planYear.isPending) return;
+    if (!contractsQuery.isSuccess || !configsQuery.isSuccess || !forecastsQuery.isSuccess || !executionsQuery.isSuccess || !techniciansQuery.isSuccess || planYear.isPending) return;
     if (!initialPlanIds.length || year < currentYear) return;
     const key = `${year}:${initialPlanIds.sort().join(",")}`;
     if (automaticPlanKey.current === key) return;
@@ -598,9 +603,10 @@ export default function VisitasContratuaisPage() {
     }, 1000);
     
     return () => clearTimeout(timer);
-  }, [configsQuery.isLoading, forecastsQuery.isLoading, executionsQuery.isLoading, techniciansQuery.isLoading, initialPlanIds, planYear, year, currentYear]);
+  }, [contractsQuery.isSuccess, configsQuery.isSuccess, forecastsQuery.isSuccess, executionsQuery.isSuccess, techniciansQuery.isSuccess, initialPlanIds, planYear, year, currentYear]);
 
   const loading = contractsQuery.isLoading || configsQuery.isLoading || techniciansQuery.isLoading || forecastsQuery.isLoading || executionsQuery.isLoading;
+  const loadError = contractsQuery.error || configsQuery.error || techniciansQuery.error || forecastsQuery.error || executionsQuery.error;
   const withoutPlanning = contracts.filter((contract) => !configByContract.has(contract.id) || !Number(contract.horas_mes_contratadas || 0));
   const allSummaries = [...monthlySummaries.values()].flat();
   const missingMonths = allSummaries.filter((summary) => summary.status === "FALTANDO");
@@ -667,12 +673,14 @@ export default function VisitasContratuaisPage() {
             <Button variant="outline" size="icon" onClick={() => setYear((value) => value - 1)}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="flex h-10 min-w-28 items-center justify-center rounded-md border bg-background px-4 text-sm font-semibold">{year}</div>
             <Button variant="outline" size="icon" onClick={() => setYear((value) => value + 1)}><ChevronRight className="h-4 w-4" /></Button>
-            <Button onClick={() => planYear.mutate(undefined)} disabled={planYear.isPending || !configs.length || year < currentYear}>
+            <Button onClick={() => planYear.mutate(undefined)} disabled={loading || Boolean(loadError) || planYear.isPending || !configs.length || year < currentYear}>
               {planYear.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Abastecer agenda de {year}
             </Button>
           </div>
         </div>
+
+        {loadError && <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar o planejamento completo: {loadError.message}. Recarregue a página antes de recalcular as visitas.</div>}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <Card><CardContent className="flex items-center gap-3 p-4"><CalendarDays className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Contratos ativos</p><p className="text-xl font-bold">{contracts.length}</p></div></CardContent></Card>
