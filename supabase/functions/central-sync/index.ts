@@ -9,11 +9,10 @@ import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 import { selectAuvoReportTasks, persistGcShells, persistReportTasks } from "./report-persistence.ts";
 import { runBoundedReportStep } from "./report-steps.ts";
 import { readGcOsForReconciliation } from "./gc-os-reconciliation.ts";
+import { reconcileBudgetExecutionForecasts, type ForecastPromotionSummary } from "./budget-forecast-reconciliation.ts";
 import { fetchAuvoTaskWindows, type AuvoTaskFetchResult } from "./auvo-task-pagination.ts";
 import {
-  BUDGET_EXECUTION_FORECAST,
   normalizeGcDocumentCode,
-  selectOsForBudgetForecast,
 } from "../_shared/agenda-forecast-promotion.ts";
 import { auvoTaskTypeDescription, auvoTaskTypeId } from "../_shared/auvo-task-type.ts";
 import {
@@ -1452,221 +1451,29 @@ async function backlinkGcDocsToExistingTasks(
   return summary;
 }
 
-type ForecastPromotionSummary = {
-  forecasts: number;
-  promoted: number;
-  alreadyPromoted: number;
-  waitingOs: number;
-  waitingTask: number;
-  blocked: number;
-  errors: number;
-};
-
-async function reconcileBudgetExecutionForecasts(
-  sbClient: ReturnType<typeof createClient<any>>,
-  gcOsResult: { byCodigo: Record<string, any> },
-  gcHeaders?: Record<string, string>,
-): Promise<ForecastPromotionSummary> {
-  const summary: ForecastPromotionSummary = {
-    forecasts: 0,
-    promoted: 0,
-    alreadyPromoted: 0,
-    waitingOs: 0,
-    waitingTask: 0,
-    blocked: 0,
-    errors: 0,
-  };
-  const { data: forecasts, error } = await sbClient
-    .from("agenda_agendamentos")
-    .select("id,gc_orcamento_codigo,criado_em")
-    .eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
-    .eq("previsao_continuidade", true)
-    .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
-    .is("auvo_task_id", null);
-  if (error) {
-    console.warn(`[central-sync] previsão orçamento: consulta indisponível: ${error.message}`);
-    summary.errors += 1;
-    return summary;
-  }
-  summary.forecasts = forecasts?.length || 0;
-  if (!forecasts?.length) return summary;
-
-  const osByBudget = new Map<string, any[]>();
-  const indexOs = (os: any) => {
-    const budgetCode = normalizeGcDocumentCode((os as any)?.gc_os_orcamento_codigo);
-    if (!budgetCode || !(os as any)?.gc_os_codigo) return;
-    const rows = osByBudget.get(budgetCode) || [];
-    if (!rows.some((row) => String(row.gc_os_id) === String((os as any).gc_os_id))) rows.push(os);
-    osByBudget.set(budgetCode, rows);
-  };
-  for (const os of Object.values(gcOsResult.byCodigo || {})) indexOs(os);
-
-  // A OS gerada a partir do orçamento pode estar fora da janela de listagem do GC
-  // (a data da OS é herdada do orçamento). Sem esta busca dirigida a previsão
-  // ficava presa em "Aguardando geração da OS" mesmo com a OS já criada.
-  if (gcHeaders) {
-    const pendentes = [
-      ...new Set(
-        (forecasts || [])
-          .map((f: any) => normalizeGcDocumentCode(f.gc_orcamento_codigo))
-          .filter((code) => code && !osByBudget.has(code)),
-      ),
-    ];
-    for (const budgetCode of pendentes) {
-      try {
-        const orcResp = await rateLimitedFetch(
-          `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(budgetCode)}&limite=5`,
-          { headers: gcHeaders },
-          "gc",
-        );
-        if (!orcResp.ok) continue;
-        const orcJson = await orcResp.json().catch(() => ({}));
-        const orc = (Array.isArray(orcJson?.data) ? orcJson.data : []).find(
-          (row: any) => String(row?.codigo || "").trim() === budgetCode,
-        );
-        const clienteId = String(orc?.cliente_id || "").trim();
-        if (!clienteId) continue;
-        const osResp = await rateLimitedFetch(
-          `${GC_BASE_URL}/api/ordens_servicos?cliente_id=${encodeURIComponent(clienteId)}&limite=100`,
-          { headers: gcHeaders },
-          "gc",
-        );
-        if (!osResp.ok) continue;
-        const osJson = await osResp.json().catch(() => ({}));
-        for (const os of Array.isArray(osJson?.data) ? osJson.data : []) {
-          const atributos: any[] = os?.atributos || [];
-          const attrOrcNum = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested?.atributo_id || nested?.id || "") === "81831";
-          });
-          const nested = attrOrcNum?.atributo || attrOrcNum;
-          const orcNum = normalizeGcDocumentCode(nested?.conteudo ?? nested?.valor);
-          if (!orcNum || orcNum !== budgetCode) continue;
-          indexOs({
-            gc_os_id: String(os.id),
-            gc_os_codigo: String(os.codigo || ""),
-            gc_os_situacao: String(os.nome_situacao || ""),
-            gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
-            gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/"),
-            gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
-            gc_os_orcamento_codigo: orcNum,
-          });
-        }
-      } catch (hydrationError) {
-        console.warn(
-          `[central-sync] previsão orçamento ${budgetCode}: busca dirigida falhou: ${String(hydrationError)}`,
-        );
+// The 15-minute status job must also discover execution tasks that have no Auvo date yet.
+async function reconcilePendingBudgetForecasts(
+  sbClient: any,
+  gcHeaders: Record<string, string>,
+  budgetCodes?: string[],
+) {
+  return await reconcileBudgetExecutionForecasts(sbClient, {
+    readGc: async (path) => {
+      const response = await rateLimitedFetch(`${GC_BASE_URL}${path}`, {
+        headers: gcHeaders, signal: AbortSignal.timeout(15_000),
+      }, "gc");
+      if (!response.ok) throw new Error(`Conferência da previsão: GC HTTP ${response.status}`);
+      const json = await response.json();
+      if (json?.status === "error" || Number(json?.code || 200) >= 400) {
+        throw new Error(`Conferência da previsão: ${JSON.stringify(json).slice(0, 200)}`);
       }
-    }
-  }
-
-  const mark = async (id: string, patch: Record<string, unknown>) => {
-    const { error: updateError } = await sbClient
-      .from("agenda_agendamentos")
-      .update({
-        ...patch,
-        conversao_tentada_em: new Date().toISOString(),
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq("id", id);
-    if (updateError) {
-      summary.errors += 1;
-      console.warn(`[central-sync] previsão ${id}: falha ao atualizar estado: ${updateError.message}`);
-    }
-  };
-
-  const candidates: Array<{ forecastId: string; budgetCode: string; osCode: string; execTaskId: string }> = [];
-  for (const forecast of forecasts) {
-    const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
-    const osMatches = selectOsForBudgetForecast(osByBudget.get(budgetCode) || [], forecast.criado_em);
-    if (osMatches.length === 0) {
-      summary.waitingOs += 1;
-      await mark(forecast.id, {
-        gc_os_codigo: null,
-        conversao_status: "AGUARDANDO_OS",
-        conversao_erro: null,
-      });
-      continue;
-    }
-    if (osMatches.length > 1) {
-      summary.blocked += 1;
-      await mark(forecast.id, {
-        conversao_status: "BLOQUEADA",
-        conversao_erro: `Mais de uma OS está vinculada ao orçamento ${budgetCode}: ${osMatches.map((os) => os.gc_os_codigo).join(", ")}`,
-      });
-      continue;
-    }
-
-    const os = osMatches[0];
-    const osCode = normalizeGcDocumentCode(os.gc_os_codigo);
-    const osTaskIds = String(os.gc_os_tarefa_os || "")
-      .split(/\D+/)
-      .filter((id) => id.length >= 4);
-    const execTaskIds = [
-      ...new Set(
-        String(os.gc_os_tarefa_exec || "")
-          .split(/\D+/)
-          .filter((id) => id.length >= 4),
-      ),
-    ];
-    if (execTaskIds.length === 0 || (execTaskIds.length === 1 && osTaskIds.includes(execTaskIds[0]))) {
-      summary.waitingTask += 1;
-      await mark(forecast.id, {
-        gc_os_codigo: osCode,
-        conversao_status: "AGUARDANDO_TAREFA",
-        conversao_erro: null,
-      });
-      continue;
-    }
-    if (execTaskIds.length > 1) {
-      summary.blocked += 1;
-      await mark(forecast.id, {
-        gc_os_codigo: osCode,
-        conversao_status: "BLOQUEADA",
-        conversao_erro: `A OS ${osCode} possui mais de uma tarefa de execução: ${execTaskIds.join(", ")}`,
-      });
-      continue;
-    }
-    candidates.push({ forecastId: forecast.id, budgetCode, osCode, execTaskId: execTaskIds[0] });
-  }
-
-  const concurrency = 3;
-  for (let index = 0; index < candidates.length; index += concurrency) {
-    const batch = candidates.slice(index, index + concurrency);
-    const results = await Promise.all(
-      batch.map(async (candidate) => {
-        const { data, error: invokeError } = await sbClient.functions.invoke("auvo-task-update", {
-          body: {
-            action: "promote-budget-forecast",
-            gcOrcamentoCodigo: candidate.budgetCode,
-            gcOsCodigo: candidate.osCode,
-            execTaskId: candidate.execTaskId,
-          },
-        });
-        return { candidate, data, invokeError };
-      }),
-    );
-    for (const result of results) {
-      if (result.invokeError) {
-        summary.errors += 1;
-        await mark(result.candidate.forecastId, {
-          gc_os_codigo: result.candidate.osCode,
-          conversao_status: "ERRO",
-          conversao_erro: result.invokeError.message,
-        });
-      } else if (result.data?.promoted) {
-        summary.promoted += 1;
-      } else if (result.data?.alreadyPromoted) {
-        summary.alreadyPromoted += 1;
-      } else if (result.data?.reason === "task_started" || result.data?.reason === "technician_not_linked") {
-        summary.blocked += 1;
-      } else if (result.data?.reason !== "no_forecast") {
-        summary.errors += 1;
-      }
-    }
-  }
-  console.log(`[central-sync] promoção de previsões: ${JSON.stringify(summary)}`);
-  return summary;
+      return json;
+    },
+    mapOs: (os) => ({
+      ...mapGcOsToMirrorPayload(os),
+      gc_os_orcamento_codigo: normalizeGcDocumentCode(getGcAttrValue(os.atributos || [], "81831")),
+    }),
+  }, budgetCodes);
 }
 
 type CentralSyncBody = {
@@ -1688,6 +1495,7 @@ type CentralSyncBody = {
   reports_only?: unknown;
   reconcile_open_os?: unknown;
   gc_status_only?: unknown;
+  budget_forecasts_only?: unknown;
   task_ids?: unknown;
   force_refresh?: unknown;
 };
@@ -2745,15 +2553,26 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     return await refreshOrcamentosOnly(sbClient, gcH, { tipo, page, maxPages });
   }
 
+  if (body?.budget_forecasts_only === true) {
+    const budgetCodes = Array.isArray(body.budget_codes)
+      ? body.budget_codes.map(normalizeGcDocumentCode).filter(Boolean) : undefined;
+    const forecasts = await reconcilePendingBudgetForecasts(sbClient, gcH, budgetCodes);
+    return { success: forecasts.errors === 0, mode: "budget-forecasts-only", previsoes_orcamento: forecasts };
+  }
+
   if (body?.gc_status_only === true) {
+    // Run before the broad status scan: unscheduled tasks cannot appear in an Auvo date window.
+    const forecasts = await reconcilePendingBudgetForecasts(sbClient, gcH);
     const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
     return {
       success: true,
       mode: "gc-status-only",
+      previsoes_orcamento: forecasts,
       periodo: { inicio: startDate, fim: endDate },
       gc_os_checked: result.checked,
       gc_os_updated: result.updated,
       errors: 0,
+      forecast_warnings: forecasts.errors,
     };
   }
 
@@ -3092,11 +2911,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     }
   }
 
-  // O sync completo é a fonte automática da transição previsão -> tarefa real.
-  // O modo rápido de situações não entra aqui para continuar leve e não disputar
-  // cota da API Auvo a cada 15 minutos.
+  // The full sync and the periodic status job use the same document-based discovery.
   if (!isGcSolicitadasOnly) {
-    forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult, gcH);
+    forecastPromotionSummary = await reconcilePendingBudgetForecasts(sbClient, gcH);
   }
 
   // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──

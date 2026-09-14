@@ -26,8 +26,11 @@ import {
   auvoTaskHasStarted,
   forecastDurationMinutes,
   isOsEligibleForBudgetForecast,
+  isUnchangedBudgetExecutionForecast,
   normalizeClock,
   normalizeGcDocumentCode,
+  promotedExecutionMirrorRow,
+  readBudgetExecutionTaskLink,
   taskAssignedUserId,
   taskStartMinuteKey,
   taskTypeId,
@@ -371,13 +374,18 @@ async function markForecastConversion(
     atualizado_em: new Date().toISOString(),
   };
   if (osCode !== undefined) patch.gc_os_codigo = osCode;
-  const { error: updateError } = await admin
+  const { data: updated, error: updateError } = await admin
     .from("agenda_agendamentos")
     .update(patch)
-    .eq("id", forecastId);
+    .eq("id", forecastId)
+    .eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
+    .eq("previsao_continuidade", true)
+    .is("auvo_task_id", null)
+    .select("id");
   if (updateError) {
     console.error(`[auvo-task-update] falha ao registrar conversão ${forecastId}: ${updateError.message}`);
   }
+  return !updateError && !!updated?.length;
 }
 
 async function promoteBudgetForecast(
@@ -415,35 +423,61 @@ async function promoteBudgetForecast(
     };
   }
 
-  // Segunda trava: mesmo que algum sincronizador envie uma OS antiga do mesmo
-  // orçamento, nunca convertemos a previsão por um lote anterior da baixa parcial.
-  const { data: osRows, error: osReadError } = await admin
-    .from("tarefas_central")
-    .select("gc_os_codigo,gc_os_data,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,gc_orcamento_codigo")
-    .eq("gc_os_codigo", osCode)
-    .limit(20);
-  if (osReadError) {
-    console.warn(`[auvo-task-update][reqId=${reqId}] não foi possível validar a OS ${osCode}: ${osReadError.message}`);
-  } else {
-    const linkedOs = (osRows || []).find((row: any) =>
-      normalizeGcDocumentCode(row.gc_orcamento_codigo) === budgetCode
-    ) || osRows?.[0];
-    if (linkedOs && !isOsEligibleForBudgetForecast(linkedOs, forecast.criado_em)) {
-      await markForecastConversion(admin, forecast.id, "AGUARDANDO_OS", null, null);
-      return {
-        success: true,
-        promoted: false,
-        reason: "stale_os",
-        forecastId: forecast.id,
-        budgetCode,
-        ignoredOsCode: osCode,
-      };
+  // Validate fresh GC evidence before touching Auvo. The execution may not yet
+  // exist in the mirror (no assigned date/user), and callers can carry old links.
+  let confirmedLink: Awaited<ReturnType<typeof readBudgetExecutionTaskLink>>;
+  try {
+    confirmedLink = await readBudgetExecutionTaskLink(
+      (name, options) => admin.functions.invoke(name, options),
+      { budgetCode, osCode, taskId: execTaskId },
+    );
+  } catch (error) {
+    const message = (error as Error).message || String(error);
+    await markForecastConversion(admin, forecast.id, "ERRO", message);
+    return { success: false, promoted: false, reason: "gc_link_unconfirmed", error: message, forecastId: forecast.id };
+  }
+  if (!confirmedLink.valid) {
+    if (confirmedLink.reason === "partial_balance") {
+      const { error } = await admin.from("agenda_agendamentos").update({
+        previsao_tipo: "SALDO_BAIXA_PARCIAL", conversao_status: "SALDO_A_CONFIRMAR", conversao_erro: null,
+        conversao_tentada_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+      }).eq("id", forecast.id).eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
+        .eq("previsao_continuidade", true).is("auvo_task_id", null);
+      if (error) throw error;
+      return { success: true, promoted: false, reason: "partial_balance", forecastId: forecast.id };
     }
+    const waitingTask = confirmedLink.reason === "execution_not_linked";
+    const message = waitingTask
+      ? `A OS ${osCode} ainda não possui tarefa de execução vinculada no GC`
+      : `GC não confirmou a tarefa ${execTaskId} como execução única da OS ${osCode} e orçamento ${budgetCode} (${confirmedLink.reason})`;
+    await markForecastConversion(admin, forecast.id, waitingTask ? "AGUARDANDO_TAREFA" : "BLOQUEADA", message);
+    return { success: false, promoted: false, reason: confirmedLink.reason, error: message, forecastId: forecast.id };
+  }
+  const linkedOs = confirmedLink.os;
+  if (!isOsEligibleForBudgetForecast(linkedOs, forecast.criado_em)) {
+    await markForecastConversion(admin, forecast.id, "AGUARDANDO_OS", null, null);
+    return {
+      success: true,
+      promoted: false,
+      reason: "stale_os",
+      forecastId: forecast.id,
+      budgetCode,
+      ignoredOsCode: osCode,
+    };
   }
 
-  await markForecastConversion(admin, forecast.id, "PROCESSANDO", null, osCode);
+  const stillPending = await markForecastConversion(admin, forecast.id, "PROCESSANDO", null, osCode);
+  if (!stillPending) return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
 
   try {
+    const currentForecast = async () => {
+      const { data, error } = await admin.from("agenda_agendamentos").select("*").eq("id", forecast.id).maybeSingle();
+      if (error) throw error;
+      return data;
+    };
+    if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
+      return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
+    }
     const startTime = normalizeClock(forecast.hora_inicio);
     const durationMinutes = forecastDurationMinutes(forecast.hora_inicio, forecast.hora_fim);
     if (!startTime || durationMinutes < 15) {
@@ -505,6 +539,9 @@ async function promoteBudgetForecast(
       patches.push({ op: "replace", path: "/taskType", value: durationResolution.id });
     }
 
+    if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
+      return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
+    }
     if (patches.length) {
       const response = await patchWithRetry(`${AUVO_BASE_URL}/tasks/${numericTaskId}`, {
         method: "PATCH",
@@ -527,6 +564,19 @@ async function promoteBudgetForecast(
       );
     }
 
+    // An unassigned execution can be absent from the mirror. Persist provider
+    // facts before replacing the reservation, including zero hours until worked.
+    const centralRow = promotedExecutionMirrorRow(
+      { ...verifiedTask, taskID: numericTaskId },
+      linkedOs,
+      collaborator.nome,
+      durationResolution.description,
+    );
+    const { error: centralError } = await admin.from("tarefas_central").upsert({
+      ...centralRow, atualizado_em: new Date().toISOString(),
+    }, { onConflict: "mirror_key", defaultToNull: false });
+    if (centralError) throw centralError;
+
     const { data: promoted, error: promotionError } = await admin.rpc("promover_previsao_orcamento", {
       p_previsao_id: forecast.id,
       p_orcamento_codigo: budgetCode,
@@ -543,21 +593,6 @@ async function promoteBudgetForecast(
       .select("*")
       .single();
     if (plannedAgendaError) throw plannedAgendaError;
-    await admin
-      .from("tarefas_central")
-      .update({
-        gc_os_codigo: osCode,
-        gc_orcamento_codigo: budgetCode,
-        data_tarefa: forecast.data,
-        hora_inicio: `${startTime}:00`,
-        hora_fim: forecast.hora_fim,
-        duracao_decimal: durationMinutes / 60,
-        tecnico_id: String(auvoUserId),
-        tecnico: collaborator.nome,
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq("auvo_task_id", execTaskId);
-
     console.log(`[auvo-task-update][reqId=${reqId}] previsão ${forecast.id} promovida: ORC ${budgetCode} -> OS ${osCode} -> tarefa ${execTaskId}`);
     return {
       success: true,

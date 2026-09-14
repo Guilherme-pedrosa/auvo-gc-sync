@@ -8,7 +8,7 @@ import {
   auvoTaskTypeId,
   isConcreteAuvoTaskTypeDescription,
 } from "../_shared/auvo-task-type.ts";
-import { isOsEligibleForBudgetForecast, normalizeGcDocumentCode } from "../_shared/agenda-forecast-promotion.ts";
+import { isOsEligibleForBudgetForecast, normalizeGcDocumentCode, validateBudgetExecutionTaskLink } from "../_shared/agenda-forecast-promotion.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 installGcUsuarioId();
 
@@ -829,7 +829,6 @@ Deno.serve(async (req) => {
         .select("id,gc_orcamento_codigo,criado_em")
         .eq("previsao_tipo", "ORCAMENTO_EXECUCAO")
         .eq("previsao_continuidade", true)
-        .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
         .is("auvo_task_id", null);
       if (forecastReadError) {
         console.warn(`[auvo-agenda] falha ao consultar previsões pendentes: ${forecastReadError.message}`);
@@ -839,7 +838,7 @@ Deno.serve(async (req) => {
         const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
         if (budgetCode) forecastsByBudget.set(budgetCode, forecast);
       }
-      const candidates = enriched.filter((task: any) => {
+      const linkedCandidates = enriched.filter((task: any) => {
         const budgetCode = normalizeGcDocumentCode(task.gc_orcamento_codigo);
         const forecast = forecastsByBudget.get(budgetCode);
         if (!task.auvo_task_id || !task.gc_os_codigo || !forecast) return false;
@@ -847,19 +846,24 @@ Deno.serve(async (req) => {
         // Verifica se a OS é elegível (não é de lote anterior e não é terminal)
         if (!isOsEligibleForBudgetForecast(task, forecast.criado_em)) return false;
 
-        const execIds = String(task.gc_os_tarefa_exec || "")
-          .split(/\D+/)
-          .filter(Boolean);
-        const osTaskIds = String(task.gc_os_tarefa_os || "")
-          .split(/\D+/)
-          .filter(Boolean);
-
-        // O motor falha se exigir que a tarefa seja EXCLUSIVAMENTE de execução (execIds e não osTaskIds).
-        // Na prática, muitos fluxos usam a mesma tarefa para OS e Execução.
-        // O critério correto é: se a tarefa está vinculada a essa OS (seja no campo 73343 ou 73344),
-        // ela pode promover a previsão daquele orçamento.
-        return execIds.includes(String(task.auvo_task_id)) || osTaskIds.includes(String(task.auvo_task_id));
+        // TAREFA OS can be an old diagnosis. Only the explicit execution link
+        // may consume the reservation, including when both attributes share it.
+        return validateBudgetExecutionTaskLink([task], {
+          budgetCode, osCode: task.gc_os_codigo, taskId: task.auvo_task_id,
+        }).valid;
       });
+      const candidatesByBudget = new Map<string, Map<string, any>>();
+      for (const task of linkedCandidates) {
+        const budgetCode = normalizeGcDocumentCode(task.gc_orcamento_codigo);
+        const links = candidatesByBudget.get(budgetCode) || new Map<string, any>();
+        links.set(`${normalizeGcDocumentCode(task.gc_os_codigo)}:${task.auvo_task_id}`, task);
+        candidatesByBudget.set(budgetCode, links);
+      }
+      // Never let different executions race to consume the same reservation.
+      // Full reconciliation resolves ambiguous OS using the GC document list.
+      const candidates = [...candidatesByBudget.values()]
+        .filter((links) => links.size === 1)
+        .map((links) => [...links.values()][0]);
       const concurrency = 3;
       for (let index = 0; index < candidates.length; index += concurrency) {
         const batch = candidates.slice(index, index + concurrency);

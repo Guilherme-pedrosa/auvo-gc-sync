@@ -105,8 +105,10 @@ describe("promoção da previsão do orçamento", () => {
     const auvoAgenda = readFileSync(resolve(root, "supabase/functions/auvo-agenda/index.ts"), "utf8");
     const taskUpdate = readFileSync(resolve(root, "supabase/functions/auvo-task-update/index.ts"), "utf8");
 
-    expect(centralSync).toContain("selectOsForBudgetForecast(osByBudget.get(budgetCode) || [], forecast.criado_em)");
-    expect(centralSync).toContain("gc_os_codigo: null");
+    const reconciliation = readFileSync(resolve(root, "supabase/functions/central-sync/budget-forecast-reconciliation.ts"), "utf8");
+    expect(reconciliation).toContain("selectOsForBudgetForecast([...unique.values()], forecast.criado_em)");
+    expect(reconciliation).toContain("gc_os_codigo: null");
+    expect(centralSync).toContain("reconcilePendingBudgetForecasts(sbClient, gcH)");
     expect(auvoAgenda).toContain("isOsEligibleForBudgetForecast(task, forecast.criado_em)");
     expect(taskUpdate).toContain('reason: "stale_os"');
   });
