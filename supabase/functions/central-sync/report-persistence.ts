@@ -37,6 +37,12 @@ export async function persistGcShells(sb: any, shells: any[]): Promise<number> {
     for (const row of batch) {
       const patch = Object.fromEntries(Object.entries(row)
         .filter(([key]) => key.startsWith("gc_os_") || key === "os_realizada" || key === "atualizado_em"));
+      // Old refreshes copied another OS's metadata onto mirrors sharing a
+      // diagnosis. The stable key still identifies the actual OS; repair it
+      // first, otherwise ignoreDuplicates + update(gc_os_id) silently skip it.
+      const { error: identityError } = await sb.from("tarefas_central").update(patch)
+        .like("mirror_key", `%::os:${row.gc_os_id}::orc:%`);
+      if (identityError) throw new Error(`Falha ao restaurar vínculo da OS ${row.gc_os_codigo}: ${identityError.message}`);
       const { error } = await sb.from("tarefas_central").update(patch).eq("gc_os_id", row.gc_os_id);
       if (error) throw new Error(`Falha ao atualizar OS ${row.gc_os_codigo}: ${error.message}`);
       saved++;

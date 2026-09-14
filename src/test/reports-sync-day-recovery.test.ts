@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { transferableAbortController } from "node:util";
-import { reportsSyncPendingSummary, syncReportsInSteps } from "../lib/reportsSync";
+import { reportsSyncPendingSummary, syncWorkedHoursInSteps } from "../lib/reportsSync";
 
 beforeAll(() => {
   const native = transferableAbortController();
@@ -17,7 +17,7 @@ const success = (body: any) => ({ data: { success: true, report_step: body.repor
   next_page: null, next_after: null, os_ids: ["77"], budget_codes: [],
   auvo_tarefas: 2, upserted: body.reports_only ? 2 : 1, auvo_paginacao_completa: true }, error: null });
 
-describe("continuidade por dia do Controle OS", () => {
+describe("continuidade por dia das Horas Trabalhadas", () => {
   it("segue após o 404 do quarto dia, mantém pendência e soma somente seis dias confirmados", async () => {
     let active = 0;
     let maximumConcurrent = 0;
@@ -33,22 +33,22 @@ describe("continuidade por dia do Controle OS", () => {
     const onProgress = vi.fn();
     const onWarnings = vi.fn();
     const onSaved = vi.fn();
-    const result = await syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress, onWarnings, onSaved });
+    const result = await syncWorkedHoursInSteps(invoke, { days, onProgress, onWarnings, onSaved });
     expect(invoke.mock.calls.filter(([, { body }]) => body.reports_only).map(([, { body }]) => body.start_date))
       .toEqual(days.map(day => day.start));
     expect(maximumConcurrent).toBe(1);
-    expect(result).toMatchObject({ tasks: 12, saved: 12, orders: 1, incomplete: true });
+    expect(result).toMatchObject({ tasks: 12, saved: 12, orders: 0, incomplete: true });
     expect(result.warnings).toEqual([expect.objectContaining({
       kind: "auvo_day", start_date: "2026-07-04", end_date: "2026-07-04",
       message: expect.stringContaining("404 após 3 tentativas"),
     })]);
     expect(onWarnings).toHaveBeenLastCalledWith(result.warnings);
-    expect(onSaved).toHaveBeenCalledTimes(8); // Two GC batches plus six confirmed Auvo dates.
-    expect(onProgress.mock.lastCall).toEqual([expect.stringMatching(/Sincronização parcial: 1 dia Auvo não confirmado/), 8]);
+    expect(onSaved).toHaveBeenCalledTimes(6);
+    expect(onProgress.mock.lastCall).toEqual([expect.stringMatching(/Sincronização parcial: 1 dia Auvo não confirmado/), 6]);
     expect(onProgress).not.toHaveBeenCalledWith("Todos os lotes foram concluídos e gravados.", expect.anything());
   });
 
-  it("mantém OS sem permissão e dias Auvo não confirmados na mesma lista tipada", async () => {
+  it("horas não executa etapas GC e o resumo distingue pendências de OS e dias", async () => {
     const osWarning = { os_id: "389831437", status: 400, message: "OS sem permissão; registro preservado" };
     const invoke = vi.fn(async (_name, { body }) => {
       if (body.report_step === "os_reconcile") return { data: { success: true, report_step: "os_reconcile", next_after: null,
@@ -57,18 +57,18 @@ describe("continuidade por dia do Controle OS", () => {
       return success(body);
     });
     const onWarnings = vi.fn();
-    const result = await syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress: vi.fn(), onWarnings });
-    expect(result.warnings[0]).toEqual(osWarning);
-    expect(result.warnings[1]).toMatchObject({ kind: "auvo_day", start_date: "2026-07-04" });
-    expect(onWarnings.mock.calls.map(([warnings]) => warnings.length)).toEqual([1, 2]);
-    expect(reportsSyncPendingSummary(result.warnings)).toBe("1 OS pendentes de conferência; 1 dia Auvo não confirmado");
+    const result = await syncWorkedHoursInSteps(invoke, { days, onProgress: vi.fn(), onWarnings });
+    expect(result.warnings[0]).toMatchObject({ kind: "auvo_day", start_date: "2026-07-04" });
+    expect(invoke.mock.calls.every(([, { body }]) => body.reports_only === true && !body.report_step)).toBe(true);
+    expect(onWarnings.mock.calls.map(([warnings]) => warnings.length)).toEqual([1]);
+    expect(reportsSyncPendingSummary([osWarning, ...result.warnings])).toBe("1 OS pendentes de conferência; 1 dia Auvo não confirmado");
   });
 
   it("mantém a causa JSON do timeout do dia sem encerrar os próximos dias", async () => {
     const invoke = vi.fn(async (_name, { body }) => body.start_date === "2026-07-04"
       ? { data: null, error: { context: Response.json({ code: "IDLE_TIMEOUT" }, { status: 504 }) } }
       : success(body));
-    const result = await syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress: vi.fn() });
+    const result = await syncWorkedHoursInSteps(invoke, { days, onProgress: vi.fn() });
     expect(result.warnings[0].message).toContain("lote não teve conclusão confirmada");
     expect(result.saved).toBe(12);
     expect(invoke.mock.lastCall?.[1].body.start_date).toBe("2026-07-07");
@@ -79,10 +79,10 @@ describe("continuidade por dia do Controle OS", () => {
       ? { data: { success: true, auvo_paginacao_completa: false, auvo_tarefas: 999, upserted: 999 }, error: null }
       : success(body));
     const onProgress = vi.fn();
-    const result = await syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress });
+    const result = await syncWorkedHoursInSteps(invoke, { days, onProgress });
     expect(result).toMatchObject({ tasks: 0, saved: 0, incomplete: true });
     expect(result.warnings).toHaveLength(7);
-    expect(onProgress.mock.lastCall).toEqual([expect.stringContaining("7 dias Auvo não confirmados"), 2]);
+    expect(onProgress.mock.lastCall).toEqual([expect.stringContaining("7 dias Auvo não confirmados"), 0]);
   });
 
   it("cancelamento durante um dia com falha interrompe a fila em vez de virar pendência", async () => {
@@ -95,7 +95,7 @@ describe("continuidade por dia do Controle OS", () => {
       return success(body);
     });
     const onWarnings = vi.fn();
-    await expect(syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress: vi.fn(), onWarnings,
+    await expect(syncWorkedHoursInSteps(invoke, { days, onProgress: vi.fn(), onWarnings,
       signal: controller.signal })).rejects.toThrow();
     expect(invoke.mock.lastCall?.[1].body.start_date).toBe("2026-07-04");
     expect(onWarnings).not.toHaveBeenCalled();
@@ -106,7 +106,7 @@ describe("continuidade por dia do Controle OS", () => {
       if (body.start_date === "2026-07-04") throw new DOMException("Cancelado", "AbortError");
       return success(body);
     });
-    await expect(syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress: vi.fn() })).rejects.toThrow("Cancelado");
+    await expect(syncWorkedHoursInSteps(invoke, { days, onProgress: vi.fn() })).rejects.toThrow("Cancelado");
     expect(invoke.mock.lastCall?.[1].body.start_date).toBe("2026-07-04");
   });
 
@@ -120,7 +120,7 @@ describe("continuidade por dia do Controle OS", () => {
   ])("falha global de autenticação interrompe a fila de dias: %j", async (response) => {
     const invoke = vi.fn(async (_name, { body }) => body.start_date === "2026-07-04" ? response : success(body));
     const onWarnings = vi.fn();
-    await expect(syncReportsInSteps(invoke, { days, situationIds: ["7063705"], onProgress: vi.fn(), onWarnings })).rejects.toThrow();
+    await expect(syncWorkedHoursInSteps(invoke, { days, onProgress: vi.fn(), onWarnings })).rejects.toThrow();
     expect(invoke.mock.lastCall?.[1].body.start_date).toBe("2026-07-04");
     expect(onWarnings).not.toHaveBeenCalled();
   });

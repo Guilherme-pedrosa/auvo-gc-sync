@@ -1,5 +1,19 @@
 import { readGcOsForReconciliation, type GcOsReconciliationWarning } from "./gc-os-reconciliation.ts";
 
+export type ReportAuvoTaskWarning = {
+  kind: "auvo_task";
+  task_id: string;
+  status: number | null;
+  message: string;
+};
+
+export type ReportOsTaskSyncResult = {
+  auvo_tarefas: number;
+  upserted: number;
+  incomplete?: boolean;
+  warnings?: ReportAuvoTaskWarning[];
+};
+
 type Dependencies = {
   fetchOs: (headers: Record<string, string>, options: any) => Promise<any>;
   saveOs: (sb: any, result: any) => Promise<number>;
@@ -8,10 +22,28 @@ type Dependencies = {
   getOs: (id: string) => Promise<Response>;
   mapOs: (os: any) => any;
   mirrorPatch: (os: any) => any;
+  syncOsTasks?: (taskIds: string[]) => Promise<ReportOsTaskSyncResult>;
 };
 
 const ids = (values: unknown) => Array.isArray(values)
   ? [...new Set(values.map(String).filter(value => /^\d+$/.test(value)))] : [];
+
+const validAuvoTaskId = (value: string) => /^\d+$/.test(value) && !/^0+$/.test(value);
+
+function taskIdsFromOrders(orders: any[]): string[] {
+  const taskIds = new Set<string>();
+  // Refresh execution for the whole page before spending requests on history.
+  // Deduplication changes only fetch order, never the GC role of either task.
+  for (const field of ["gc_os_tarefa_exec", "gc_os_tarefa_os"]) {
+    for (const os of orders) {
+      const value = os?.[field];
+      for (const taskId of String(value ?? "").split(/[\/,;\s]+/)) {
+        if (validAuvoTaskId(taskId)) taskIds.add(taskId);
+      }
+    }
+  }
+  return [...taskIds];
+}
 
 // The report calls one bounded step at a time. A page never includes the
 // potentially slow budget searches or the month's Auvo task import.
@@ -29,6 +61,23 @@ export async function runBoundedReportStep(sb: any, headers: Record<string, stri
       success: true, report_step: stage, upserted, next_page: result.nextPage,
       os_ids: orders.map(os => String(os.gc_os_id)),
       budget_codes: ids(orders.map(os => os.gc_os_orcamento_codigo)),
+      auvo_task_ids: taskIdsFromOrders(orders),
+    };
+  }
+
+  if (stage === "os_tasks") {
+    const rawIds: string[] = Array.isArray(body.task_ids) ? body.task_ids.map((value: unknown) => String(value).trim()) : [];
+    const taskIds = [...new Set(rawIds)];
+    if (!taskIds.length || taskIds.length > 5 || rawIds.some(taskId => !validAuvoTaskId(taskId))) {
+      throw new Error("O lote deve conter de uma a cinco tarefas Auvo válidas.");
+    }
+    if (!deps.syncOsTasks) throw new Error("Sincronização das tarefas vinculadas às OS indisponível.");
+    const result = await deps.syncOsTasks(taskIds);
+    const warnings = result.warnings || [];
+    return {
+      success: true, report_step: stage,
+      auvo_tarefas: result.auvo_tarefas, upserted: result.upserted,
+      incomplete: result.incomplete === true || warnings.length > 0, warnings,
     };
   }
 
@@ -61,6 +110,7 @@ export async function runBoundedReportStep(sb: any, headers: Record<string, stri
     const candidates = [...pending].sort();
     const batch = candidates.slice(0, 5);
     const warnings: GcOsReconciliationWarning[] = [];
+    const confirmedOrders: any[] = [];
     let transitioned = 0;
     for (const id of batch) {
       const result = await readGcOsForReconciliation(id, deps.getOs);
@@ -72,13 +122,16 @@ export async function runBoundedReportStep(sb: any, headers: Record<string, stri
       if (result.kind === "missing") {
         patch = { gc_os_situacao: "EXCLUÍDA NO GC", gc_os_situacao_id: "", atualizado_em: new Date().toISOString() };
       } else {
-        patch = deps.mirrorPatch(deps.mapOs(result.os));
+        const fresh = deps.mapOs(result.os);
+        patch = deps.mirrorPatch(fresh);
+        confirmedOrders.push(fresh);
       }
       const { error } = await sb.from("tarefas_central").update(patch).eq("gc_os_id", id);
       if (error) throw new Error(`Falha ao atualizar situação da OS ${id}: ${error.message}`);
       transitioned++;
     }
     return { success: true, report_step: stage, checked: batch.length, transitioned, warnings,
+      auvo_task_ids: taskIdsFromOrders(confirmedOrders),
       incomplete: warnings.length > 0, next_after: candidates.length > batch.length ? batch.at(-1) : null };
   }
   throw new Error("Etapa de sincronização desconhecida.");

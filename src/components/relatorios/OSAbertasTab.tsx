@@ -23,7 +23,9 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
+import { buildAuvoTaskLookup, buildOsDiagnosticLookup, buildOsExecutionLookup, parseGcAuvoTaskIds, extractLiveTaskResolution, getAuvoStatusFromTask, resolveOsExecution, type LiveExecutionResolution } from "./osTaskLookup";
 import { format } from "date-fns";
+import { auvoCheckInDate, auvoCheckOutDate, computeAuvoWorkedHours } from "../../../supabase/functions/_shared/auvo-worked-time";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
@@ -61,12 +63,7 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Parse slash-separated exec IDs into an array of valid numeric strings */
-const parseExecIds = (raw: unknown): string[] => {
-  const str = String(raw ?? "").trim();
-  if (!str) return [];
-  return str.split("/").map(s => s.trim()).filter(s => /^\d+$/.test(s));
-};
+const parseExecIds = parseGcAuvoTaskIds;
 
 const extractEquipmentFromOrientation = (raw: unknown): string => {
   const lines = String(raw || "")
@@ -79,27 +76,6 @@ const extractEquipmentFromOrientation = (raw: unknown): string => {
     if (/^(PEÇA|PEÇAS|SERVIÇO|SERVIÇOS|PERFIL|BORRACHA|KIT)\b/i.test(line)) return false;
     return /[a-zÀ-ÿ]{3,}/i.test(line);
   }) || "";
-};
-
-const getAuvoStatusFromTask = (task: any) => {
-  const ts = task?.taskStatus;
-  const statusCode = typeof ts === "number"
-    ? ts
-    : typeof ts?.id === "number"
-      ? ts.id
-      : Number(ts?.id || ts?.status || 0);
-
-  if (statusCode === 6) return "Pausada";
-  if (statusCode === 4 || statusCode === 5) return "Finalizada";
-  if (statusCode === 3) return "Em andamento";
-  if (statusCode === 2) return "Em deslocamento";
-  if (statusCode === 1) return "Aberta";
-
-  if (task?.checkOut) return "Finalizada";
-  const tcs = task?.timeControl || [];
-  if (tcs.some((tc: any) => tc.pauseStart && !tc.pauseEnd) || task?.reasonForPause) return "Pausada";
-  if (task?.checkIn) return "Em andamento";
-  return "Agendada";
 };
 
 const extractEquipmentIdsFromTask = (task: any): string[] => {
@@ -133,20 +109,6 @@ const normalizeLocalReparo = (raw: unknown): string =>
 
 const isPendingLinkItem = (item: any) => String(item?.auvo_task_id || "").startsWith("gc-only::");
 
-const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResolution | null => {
-  const taskObj = taskData?.data?.result ?? taskData?.data ?? taskData?.result ?? taskData ?? null;
-  if (!taskObj) return null;
-
-  const userTo = taskObj?.userTo || taskObj?.user_to || taskObj?.assignedUser || {};
-  const tecnico = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
-  const tecnicoId = String(taskObj?.idUserTo || taskObj?.id_user_to || userTo?.userID || userTo?.id || "").trim();
-  const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
-  const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
-  const dataTarefa = dateStr && !dateStr.startsWith("0001-01-01") ? dateStr : "";
-
-  return { taskId, tecnico, tecnicoId, dataTarefa, status: getAuvoStatusFromTask(taskObj) };
-};
-
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -176,8 +138,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Live Auvo task resolution for rows whose local mirror is missing technician data
   const [liveOsMap, setLiveOsMap] = useState<Map<string, LiveTaskResolution>>(new Map());
-  const [liveExecMap, setLiveExecMap] = useState<Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>>(new Map());
+  const [liveExecMap, setLiveExecMap] = useState<Map<string, LiveExecutionResolution>>(new Map());
   const [liveEquipmentMap, setLiveEquipmentMap] = useState<Map<string, { nome: string; serie: string }>>(new Map());
+
+  // A completed sync can change both the GC task IDs and their Auvo snapshots.
+  // Do not keep an earlier live result ahead of the newly loaded mirrors.
+  useEffect(() => {
+    setLiveOsMap(new Map());
+    setLiveExecMap(new Map());
+    setLiveEquipmentMap(new Map());
+  }, [data, allTasks]);
 
   // Conciliação
   const [changingId, setChangingId] = useState<string | null>(null);
@@ -303,59 +273,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
   }, [allSituacoes, searchSituacao]);
 
-  const osTaskByGcOsId = useMemo(() => {
-    const grouped = new Map<string, any[]>();
+  const taskById = useMemo(() => buildAuvoTaskLookup(allTasks), [allTasks]);
+  const osTaskByGcOsId = useMemo(() => buildOsDiagnosticLookup(data, allTasks, taskById), [data, allTasks, taskById]);
 
-    for (const task of allTasks) {
-      if (!task?.gc_os_id) continue;
-      const gcOsId = String(task.gc_os_id);
-      const bucket = grouped.get(gcOsId) || [];
-      bucket.push(task);
-      grouped.set(gcOsId, bucket);
-    }
-
-    const resolved = new Map<string, any>();
-
-    for (const [gcOsId, tasks] of grouped.entries()) {
-      const execIds = new Set(
-        tasks
-          .map((task) => task?.gc_os_tarefa_exec)
-          .filter(Boolean)
-          .map((id) => String(id))
-      );
-
-      const osTask =
-        tasks.find((task) => !execIds.has(String(task.auvo_task_id))) ||
-        tasks.find((task) => String(task.auvo_task_id) !== String(task.gc_os_tarefa_exec || "")) ||
-        tasks[0];
-
-      resolved.set(gcOsId, osTask);
-    }
-
-    return resolved;
-  }, [allTasks]);
-
-  // Helper to resolve exec status for an item
-  const getItemExecStatus = useCallback((item: any): string => {
-    const allIds = parseExecIds(item.gc_os_tarefa_exec);
-    const live = liveExecMap.get(String(item.gc_os_id));
-    if (live?.status) return live.status;
-    for (const eid of allIds) {
-      const mapped = execTaskStatusMap?.get(eid);
-      if (mapped) return mapped;
-      const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
-      if (execRow?.status_auvo) return execRow.status_auvo;
-    }
-    return "";
-  }, [liveExecMap, execTaskStatusMap, allTasks]);
+  const executionByOsId = useMemo(() => buildOsExecutionLookup(data, allTasks, taskById), [data, allTasks, taskById]);
+  const getItemExecution = useCallback((item: any) => resolveOsExecution(item,
+    executionByOsId.get(String(item.gc_os_id)) ?? [], liveExecMap.get(String(item.gc_os_id))), [executionByOsId, liveExecMap]);
+  const getItemExecStatus = useCallback((item: any): string => getItemExecution(item)?.status_auvo || "", [getItemExecution]);
 
   // Bucket de agendamento da execução: nao_agendada | atrasada | hoje | agendada
   const getItemAgendaBucket = useCallback((item: any): string => {
-    const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
-    const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
-    const live = liveExecMap.get(String(item.gc_os_id));
-    const execDate = live?.dataTarefa || execRow?.data_tarefa;
-    const execTecnico = live?.tecnico || execRow?.tecnico;
+    const execution = getItemExecution(item);
+    const execDate = execution?.data_tarefa;
+    const execTecnico = execution?.tecnico;
     if (!execDate && !execTecnico) return "nao_agendada";
     const s = String(execDate || "").trim();
     const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
@@ -372,7 +302,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     if (diff < 0) return "atrasada";
     if (diff === 0) return "hoje";
     return "agendada";
-  }, [allTasks, liveExecMap]);
+  }, [getItemExecution]);
 
   const getItemEquipamento = useCallback((item: any) => {
     const live = liveEquipmentMap.get(String(item?.gc_os_id));
@@ -395,7 +325,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
     const candidates = [
       osTask,
-      ...parseExecIds(item.gc_os_tarefa_exec).map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid)),
+      ...parseExecIds(item.gc_os_tarefa_exec).map((eid) => taskById.get(eid)),
     ].filter(Boolean);
 
     for (const task of candidates) {
@@ -411,7 +341,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
 
     return { nome: "", serie: "" };
-  }, [allTasks, equipamentoTaskMap, liveEquipmentMap, osTaskByGcOsId]);
+  }, [taskById, equipamentoTaskMap, liveEquipmentMap, osTaskByGcOsId]);
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
@@ -672,10 +602,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
     const itemsToResolve = row.items.filter((item: any) => {
       if (!item?.gc_os_id || liveOsMap.has(String(item.gc_os_id))) return false;
-      const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || (!String(item.auvo_task_id || "").startsWith("gc-only::") ? String(item.auvo_task_id || "") : "");
-      if (!osTaskId) return false;
       const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
-      return !String(osTask?.tecnico || item.tecnico || "").trim();
+      const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || String(osTask?.auvo_task_id || "");
+      if (!osTaskId) return false;
+      return !String(osTask?.tecnico || "").trim();
     });
     if (itemsToResolve.length === 0) return;
 
@@ -686,7 +616,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
       for (const item of itemsToResolve) {
         if (cancelled) break;
-        const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || String(item.auvo_task_id || "").trim();
+        const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0]
+          || String(osTaskByGcOsId.get(String(item.gc_os_id))?.auvo_task_id || "");
         if (!/^\d+$/.test(osTaskId)) continue;
         const resolved = await resolveAuvoTaskLive(osTaskId);
         if (!cancelled && resolved) {
@@ -726,18 +657,17 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       ...filtered.flatMap((r: any) => (r.cliente === expanded ? [] : r.items)),
     ];
     // 1) Semeia do cache local (tarefas_central) — sem chamada de API.
-    const seeded = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
+    const seeded = new Map<string, LiveExecutionResolution>();
     const needsApi: any[] = [];
     for (const item of ordered) {
       const gcId = String(item?.gc_os_id || "");
       if (!gcId || liveExecMap.has(gcId)) continue;
       const ids = parseExecIds(item.gc_os_tarefa_exec);
-      const row = ids
-        .map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid))
-        .find((r: any) => r && (r.data_tarefa || r.tecnico));
+      const row = executionByOsId.get(gcId)?.[0];
       if (row) {
         seeded.set(gcId, {
           execTaskId: ids.join("/"),
+          resolvedTaskId: String(row.auvo_task_id),
           tecnico: row.tecnico || "",
           dataTarefa: row.data_tarefa || "",
           status: row.status_auvo || "",
@@ -761,7 +691,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     let cancelled = false;
 
     (async () => {
-      const updates = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
+      const updates = new Map<string, LiveExecutionResolution>();
 
       await Promise.all(itemsToResolve.map(async (item: any) => {
         try {
@@ -797,38 +727,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             return;
           }
 
-          // Resolve each exec task and pick best data
-          let bestTecnico = "";
-          let bestDate = "";
-          let bestStatus = "";
-
+          // Preserve one confirmed task as a whole; no cross-task field mixing.
+          let resolved: LiveTaskResolution | null = null;
           for (const eid of allExecIds) {
             if (cancelled) break;
-            const resolved = await resolveAuvoTaskLive(eid);
-            if (!resolved || cancelled) continue;
-            const tecName = resolved.tecnico;
-            const dateStr = resolved.dataTarefa;
-            const status = resolved.status;
-
-            // Prefer task with a valid date & assigned technician
-            if (!bestTecnico && tecName) bestTecnico = tecName;
-            if (!bestDate && dateStr) bestDate = dateStr;
-            if (!bestStatus && status && status !== "Agendada") bestStatus = status;
-            // Override with more meaningful data
-            if (tecName && dateStr) {
-              bestTecnico = tecName;
-              bestDate = dateStr;
-              bestStatus = status;
-            }
+            resolved = await resolveAuvoTaskLive(eid);
+            if (resolved || cancelled) break;
           }
-
-          if (!bestDate) bestDate = item.gc_os_data_saida || item.gc_os_data || "";
-
           updates.set(String(item.gc_os_id), {
             execTaskId: rawExecValue,
-            tecnico: bestTecnico,
-            dataTarefa: bestDate,
-            status: bestStatus,
+            resolvedTaskId: resolved?.taskId,
+            tecnico: resolved?.tecnico || "",
+            dataTarefa: resolved?.dataTarefa || "",
+            status: resolved?.status || "",
           });
         } catch {
           // ignore individual failures
@@ -847,7 +758,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return () => {
       cancelled = true;
     };
-  }, [allTasks, expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
+  }, [executionByOsId, expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -980,14 +891,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         });
         const nested = execAttr?.atributo || execAttr;
         const rawExecId = String(nested?.conteudo || nested?.valor || "").trim();
-        const execId = rawExecId.split("/").map(s => s.trim()).find(s => /^\d+$/.test(s)) || "";
+        const execId = parseExecIds(rawExecId)[0] || "";
 
         if (execId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "get", taskId: Number(execId) },
           });
-          if (!taskError) {
-            execTask = taskData?.data?.result ?? taskData?.data ?? null;
+          if (!taskError && extractLiveTaskResolution(taskData, execId)) {
+            execTask = taskData?.data?.result ?? taskData?.data ?? taskData?.result ?? taskData;
           }
         }
       }
@@ -1603,21 +1514,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         {(() => {
                                           const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
                                           const live = liveOsMap.get(String(item.gc_os_id));
-                                          return osTask?.tecnico || item.tecnico || live?.tecnico || "—";
+                                          return osTask?.tecnico || live?.tecnico || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell>
                                         {(() => {
-                                          const allExecIds = parseExecIds(item.gc_os_tarefa_exec);
-                                          const live = liveExecMap.get(String(item.gc_os_id));
-                                          // Try live resolution first (API-fetched)
-                                          if (live?.tecnico) return live.tecnico;
-                                          // Try local DB match for any exec task ID
-                                          for (const eid of allExecIds) {
-                                            const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
-                                            if (execRow?.tecnico) return execRow.tecnico;
-                                          }
-                                          return "—";
+                                          return getItemExecution(item)?.tecnico || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell className="text-xs font-mono">
@@ -1629,12 +1531,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>
                                         <div className="flex items-center gap-1.5">
                                           {(() => {
-                                            const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
-                                            const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
-                                            const live = liveExecMap.get(String(item.gc_os_id));
-                                            const execDate = live?.dataTarefa || execRow?.data_tarefa;
-                                            const execStatus = live?.status || (execId && execTaskStatusMap?.get(execId));
-                                            const execTecnico = live?.tecnico || execRow?.tecnico || null;
+                                            const execution = getItemExecution(item);
+                                            const execDate = execution?.data_tarefa;
+                                            const execStatus = execution?.status_auvo;
+                                            const execTecnico = execution?.tecnico;
                                             // Sem data e sem técnico => OS ainda não agendada: não exibe nada
                                             if (!execDate && !execTecnico) return <span className="text-muted-foreground">—</span>;
                                             const parseDay = (v: any): Date | null => {
@@ -1829,8 +1729,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   return String(nested?.conteudo || nested?.valor || "").trim() || null;
                 };
 
-                const osTaskId = parseExecIds(findAttrRaw("73343"))[0] || null;
-                const execRaw = findAttrRaw("73344") || selectedCard?.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
+                const confirmedDetail = String(osDetail?.id || "") === String(selectedCard?.gc_os_id);
+                const osTaskId = parseExecIds(confirmedDetail ? findAttrRaw("73343") : selectedCard?.gc_os_tarefa_os)[0] || null;
+                const execRaw = confirmedDetail ? findAttrRaw("73344") : selectedCard?.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
 
                 if (osTaskId || execRaw) {
                   return `Tarefa OS #${osTaskId || "—"} • Execução #${execRaw || "—"}`;
@@ -1854,56 +1755,51 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               return String(nested?.conteudo || nested?.valor || "").trim() || null;
             };
 
-            const osTaskId = parseExecIds(findAttrRaw("73343"))[0] || null;
-            const execRaw = findAttrRaw("73344") || selectedCard.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
+            const confirmedDetail = String(osDetail?.id || "") === String(selectedCard.gc_os_id);
+            const osTaskId = parseExecIds(confirmedDetail ? findAttrRaw("73343") : selectedCard.gc_os_tarefa_os)[0] || null;
+            const execRaw = confirmedDetail ? findAttrRaw("73344") : selectedCard.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
             const execTaskId = execRaw;
             // For lookups, use first valid numeric ID
             const firstExecId = parseExecIds(execRaw)[0] || null;
 
             const osRow = (() => {
               if (osTaskId) {
-                return allTasks.find((t: any) => String(t.auvo_task_id) === String(osTaskId))
+                return taskById.get(String(osTaskId))
                   || (String(selectedCard.auvo_task_id) === String(osTaskId) ? { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null } : null)
                   || (liveResolvedOs ? { auvo_task_id: String(osTaskId), tecnico: liveResolvedOs.tecnico || null, tecnico_id: liveResolvedOs.tecnicoId || null, data_tarefa: liveResolvedOs.dataTarefa || null, status_auvo: liveResolvedOs.status || null } : null);
               }
-              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null };
-              return null;
+              const diagnostic = osTaskByGcOsId.get(String(selectedCard.gc_os_id));
+              return diagnostic ? { ...diagnostic, tecnico: diagnostic.tecnico || liveResolvedOs?.tecnico || null,
+                tecnico_id: diagnostic.tecnico_id || liveResolvedOs?.tecnicoId || null,
+                data_tarefa: diagnostic.data_tarefa || liveResolvedOs?.dataTarefa || null,
+                status_auvo: diagnostic.status_auvo || liveResolvedOs?.status || null } : null;
             })();
 
             const execRow = (() => {
               if (!firstExecId) return null;
 
-              const mirrorExecRow = allTasks.find((t: any) => String(t.auvo_task_id) === String(firstExecId))
-                || (String(selectedCard.auvo_task_id) === String(firstExecId) ? selectedCard : null)
-                || (liveResolvedExec ? {
-                  auvo_task_id: String(firstExecId),
-                  tecnico: liveResolvedExec.tecnico || null,
-                  data_tarefa: liveResolvedExec.dataTarefa || null,
-                  status_auvo: liveResolvedExec.status || null,
-                } : null);
-
-              if (execTaskFallback) {
-                const fbTaskDate = String(execTaskFallback?.taskDate || "");
-                const fbDateValid = fbTaskDate && !fbTaskDate.startsWith("0001-01-01");
-                const fbUserToId = execTaskFallback?.idUserTo ?? execTaskFallback?.id_user_to ?? 0;
-                const fbHasUser = fbUserToId && Number(fbUserToId) > 0;
-                const fbTecnico = fbHasUser
-                  ? auvoUsers?.find((u) => String(u.userID) === String(fbUserToId))?.name || execTaskFallback?.userToName || null
-                  : null;
-
+              const executionOrder = { ...selectedCard, gc_os_tarefa_exec: firstExecId };
+              const executionRows = buildOsExecutionLookup([executionOrder], allTasks, taskById).get(String(selectedCard.gc_os_id)) ?? [];
+              const mirrorExecRow = resolveOsExecution(executionOrder, executionRows, liveResolvedExec);
+              const confirmedTask = extractLiveTaskResolution(execTaskFallback, firstExecId);
+              if (confirmedTask) {
+                const checkInDate = auvoCheckInDate(execTaskFallback);
+                const checkOutDate = auvoCheckOutDate(execTaskFallback);
                 return {
                   ...mirrorExecRow,
-                  auvo_task_id: String(firstExecId),
-                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || null,
-                  data_tarefa: (fbDateValid ? fbTaskDate.slice(0, 10) : null) || mirrorExecRow?.data_tarefa || liveResolvedExec?.dataTarefa || null,
-                  status_auvo: getAuvoStatusFromTask(execTaskFallback),
-                  hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || (fbDateValid ? fbTaskDate.slice(11, 19) : null) || null),
-                  hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : (mirrorExecRow?.hora_fim || null),
-                  check_in: !!execTaskFallback?.checkIn,
-                  check_out: !!execTaskFallback?.checkOut,
-                  duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : (mirrorExecRow?.duracao_decimal ?? null),
-                  report: execTaskFallback?.report || null,
-                  reasonForPause: execTaskFallback?.reasonForPause || null,
+                  auvo_task_id: firstExecId,
+                  tecnico: confirmedTask.tecnicoId
+                    ? auvoUsers?.find(u => String(u.userID) === confirmedTask.tecnicoId)?.name || confirmedTask.tecnico || null
+                    : confirmedTask.tecnico || null,
+                  data_tarefa: confirmedTask.dataTarefa || null,
+                  status_auvo: confirmedTask.status,
+                  hora_inicio: checkInDate?.slice(11, 19) || (confirmedTask.dataTarefa ? String(execTaskFallback.taskDate || "").slice(11, 19) : null),
+                  hora_fim: checkOutDate?.slice(11, 19) || null,
+                  check_in: !!execTaskFallback.checkIn,
+                  check_out: !!execTaskFallback.checkOut,
+                  duracao_decimal: computeAuvoWorkedHours(execTaskFallback),
+                  report: execTaskFallback.report || null,
+                  reasonForPause: execTaskFallback.reasonForPause || null,
                 };
               }
 
@@ -2358,8 +2254,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
               {/* Warning: exec task already scheduled */}
               {(() => {
-                const firstEid = parseExecIds(editingCard.gc_os_tarefa_exec)[0] || null;
-                const execRow = firstEid ? allTasks.find((t: any) => String(t.auvo_task_id) === firstEid) : null;
+                const execRow = getItemExecution(editingCard);
                 const execDate = execRow?.data_tarefa;
                 const execTecnico = execRow?.tecnico;
                 const osDate = editingCard.gc_os_data || editingCard.data_tarefa;
