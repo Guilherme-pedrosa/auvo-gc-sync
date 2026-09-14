@@ -155,9 +155,10 @@ describe("atividades da célula real da agenda", () => {
     });
     const { visibleIds } = renderCell([plan, task]);
     expect(visibleIds()).toEqual([task.id]);
-    const label = recognized ? "Contabilizado" : "Conta no contrato";
+    const label = recognized ? "Contabilizado" : "Aguardando validação";
     expect(screen.getByRole("button", { name: `${label} · Coifas · ${task.cliente}` })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: new RegExp(`^${recognized ? "Conta no contrato" : "Contabilizado"}`) })).toBeNull();
+    expect(screen.queryByRole("button", { name: new RegExp(`^${recognized ? "Aguardando validação" : "Contabilizado"}`) })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Conta no contrato/ })).toBeNull();
   });
 
   it("preserva a faixa com tags mesmo quando a tarefa já tem selo contratual", () => {
@@ -244,5 +245,19 @@ describe("atividades da célula real da agenda", () => {
     expect(db.from).not.toHaveBeenCalled();
     expect(db.rpc).not.toHaveBeenCalled();
     expect(db.invoke).not.toHaveBeenCalled();
+  });
+
+  it("mostra a atividade coifa de tarefa aberta sem inventar contabilização contratual", () => {
+    const task: AgendaAgendamento = {
+      ...activities()[0], gc_os_codigo: "10236", auvo_task_id: "79743430", status_auvo: "Aberta",
+      tipo_tarefa_auvo: "HIGIENIZAÇÃO DE COIFAS", tipo_tarefa_auvo_descricao: "HIGIENIZAÇÃO DE COIFAS",
+    };
+    const { activityButton } = renderCell([task]);
+    const button = activityButton(task.id);
+    expect(within(button).getByText("Higienização de coifas")).toBeTruthy();
+    expect(within(button).getByText("OS 10236")).toBeTruthy();
+    expect(button.getAttribute("title")).toContain("HIGIENIZAÇÃO DE COIFAS");
+    expect(screen.queryByRole("button", { name: /^Contabilizado/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Conta no contrato/ })).toBeNull();
   });
 });

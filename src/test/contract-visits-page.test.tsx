@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +16,33 @@ vi.mock("@/integrations/supabase/client", () => ({
     auth: { getUser: async () => ({ data: { user: null } }) },
     rpc: db.rpc,
     from(table: string) {
+      const terms = (expression: string): string[] => {
+        let depth = 0;
+        let start = 0;
+        const result: string[] = [];
+        for (let index = 0; index < expression.length; index++) {
+          if (expression[index] === "(") depth++;
+          if (expression[index] === ")") depth--;
+          if (expression[index] === "," && depth === 0) {
+            result.push(expression.slice(start, index));
+            start = index + 1;
+          }
+        }
+        return [...result, expression.slice(start)];
+      };
+      const matches = (row: Record<string, any>, expression: string): boolean => {
+        const group = /^(and|or)\((.*)\)$/.exec(expression);
+        if (group) {
+          const predicates = terms(group[2]).map(term => matches(row, term));
+          return group[1] === "and" ? predicates.every(Boolean) : predicates.some(Boolean);
+        }
+        const [, key, operator, value] = /^([^.]+)\.([^.]+)\.(.*)$/.exec(expression)!;
+        if (operator === "is" && value === "null") return row[key] == null;
+        if (row[key] == null) return false;
+        if (operator === "gte") return row[key] >= value;
+        if (operator === "lt") return row[key] < value;
+        throw new Error(`Unsupported test filter: ${expression}`);
+      };
       const filters: Array<(row: Record<string, any>) => boolean> = [];
       const order: Array<{ key: string; ascending: boolean }> = [];
       let from = 0;
@@ -25,6 +52,7 @@ vi.mock("@/integrations/supabase/client", () => ({
         eq: (key: string, value: unknown) => { filters.push(row => row[key] === value); return query; },
         gte: (key: string, value: unknown) => { filters.push(row => row[key] >= value!); return query; },
         lte: (key: string, value: unknown) => { filters.push(row => row[key] <= value!); return query; },
+        or: (expression: string) => { filters.push(row => matches(row, `or(${expression})`)); return query; },
         order: (key: string, options?: { ascending?: boolean }) => {
           order.push({ key, ascending: options?.ascending !== false }); return query;
         },
@@ -124,6 +152,40 @@ describe("carregamento e planejamento das visitas contratuais", () => {
       expect(calls.map(call => call.from)).toEqual([0, 500, 1000]);
       expect(calls.every(call => call.order[call.order.length - 1] === "id")).toBe(true);
     }
+  });
+
+  it("mantém a previsão no ano da competência após remarcação entre anos, inclusive além da milésima linha", async () => {
+    const decemberMovedToJanuary = forecast(1000, {
+      data: "2027-01-08", contrato_visita_competencia: "2026-12-01",
+    });
+    const januaryMovedToDecember = forecast(1001, {
+      data: "2026-12-28", contrato_visita_competencia: "2027-01-01",
+    });
+    const legacyDecember = forecast(1002, {
+      data: "2026-12-31", contrato_visita_competencia: null,
+    });
+    const legacyJanuary = forecast(1003, {
+      data: "2027-01-01", contrato_visita_competencia: null,
+    });
+    db.tables.agenda_agendamentos = [
+      ...Array.from({ length: 1000 }, (_, index) => forecast(index)),
+      decemberMovedToJanuary, januaryMovedToDecember, legacyDecember, legacyJanuary,
+    ];
+
+    const client = renderPage();
+    await waitFor(() => expect(client.getQueryData(["contractual-visits", "forecasts", 2026])).toHaveLength(1002));
+    const forecasts2026 = client.getQueryData<Record<string, any>[]>(["contractual-visits", "forecasts", 2026])!;
+    expect(forecasts2026).toContainEqual(decemberMovedToJanuary);
+    expect(forecasts2026).toContainEqual(legacyDecember);
+    expect(forecasts2026).not.toContainEqual(januaryMovedToDecember);
+    expect(forecasts2026).not.toContainEqual(legacyJanuary);
+    expect(db.calls.filter(call => call.table === "agenda_agendamentos").map(call => call.from)).toEqual([0, 500, 1000]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Próximo ano" }));
+    await waitFor(() => expect(client.getQueryData(["contractual-visits", "forecasts", 2027])).toHaveLength(2));
+    const forecasts2027 = client.getQueryData<Record<string, any>[]>(["contractual-visits", "forecasts", 2027])!;
+    expect(forecasts2027).toEqual([januaryMovedToDecember, legacyJanuary]);
+    expect(forecasts2027.some(row => forecasts2026.some(previous => previous.id === row.id))).toBe(false);
   });
 
   it("mantém as duas visitas consecutivas de coifa sem recalcular ao abrir a tela", async () => {

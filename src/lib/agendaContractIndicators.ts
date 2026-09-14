@@ -96,3 +96,23 @@ export function buildAgendaContractIndicators(
   }
   return { indicatorsByItemId, hiddenContractCardIds };
 }
+
+/** A busca muda o que aparece, não a evidência do vínculo. A faixa só pode
+ * ser recolhida se sua tarefa também passou pelos filtros da tela. */
+export function buildVisibleAgendaContractIndicators(
+  allItems: readonly AgendaAgendamento[],
+  visibleItems: readonly AgendaAgendamento[],
+  showContractVisits: boolean,
+) {
+  if (!showContractVisits) return {
+    indicatorsByItemId: new Map<string, AgendaContractIndicator[]>(),
+    hiddenContractCardIds: new Set<string>(),
+  };
+  const visibleIds = new Set(visibleItems.map((item) => item.id));
+  const { indicatorsByItemId } = buildAgendaContractIndicators(allItems);
+  const { hiddenContractCardIds } = buildAgendaContractIndicators(visibleItems);
+  return {
+    indicatorsByItemId: new Map([...indicatorsByItemId].filter(([id]) => visibleIds.has(id))),
+    hiddenContractCardIds,
+  };
+}

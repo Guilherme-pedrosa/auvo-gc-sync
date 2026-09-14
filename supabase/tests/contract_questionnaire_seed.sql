@@ -18,3 +18,6 @@ INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
     false,'Pausada',7.25,'215148',now() - interval '1 hour'),
   ('gc:500001','500001','Cliente A',current_date - 2,'Tecnico A',
     true,'Finalizada',7.3,NULL,now());
+UPDATE tarefas_central SET task_type_id='246515',
+  descricao='[WEDO:180795:480] HIGIENIZAÇÃO DE COIFAS · 8h'
+WHERE auvo_task_id='500001';

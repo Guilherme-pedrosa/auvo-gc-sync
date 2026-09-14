@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgendaAgendamento } from "@/hooks/operacional/useAgendamentoEquipe";
-import { buildAgendaContractIndicators } from "@/lib/agendaContractIndicators";
+import { buildAgendaContractIndicators, buildVisibleAgendaContractIndicators } from "@/lib/agendaContractIndicators";
 
 const base: AgendaAgendamento = { id: "plan", data: "2026-09-14", hora_inicio: "08:00", hora_fim: "09:00", colaborador_id: "tech", colaborador_nome: "Técnico", cliente: "Cliente", veiculo_id: null, descricao: null, status: "PREVISAO" };
 const card = (changes: Partial<AgendaAgendamento> = {}): AgendaAgendamento => ({ ...base, origem: "CONTRATO", previsao_tipo: "CONTRATO", contrato_visita_config_id: "config", contrato_visita_competencia: "2026-09-01", contrato_visita_numero: 1, ...changes });
@@ -55,5 +55,35 @@ describe("indicadores contratuais por IDs", () => {
       const result = buildAgendaContractIndicators([card({ contrato_visita_tarefa_ids: ["100"], contrato_visita_execucao_id: "exec", contrato_visita_realizada_em: performed, contrato_visita_tarefas_detalhes: [{ tarefa_id: "100" }] }), task("100")]);
       expect(result.indicatorsByItemId.get("task-100")?.[0].status).toBe("vinculada");
     }
+  });
+});
+
+describe("indicadores preservados durante os filtros da agenda", () => {
+  it("mantém selo ao buscar OS mesmo que a previsão não tenha número de OS", () => {
+    const plan = card({ contrato_visita_tarefa_ids: ["100"] });
+    const activity = task("100", { gc_os_codigo: "10236" });
+    const all = [plan, activity];
+    const visible = all.filter((item) => item.gc_os_codigo === "10236");
+    const result = buildVisibleAgendaContractIndicators(all, visible, true);
+    expect(result.indicatorsByItemId.get(activity.id)?.[0].contractCard).toBe(plan);
+    expect(result.hiddenContractCardIds.size).toBe(0);
+  });
+  it("mantém contabilização antecipada ao buscar o técnico que executou", () => {
+    const plan = card({ data: "2026-09-16", colaborador_id: "other", colaborador_nome: "Outro técnico", contrato_visita_execucao_id: "exec", contrato_visita_realizada_em: "2026-09-14", contrato_visita_tarefas_detalhes: [{ tarefa_id: "100" }] });
+    const activity = task("100", { colaborador_nome: "Técnico executor" });
+    const all = [plan, activity];
+    const result = buildVisibleAgendaContractIndicators(all, all.filter((item) => item.colaborador_nome.includes("executor")), true);
+    expect(result.indicatorsByItemId.get(activity.id)?.[0]).toMatchObject({ status: "contabilizada", contractCard: plan });
+    expect(result.hiddenContractCardIds.size).toBe(0);
+  });
+  it("não esconde a faixa quando a busca remove sua tarefa e respeita o switch Visitas", () => {
+    const plan = card({ contrato_visita_tarefa_ids: ["100"] });
+    const activity = task("100");
+    const all = [plan, activity];
+    expect(buildVisibleAgendaContractIndicators(all, [plan], true).hiddenContractCardIds.size).toBe(0);
+    expect(buildVisibleAgendaContractIndicators(all, all, true).hiddenContractCardIds.has(plan.id)).toBe(true);
+    const disabled = buildVisibleAgendaContractIndicators(all, all, false);
+    expect(disabled.indicatorsByItemId.size).toBe(0);
+    expect(disabled.hiddenContractCardIds.size).toBe(0);
   });
 });

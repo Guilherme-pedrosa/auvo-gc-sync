@@ -30,7 +30,9 @@ import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheD
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
 import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle, contractVisitActivity } from "@/components/operacional/ContractVisitCardContent";
-import { buildAgendaContractIndicators } from "@/lib/agendaContractIndicators";
+import { buildAgendaContractIndicators, buildVisibleAgendaContractIndicators } from "@/lib/agendaContractIndicators";
+import { findManualAgendaEntry, selectFutureContractVisitMoves } from "@/lib/agendaCellActions";
+import { agendaDateIsInRange, scrollAgendaToDate } from "@/lib/agendaDateNavigation";
 import {
   AGENDA_TASK_SYNC_FIELDS,
   agendaTaskSnapshotChanged,
@@ -88,17 +90,6 @@ import {
 } from "@/lib/previsaoChegada";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
-
-function scrollAgendaToToday(behavior: ScrollBehavior = "auto", scope: ParentNode = document) {
-  scope.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((header) => {
-    const container = header.closest<HTMLElement>("[data-agenda-scroll='1']");
-    if (!container || !container.getBoundingClientRect().width) return;
-    const personWidth = container.querySelector<HTMLElement>("thead th")?.getBoundingClientRect().width ?? 0;
-    const left = container.scrollLeft + header.getBoundingClientRect().left
-      - container.getBoundingClientRect().left - container.clientLeft - personWidth;
-    container.scrollTo({ left: Math.max(0, left), behavior });
-  });
-}
 
 const norm = (s: string) =>
   (s ?? "")
@@ -236,7 +227,7 @@ export function Celula({
   const itensVisiveis = mostrarTodas ? itensApresentados : itensApresentados.slice(0, 5);
   const itensOcultos = itensApresentados.length - itensVisiveis.length;
 
-  const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
+  const manual = findManualAgendaEntry(itens);
 
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
   const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
@@ -368,6 +359,8 @@ export function Celula({
           const tipoTarefa = a.auvo_task_id
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
+          const tipoTarefaResumido = tipoTarefa === "HIGIENIZAÇÃO DE COIFAS" ? "Higienização de coifas"
+            : tipoTarefa === "TIPO NÃO INFORMADO" ? null : tipoTarefa;
           const situacaoGc = String(a.gc_os_situacao || "").trim();
           const destacarSituacaoGc = shouldHighlightPendingGcExecution(a);
           const clienteGc = String(a.gc_os_cliente || "").trim();
@@ -377,7 +370,8 @@ export function Celula({
           const documentoLabel = a.gc_os_codigo ? `OS ${a.gc_os_codigo}`
             : a.gc_orcamento_codigo ? `Orç ${a.gc_orcamento_codigo}`
             : a.auvo_task_id ? `#${a.auvo_task_id}` : null;
-          const tarefaTitle = [a.cliente, tipoTarefa, documentoLabel,
+          const tarefaTitle = [a.cliente, tipoTarefa,
+            a.tipo_tarefa_auvo_descricao !== tipoTarefa ? a.tipo_tarefa_auvo_descricao : null, documentoLabel,
             a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : null,
             situacaoGc ? `Situação GC: ${situacaoGc}` : null, a.descricao,
           ].filter(Boolean).join(" · ");
@@ -478,13 +472,17 @@ export function Celula({
                       })}
                     </span>
                   )}
-                  {tempoTrabalhado.hasCheckIn && (
-                    <span className="flex items-center gap-1 text-[9px] font-semibold normal-case opacity-90 truncate">
-                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                      {formatWorkedClock(tempoTrabalhado.checkIn)} → {tempoTrabalhado.hasCheckOut
-                        ? formatWorkedClock(tempoTrabalhado.checkOut)
-                        : "em andamento"}
-                      {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
+                  {(tipoTarefaResumido || tempoTrabalhado.hasCheckIn) && (
+                    <span className="flex min-w-0 items-center gap-1 text-[10px] font-medium normal-case opacity-90">
+                      {tipoTarefaResumido && <span className="min-w-0 truncate" title={a.tipo_tarefa_auvo_descricao || tipoTarefaResumido}>{tipoTarefaResumido}</span>}
+                      {tempoTrabalhado.hasCheckIn && <>
+                        <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                        <span className="min-w-0 truncate">
+                          {formatWorkedClock(tempoTrabalhado.checkIn)} → {tempoTrabalhado.hasCheckOut
+                            ? formatWorkedClock(tempoTrabalhado.checkOut) : "em andamento"}
+                          {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
+                        </span>
+                      </>}
                     </span>
                   )}
                   {a.previsao_detalhes && (
@@ -525,7 +523,8 @@ export function Celula({
               {indicadoresContrato.length > 0 && <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 px-1 py-0.5">
                 {indicadoresContrato.map((indicator) => {
                   const contabilizada = indicator.status === "contabilizada";
-                  const label = contabilizada ? "Contabilizado" : "Conta no contrato";
+                  const aguardaValidacao = !contabilizada && agendaVisualStatus(a) === "finalizada";
+                  const label = contabilizada ? "Contabilizado" : aguardaValidacao ? "Aguardando validação" : "Conta no contrato";
                   const activity = contractVisitActivity(indicator.contractCard);
                   return <button key={indicator.contractCard.id} type="button" data-contract-visit-recognition
                     draggable={indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO"}
@@ -534,9 +533,11 @@ export function Celula({
                     }}
                     onClick={() => setVisitaDetalhe(indicator.contractCard)}
                     aria-label={`${label} · ${activity} · ${a.cliente}`}
-                    title={`${contabilizada ? "Esta tarefa já foi reconhecida na execução do contrato." : "Tarefa vinculada à previsão do contrato; as horas serão reconhecidas após a execução válida."}\n${contractVisitCardTitle(indicator.contractCard)}`}
+                    title={`${contabilizada ? "Esta tarefa já foi reconhecida na execução do contrato." : aguardaValidacao ? "Tarefa concluída no Auvo, mas a execução ainda não foi validada neste contrato. As horas não foram contabilizadas neste vínculo." : "Tarefa vinculada à previsão do contrato; as horas serão reconhecidas após a execução válida."}\n${contractVisitCardTitle(indicator.contractCard)}`}
                     className={cn("flex max-w-full items-center gap-1 rounded px-1 text-[10px] font-medium leading-4 normal-case hover:underline focus-visible:ring-2 focus-visible:ring-primary",
-                      contabilizada ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200")}
+                      contabilizada ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                        : aguardaValidacao ? "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                        : "bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200")}
                   >
                     {contabilizada ? <CircleCheckBig className="h-3 w-3 shrink-0" /> : <Link2 className="h-3 w-3 shrink-0" />}
                     <span className="shrink-0">{label}</span>
@@ -686,7 +687,7 @@ export default function AgendamentoEquipePage() {
     catch { /* A seção continua utilizável se o navegador bloquear o armazenamento. */ }
     if (!recolhidos) requestAnimationFrame(() => {
       const grid = document.getElementById("agenda-veiculos-grade");
-      if (grid) scrollAgendaToToday("auto", grid);
+      if (grid) scrollAgendaToDate(diaNavegacao || format(new Date(), "yyyy-MM-dd"), "auto", grid);
     });
   };
   const saveAgendamento = useSaveAgendamento();
@@ -734,6 +735,7 @@ export default function AgendamentoEquipePage() {
   const DIAS_FUTUROS = 90;
 
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
+  const [diaNavegacao, setDiaNavegacao] = useState(() => format(inicioEscala, "yyyy-MM-dd"));
 
   // A escala visível começa SEMPRE no dia de hoje.
   const diasFuturos = useMemo(
@@ -1081,22 +1083,14 @@ export default function AgendamentoEquipePage() {
 
         if (fetchErr) throw fetchErr;
 
-        if (futuras && futuras.length > 0) {
-          const futurasDoTecnico = futuras.filter((f) => (
-            item.colaborador_id
-              ? f.colaborador_id === item.colaborador_id
-              : f.colaborador_nome === item.colaborador_nome
-          ));
-
-          for (const futura of futurasDoTecnico) {
-            const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
-              p_agendamento_id: futura.id,
-              p_data: futura.id === item.id ? date : futura.data,
-              p_colaborador_id: colabId,
-              p_colaborador_nome: colab.nome,
-            });
-            if (moveError) throw moveError;
-          }
+        for (const futura of selectFutureContractVisitMoves(item, futuras ?? [])) {
+          const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+            p_agendamento_id: futura.id,
+            p_data: futura.id === item.id ? date : futura.data,
+            p_colaborador_id: colabId,
+            p_colaborador_nome: colab.nome,
+          });
+          if (moveError) throw moveError;
         }
       } else {
         // Movimentação individual (Lógica original)
@@ -1201,10 +1195,11 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
 
-  // Uma execução antecipada pode estar em outro dia da previsão nominal.
-  // O vínculo usa toda a grade filtrada; a faixa só some na própria célula.
+  // A busca por OS/técnico não remove a evidência do contrato. A faixa só
+  // some quando a tarefa correspondente também está na grade filtrada.
   const contractIndicators = useMemo(
-    () => buildAgendaContractIndicators([...mapTec.values()].flat()), [mapTec],
+    () => buildVisibleAgendaContractIndicators(data?.agendamentos ?? [], [...mapTec.values()].flat(), mostrarVisitasContratuais),
+    [data?.agendamentos, mapTec, mostrarVisitasContratuais],
   );
 
   // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
@@ -1246,13 +1241,15 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data]);
 
-  // Histórico: apenas dias passados que realmente possuem agendamento registrado.
+  // Além dos dias com registros, inclui o dia solicitado para permitir navegar
+  // a uma data passada vazia sem criar qualquer agendamento.
   const diasHistorico = useMemo(() => {
     const comDados = new Set<string>();
     for (const a of data?.agendamentos ?? []) comDados.add(a.data);
     for (const v of data?.veiculoDias ?? []) if (v.texto?.trim()) comDados.add(v.data);
+    if (diaNavegacao) comDados.add(diaNavegacao);
     return diasAnteriores.filter((d) => comDados.has(d));
-  }, [data, diasAnteriores]);
+  }, [data, diasAnteriores, diaNavegacao]);
 
   // Colunas renderizadas: sempre iniciam em hoje; o histórico entra antes só quando liberado.
   const dias = useMemo(
@@ -1298,32 +1295,58 @@ export default function AgendamentoEquipePage() {
 
   const carregando = isLoading || loadingCol || loadingVei;
 
-  // A visão sempre começa no dia atual, inclusive ao liberar o histórico.
+  const irParaHoje = () => {
+    const hoje = diasFuturos[0];
+    setDiaNavegacao(hoje);
+    scrollAgendaToDate(hoje, "smooth");
+  };
+  const navegarParaData = (date: string) => {
+    if (!date) { setDiaNavegacao(""); return; }
+    if (!agendaDateIsInRange(date, diasTodos[0], diasTodos[diasTodos.length - 1])) {
+      toast.error(`Escolha uma data entre ${formatDiaBR(diasTodos[0])} e ${formatDiaBR(diasTodos[diasTodos.length - 1])}.`);
+      return;
+    }
+    setDiaNavegacao(date);
+    if (date < diasFuturos[0]) setMostrarHistorico(true);
+  };
+
+  // Aguarda a coluna escolhida entrar no DOM ao abrir o histórico.
   useEffect(() => {
-    if (carregando) return;
+    if (carregando || !diaNavegacao) return;
     const id = window.setTimeout(() => {
-      scrollAgendaToToday();
+      scrollAgendaToDate(diaNavegacao);
     }, 0);
     return () => window.clearTimeout(id);
-  }, [carregando, mostrarHistorico]);
+  }, [carregando, mostrarHistorico, diaNavegacao]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2 md:gap-3 md:px-6 md:py-4 border-b bg-card shrink-0">
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 md:gap-3">
           <h1 className="text-base md:text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
           <div className="hidden md:flex items-center bg-muted rounded-md p-1 gap-1">
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <LastSyncBadge />
-          <Button variant="outline" size="sm" onClick={() => scrollAgendaToToday("smooth")}>
+          <Button variant="outline" size="sm" onClick={irParaHoje}>
             Ir para Hoje
           </Button>
+          <label className="flex items-center gap-1.5 text-xs font-medium">
+            Data
+            <input type="date" aria-label="Ir para data" aria-describedby="agenda-date-range"
+              value={diaNavegacao} min={diasTodos[0]} max={diasTodos[diasTodos.length - 1]} disabled={carregando}
+              onChange={(event) => navegarParaData(event.target.value)}
+              className="h-8 w-[142px] rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          </label>
+          <span id="agenda-date-range" className="sr-only">Datas disponíveis: {formatDiaBR(diasTodos[0])} a {formatDiaBR(diasTodos[diasTodos.length - 1])}.</span>
           <Button
             variant={mostrarHistorico ? "secondary" : "outline"}
             size="sm"
-            onClick={() => setMostrarHistorico((v) => !v)}
+            onClick={() => {
+              if (mostrarHistorico && diaNavegacao < diasFuturos[0]) setDiaNavegacao(diasFuturos[0]);
+              setMostrarHistorico((value) => !value);
+            }}
             disabled={carregando || (!mostrarHistorico && diasHistorico.length === 0)}
             title={
               diasHistorico.length === 0
@@ -1480,6 +1503,7 @@ export default function AgendamentoEquipePage() {
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
                             data-coluna-hoje={isHoje ? "1" : undefined}
+                            data-agenda-date={diaStr}
                             className={cn(
                               "border border-border p-2 text-center text-[11px] font-bold uppercase sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
@@ -1502,7 +1526,7 @@ export default function AgendamentoEquipePage() {
                         </td>
                         {dias.map((dia) => {
                           const itens = mapTec.get(`${t.id}|${dia}`) ?? [];
-                          const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
+                          const manual = findManualAgendaEntry(itens);
                           return (
                             <Celula
                               contractIndicators={contractIndicators}
@@ -1646,6 +1670,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             data-coluna-hoje={isHoje ? "1" : undefined}
+                            data-agenda-date={diaStr}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"

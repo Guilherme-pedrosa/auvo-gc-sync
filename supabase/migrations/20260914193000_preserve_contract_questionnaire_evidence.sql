@@ -1,8 +1,9 @@
 -- A linha operacional escolhida para uma tarefa pode ser um espelho GC sem
 -- questionario. Combine a evidencia Auvo antes de eliminar os espelhos, mas
 -- contabilize somente uma duracao por tarefa. Cliente/dia continuam isolados.
--- A regra continua sendo questionario 215148 = coifa, 224444 = excluido.
--- Nome e tipo da tarefa nao substituem a evidencia do questionario.
+-- Na realizacao, a regra continua sendo questionario 215148 = coifa e
+-- 224444 = excluido. O planejamento reconhece tambem o tipo Auvo de coifa,
+-- pois tarefas futuras ainda nao possuem respostas de execucao.
 
 CREATE OR REPLACE FUNCTION public.escopo_questionarios_visita(
   p_questionario_id text,
@@ -39,15 +40,87 @@ AS $$
   END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.tipo_tarefa_visita_e_coifa(
+  p_task_type_id text,
+  p_descricao text
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = public
+AS $$
+  SELECT trim(COALESCE(p_task_type_id, '')) = '180795'
+    OR trim(COALESCE(p_descricao, '')) ~* '^\[WEDO:180795:[0-9]+\]';
+$$;
+
+CREATE OR REPLACE FUNCTION public.escopo_realizado_visita(
+  p_escopos_questionarios boolean[],
+  p_tipo_coifa boolean
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = public
+AS $$
+  -- Consolide os questionarios antes de tratar coifa ainda sem 215148 como
+  -- pendente. Assim um espelho sem respostas nao bloqueia a prova de outro.
+  SELECT CASE
+    WHEN escopo.questionarios IS NULL THEN NULL::boolean
+    WHEN escopo.questionarios THEN true
+    WHEN p_tipo_coifa THEN NULL::boolean
+    ELSE false
+  END
+  FROM (
+    SELECT public.consolidar_escopos_visita(p_escopos_questionarios) AS questionarios
+  ) escopo;
+$$;
+
+CREATE OR REPLACE FUNCTION public.escopo_agendado_visita(
+  p_task_type_id text,
+  p_descricao text,
+  p_questionario_id text,
+  p_questionario_respostas jsonb,
+  p_outros_questionarios jsonb
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN escopo.questionarios IS NULL THEN NULL::boolean
+    WHEN escopo.questionarios THEN true
+    ELSE public.tipo_tarefa_visita_e_coifa(p_task_type_id, p_descricao)
+  END
+  FROM (
+    SELECT public.escopo_questionarios_visita(
+      p_questionario_id, p_questionario_respostas, p_outros_questionarios
+    ) AS questionarios
+  ) escopo;
+$$;
+
 COMMENT ON FUNCTION public.escopo_questionarios_visita(text, jsonb, jsonb) IS
   'Usa questionario principal, respostas e outros_questionarios; 224444 sempre exclui.';
 COMMENT ON FUNCTION public.consolidar_escopos_visita(boolean[]) IS
   'Combina evidencia dos espelhos da mesma tarefa: exclusao prevalece, depois coifa.';
+COMMENT ON FUNCTION public.escopo_agendado_visita(text, text, text, jsonb, jsonb) IS
+  'Somente planejamento: 215148 ou tipo Auvo 180795/wrapper identifica coifa; 224444 exclui. Nao comprova realizacao.';
+COMMENT ON FUNCTION public.escopo_realizado_visita(boolean[], boolean) IS
+  '215148 comprova coifa; 224444 exclui; tipo coifa sem 215148 fica pendente, nunca em manutencao. Evidencia consolidada entre espelhos.';
 
 REVOKE ALL ON FUNCTION public.escopo_questionarios_visita(text, jsonb, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.consolidar_escopos_visita(boolean[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.escopo_agendado_visita(text, text, text, jsonb, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.tipo_tarefa_visita_e_coifa(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.escopo_realizado_visita(boolean[], boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.escopo_questionarios_visita(text, jsonb, jsonb) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.consolidar_escopos_visita(boolean[]) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.escopo_agendado_visita(text, text, text, jsonb, jsonb) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.tipo_tarefa_visita_e_coifa(text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.escopo_realizado_visita(boolean[], boolean) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.reconciliar_dia_visita_contratual(
   p_cliente text,
@@ -83,9 +156,12 @@ BEGIN
     WITH ranked AS (
       SELECT
         tarefa.*,
-        public.consolidar_escopos_visita(
+        public.escopo_realizado_visita(
           array_agg(public.escopo_questionarios_visita(
             tarefa.questionario_id, tarefa.questionario_respostas, tarefa.outros_questionarios
+          )) OVER (PARTITION BY tarefa.auvo_task_id),
+          bool_or(public.tipo_tarefa_visita_e_coifa(
+            tarefa.task_type_id, tarefa.descricao
           )) OVER (PARTITION BY tarefa.auvo_task_id)
         ) AS escopo_coifa,
         row_number() OVER (
@@ -198,9 +274,12 @@ BEGIN
     WITH ranked AS (
       SELECT
         tarefa.*,
-        public.consolidar_escopos_visita(
+        public.escopo_realizado_visita(
           array_agg(public.escopo_questionarios_visita(
             tarefa.questionario_id, tarefa.questionario_respostas, tarefa.outros_questionarios
+          )) OVER (PARTITION BY tarefa.auvo_task_id),
+          bool_or(public.tipo_tarefa_visita_e_coifa(
+            tarefa.task_type_id, tarefa.descricao
           )) OVER (PARTITION BY tarefa.auvo_task_id)
         ) AS escopo_coifa,
         row_number() OVER (
@@ -388,10 +467,11 @@ BEGIN
     SELECT
       tarefa.*,
       public.consolidar_escopos_visita(
-        array_agg(public.escopo_questionarios_visita(
+        array_agg(public.escopo_agendado_visita(
+          tarefa.task_type_id, tarefa.descricao,
           tarefa.questionario_id, tarefa.questionario_respostas, tarefa.outros_questionarios
         )) OVER (PARTITION BY tarefa.auvo_task_id)
-      ) AS escopo_coifa,
+      ) AS escopo_agendado_coifa,
       row_number() OVER (
         PARTITION BY tarefa.auvo_task_id
         ORDER BY tarefa.atualizado_em DESC NULLS LAST, tarefa.criado_em DESC NULLS LAST
@@ -408,7 +488,7 @@ BEGIN
       AND public.normalizar_cliente_visita(status_auvo) NOT LIKE '%exclu%'
       AND public.normalizar_cliente_visita(status_auvo) NOT LIKE '%pendente-vinculo%'
       AND NULLIF(trim(tecnico), '') IS NOT NULL
-      AND escopo_coifa = v_contrato_coifa
+      AND escopo_agendado_coifa = v_contrato_coifa
   )
   SELECT
     COALESCE(array_agg(auvo_task_id ORDER BY hora_inicio NULLS LAST, auvo_task_id), '{}'),
@@ -646,10 +726,11 @@ BEGIN
       SELECT
         tarefa.*,
         public.consolidar_escopos_visita(
-          array_agg(public.escopo_questionarios_visita(
+          array_agg(public.escopo_agendado_visita(
+            tarefa.task_type_id, tarefa.descricao,
             tarefa.questionario_id, tarefa.questionario_respostas, tarefa.outros_questionarios
           )) OVER (PARTITION BY tarefa.auvo_task_id)
-        ) AS escopo_coifa,
+        ) AS escopo_agendado_coifa,
         row_number() OVER (
           PARTITION BY tarefa.auvo_task_id
           ORDER BY tarefa.atualizado_em DESC NULLS LAST, tarefa.criado_em DESC NULLS LAST
@@ -688,7 +769,7 @@ BEGIN
         AND EXISTS (
           SELECT 1
           FROM validas tarefa
-          WHERE tarefa.escopo_coifa
+          WHERE tarefa.escopo_agendado_coifa
             = public.contrato_e_limpeza_coifa(c.nome)
         )
     )
@@ -729,6 +810,8 @@ BEGIN
      AND OLD.hora_inicio IS NOT DISTINCT FROM NEW.hora_inicio
      AND OLD.hora_fim IS NOT DISTINCT FROM NEW.hora_fim
      AND OLD.status_auvo IS NOT DISTINCT FROM NEW.status_auvo
+     AND OLD.task_type_id IS NOT DISTINCT FROM NEW.task_type_id
+     AND OLD.descricao IS NOT DISTINCT FROM NEW.descricao
      AND OLD.questionario_id IS NOT DISTINCT FROM NEW.questionario_id
      AND OLD.questionario_respostas IS NOT DISTINCT FROM NEW.questionario_respostas
      AND OLD.outros_questionarios IS NOT DISTINCT FROM NEW.outros_questionarios THEN
@@ -778,6 +861,8 @@ BEGIN
      AND OLD.check_out IS NOT DISTINCT FROM NEW.check_out
      AND OLD.data_conclusao IS NOT DISTINCT FROM NEW.data_conclusao
      AND OLD.status_auvo IS NOT DISTINCT FROM NEW.status_auvo
+     AND OLD.task_type_id IS NOT DISTINCT FROM NEW.task_type_id
+     AND OLD.descricao IS NOT DISTINCT FROM NEW.descricao
      AND OLD.tecnico IS NOT DISTINCT FROM NEW.tecnico
      AND OLD.check_in_iso IS NOT DISTINCT FROM NEW.check_in_iso
      AND OLD.check_out_iso IS NOT DISTINCT FROM NEW.check_out_iso
@@ -859,7 +944,7 @@ DROP TRIGGER IF EXISTS trg_tarefa_reconciliar_visita_contratual_agendada
   ON public.tarefas_central;
 CREATE TRIGGER trg_tarefa_reconciliar_visita_contratual_agendada
   AFTER INSERT OR DELETE OR UPDATE OF cliente, data_tarefa, auvo_task_id,
-    tecnico, hora_inicio, hora_fim, status_auvo,
+    tecnico, hora_inicio, hora_fim, status_auvo, task_type_id, descricao,
     questionario_id, questionario_respostas, outros_questionarios
   ON public.tarefas_central
   FOR EACH ROW
@@ -869,7 +954,7 @@ DROP TRIGGER IF EXISTS trg_tarefa_reconciliar_visita_contratual
   ON public.tarefas_central;
 CREATE TRIGGER trg_tarefa_reconciliar_visita_contratual
   AFTER INSERT OR DELETE OR UPDATE OF cliente, data_tarefa, auvo_task_id,
-    duracao_decimal, check_out, data_conclusao, status_auvo,
+    duracao_decimal, check_out, data_conclusao, status_auvo, task_type_id, descricao,
     tecnico, check_in_iso, check_out_iso,
     questionario_id, questionario_respostas, outros_questionarios
   ON public.tarefas_central

@@ -21,6 +21,23 @@ BEGIN
 END;
 $$;
 
+-- Planejamento conhece o tipo operacional; realizacao aguarda a prova 215148.
+DO $$ BEGIN
+  ASSERT escopo_agendado_visita('180795','HIGIENIZAÇÃO DE COIFAS',NULL,'[]',NULL) IS TRUE;
+  ASSERT escopo_agendado_visita('246515','[WEDO:180795:480] HIGIENIZAÇÃO DE COIFAS · 8h',NULL,'[]',NULL) IS TRUE;
+  ASSERT escopo_agendado_visita('180795','HIGIENIZAÇÃO DE COIFAS','224444','[]',NULL) IS NULL;
+  ASSERT escopo_agendado_visita('180175','Preventiva + OS',NULL,'[]',NULL) IS FALSE;
+  ASSERT escopo_agendado_visita(NULL,'Verificar coifa',NULL,'[]',NULL) IS FALSE,
+    'Mencao textual livre nao identifica tipo operacional contratado';
+  ASSERT escopo_realizado_visita(ARRAY[false],true) IS NULL;
+  ASSERT escopo_realizado_visita(ARRAY[false,true],true) IS TRUE,
+    'Um espelho sem questionario nao bloqueia o 215148 de outro espelho';
+  ASSERT escopo_realizado_visita(ARRAY[true,NULL::boolean],true) IS NULL,
+    '224444 deve excluir mesmo se outro espelho tem 215148';
+  ASSERT escopo_realizado_visita(ARRAY[false],false) IS FALSE,
+    'Questionarios de manutencao normal continuam permitidos';
+END; $$;
+
 -- Exclusao em qualquer espelho prevalece e limpa a apropriacao existente.
 UPDATE tarefas_central SET outros_questionarios = '[{"questionnaireId":224444}]'
 WHERE mirror_key='auvo:500001';
@@ -162,3 +179,70 @@ BEGIN
     'Reconciliacoes repetidas devem preservar id e contrato da execucao valida';
 END;
 $$;
+
+-- Tipo 180795 sem respostas deve gerar previsao de coifa, nunca de manutencao.
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
+  status_auvo,task_type_id,descricao) VALUES
+  ('planejada-coifa','980001','Cliente B',current_date+10,'Tecnico A','Aberta','180795','HIGIENIZAÇÃO DE COIFAS'),
+  ('planejada-tipo-corrigido','980002','Cliente B',current_date+11,'Tecnico A','Aberta',NULL,'Tipo nao informado'),
+  ('planejada-wrapper-corrigido','980003','Cliente B',current_date+12,'Tecnico A','Aberta','246515','Tipo nao informado');
+UPDATE tarefas_central SET task_type_id='180795' WHERE mirror_key='planejada-tipo-corrigido';
+UPDATE tarefas_central SET descricao='[WEDO:180795:120] HIGIENIZAÇÃO DE COIFAS · 2h'
+WHERE mirror_key='planejada-wrapper-corrigido';
+DO $$ BEGIN
+  ASSERT (SELECT count(*) FROM agenda_agendamentos WHERE data BETWEEN current_date+10 AND current_date+12) = 3;
+  ASSERT (SELECT count(*) FROM agenda_agendamentos WHERE data BETWEEN current_date+10 AND current_date+12
+    AND contrato_id='20000000-0000-0000-0000-000000000002') = 3,
+    'INSERT e alteracoes isoladas de tipo/descricao devem escolher o contrato de coifa';
+  ASSERT NOT EXISTS (SELECT 1 FROM contratos_visitas_execucoes WHERE tarefa_ids && ARRAY['980001','980002','980003']),
+    'Planejamento de coifa nao comprova realizacao';
+END; $$;
+UPDATE tarefas_central SET questionario_id='224444' WHERE mirror_key='planejada-coifa';
+DO $$ BEGIN
+  ASSERT NOT EXISTS (SELECT 1 FROM agenda_agendamentos WHERE data=current_date+10),
+    'Questionario excluido prevalece sobre o tipo planejado';
+END; $$;
+
+-- Finalizada sem 215148 fica pendente e sai da manutencao. O questionario
+-- vindo posteriormente em outro espelho incompleto libera somente a coifa.
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
+  check_out,status_auvo,duracao_decimal) VALUES
+  ('realizada-tipo-corrigido','980004','Cliente B',current_date-12,'Tecnico A',true,'Finalizada',8);
+UPDATE tarefas_central SET task_type_id='180795' WHERE mirror_key='realizada-tipo-corrigido';
+DO $$ BEGIN
+  ASSERT NOT EXISTS (SELECT 1 FROM contratos_visitas_execucoes WHERE tarefa_ids @> ARRAY['980004']),
+    'Coifa concluida sem 215148 nao pode consumir manutencao nem coifa';
+END; $$;
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
+  status_auvo,questionario_id) VALUES
+  ('prova-coifa-depois','980004','Cliente B',current_date-12,'Tecnico A','Pausada','215148');
+DO $$ BEGIN
+  ASSERT (SELECT horas_trabalhadas FROM contratos_visitas_execucoes WHERE tarefa_ids @> ARRAY['980004']) = 8;
+  ASSERT (SELECT contrato_id FROM contratos_visitas_execucoes WHERE tarefa_ids @> ARRAY['980004'])
+    = '20000000-0000-0000-0000-000000000002'::uuid;
+END; $$;
+
+-- Uma visita nominal cumprida permanece intacta; a nova coifa futura ocupa
+-- um slot extra. Contrato vencido nao deve desviar coifa para manutencao.
+INSERT INTO contratos(id,nome,cliente_nome,tipo_id,vigencia_fim) VALUES
+  ('20000000-0000-0000-0000-000000000006','Coifa D','Cliente D','10000000-0000-0000-0000-000000000001',NULL),
+  ('20000000-0000-0000-0000-000000000007','Coifa E','Cliente E','10000000-0000-0000-0000-000000000001',current_date-1),
+  ('20000000-0000-0000-0000-000000000008','Manutencao E','Cliente E','10000000-0000-0000-0000-000000000002',NULL);
+INSERT INTO contratos_visitas_config(id,contrato_id,qtd_visitas) VALUES
+  ('30000000-0000-0000-0000-000000000006','20000000-0000-0000-0000-000000000006',1),
+  ('30000000-0000-0000-0000-000000000007','20000000-0000-0000-0000-000000000007',1),
+  ('30000000-0000-0000-0000-000000000008','20000000-0000-0000-0000-000000000008',1);
+INSERT INTO contratos_visitas_execucoes(contrato_visita_config_id,contrato_id,competencia,
+  visita_numero,data_realizada,cliente,cliente_chave,horas_trabalhadas,tarefa_ids)
+VALUES ('30000000-0000-0000-0000-000000000006','20000000-0000-0000-0000-000000000006',date_trunc('month',current_date)::date,
+  1,date_trunc('month',current_date)::date,'Cliente D','cliente-d',3,ARRAY['980005']);
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,status_auvo,task_type_id) VALUES
+  ('coifa-extra','980006','Cliente D',current_date,'Tecnico A','Aberta','180795'),
+  ('coifa-fora-vigencia','980007','Cliente E',current_date+14,'Tecnico A','Aberta','180795');
+DO $$ BEGIN
+  ASSERT (SELECT contrato_visita_numero FROM agenda_agendamentos WHERE cliente='Cliente D') = 2;
+  ASSERT (SELECT count(*) FROM contratos_visitas_execucoes WHERE cliente='Cliente D') = 1,
+    'Criar previsao extra nao altera execucao nominal anterior';
+  ASSERT NOT EXISTS (SELECT 1 FROM agenda_agendamentos WHERE cliente='Cliente E'),
+    'Coifa fora da vigencia nao pode cair no contrato de manutencao';
+END; $$;

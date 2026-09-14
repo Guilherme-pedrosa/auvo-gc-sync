@@ -244,12 +244,13 @@ export default function VisitasContratuaisPage() {
   const forecastsQuery = useQuery({
     queryKey: ["contractual-visits", "forecasts", year],
     queryFn: async () => {
+      const start = `${year}-01-01`;
+      const end = `${year + 1}-01-01`;
       return fetchAgendaPages<ContractForecast>((from, to) => supabase
         .from("agenda_agendamentos")
         .select("*")
         .eq("origem", "CONTRATO")
-        .gte("data", `${year}-01-01`)
-        .lte("data", `${year}-12-31`)
+        .or(`and(contrato_visita_competencia.gte.${start},contrato_visita_competencia.lt.${end}),and(contrato_visita_competencia.is.null,data.gte.${start},data.lt.${end})`)
         .order("data")
         .order("hora_inicio")
         .order("id")
@@ -670,9 +671,9 @@ export default function VisitasContratuaisPage() {
               className="w-full sm:w-64 h-10"
             />
             <Button variant="outline" onClick={() => navigate("/operacional/agendamento-equipe")}><ExternalLink className="mr-2 h-4 w-4" />Abrir Agendamento Equipe</Button>
-            <Button variant="outline" size="icon" onClick={() => setYear((value) => value - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Ano anterior" onClick={() => setYear((value) => value - 1)}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="flex h-10 min-w-28 items-center justify-center rounded-md border bg-background px-4 text-sm font-semibold">{year}</div>
-            <Button variant="outline" size="icon" onClick={() => setYear((value) => value + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Próximo ano" onClick={() => setYear((value) => value + 1)}><ChevronRight className="h-4 w-4" /></Button>
             <Button onClick={() => planYear.mutate(undefined)} disabled={loading || Boolean(loadError) || planYear.isPending || !configs.length || year < currentYear}>
               {planYear.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Abastecer agenda de {year}
