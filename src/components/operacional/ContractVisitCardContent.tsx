@@ -1,6 +1,5 @@
 import { CircleCheckBig, Clock3 } from "lucide-react";
 import type { AgendaAgendamento } from "@/hooks/operacional/useAgendamentoEquipe";
-import { contractMonthlyHoursAreFulfilled } from "@/lib/agendaContractVisits";
 import { formatWorkedMinutes } from "@/lib/agendaWorkedTime";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,7 @@ function visitStatus(item: AgendaAgendamento) {
     ? "Realizada" : "Programada";
 }
 
-function visitActivity(item: AgendaAgendamento) {
+export function contractVisitActivity(item: AgendaAgendamento) {
   const contract = norm(item.contrato_nome || "");
   const type = norm(item.contrato_tipo_nome || "");
   if (contract.includes("duto")) return "Dutos";
@@ -63,37 +62,27 @@ export function contractVisitCardTitle(item: AgendaAgendamento) {
   ].filter(Boolean).join("\n");
 }
 
-/** Resumo fixo em três linhas. A identificação da atividade continua visível. */
+/** A previsão ocupa só uma linha; o saldo completo fica no detalhe. */
 export function ContractVisitCardContent({ item }: { item: AgendaAgendamento }) {
-  const completed = item.previsao_tipo === "CONTRATO_REALIZADO";
-  const summary = completed ? summarizeContractVisitForTechnician(item) : null;
-  const fulfilled = contractMonthlyHoursAreFulfilled(item);
+  const status = visitStatus(item);
   return (
-    <div data-contract-visit-summary className="flex min-w-0 max-w-[280px] flex-col gap-0.5 text-[11px] leading-4 normal-case">
-      <div className="flex min-w-0 items-center gap-1.5 font-bold">
-        <span className="min-w-0 flex-1 truncate" title={item.cliente}>{item.cliente}</span>
-        <span className="shrink-0">{item.contrato_visita_numero || ""}ª visita</span>
-      </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate font-semibold" title={item.contrato_tipo_nome || item.contrato_nome || "Tipo não definido"}>
-          {visitActivity(item)}
-        </span>
-        <span className="shrink-0 rounded bg-white/60 px-1 font-medium dark:bg-black/20">{visitStatus(item) === "Realizada" ? "Realizada" : "Prevista"}</span>
-      </div>
-      <div className="flex items-center gap-1 font-medium" title={fulfilled ? "Carga mensal cumprida" : undefined}>
-        {fulfilled ? <CircleCheckBig className="h-3 w-3 shrink-0" /> : <Clock3 className="h-3 w-3 shrink-0" />}
-        <span className="truncate">{summary
-          ? `${formatWorkedMinutes(Math.round(summary.hours * 60))} ${summary.technicianMatched ? "do técnico" : "na visita"} · ${summary.taskIds.length} tarefa(s)`
-          : `${item.contrato_visitas_cumpridas || 0}/${item.contrato_visitas_previstas ?? "—"} visitas · ${hours(item.contrato_horas_cumpridas)}/${hours(item.contrato_horas_previstas)}`}</span>
-      </div>
+    <div data-contract-visit-summary className="flex min-w-0 items-center gap-1 text-[11px] font-medium leading-4 normal-case">
+      <span role="img" aria-label={`Visita ${status.toLowerCase()}`} className="shrink-0">
+        {status === "Realizada"
+          ? <CircleCheckBig className="h-3 w-3" aria-hidden="true" />
+          : <Clock3 className="h-3 w-3" aria-hidden="true" />}
+      </span>
+      <span className="min-w-0 flex-1 truncate" title={`${item.cliente} · ${contractVisitActivity(item)}`}>{item.cliente}</span>
+      <span className="shrink-0 text-[10px]">{status === "Realizada" ? "Contabilizado" : "Contrato previsto"}</span>
     </div>
   );
 }
 
-export function ContractVisitDetailsDialog({ item, onClose, onEdit }: {
+export function ContractVisitDetailsDialog({ item, onClose, onEdit, onContinue }: {
   item: AgendaAgendamento | null;
   onClose: () => void;
   onEdit: (item: AgendaAgendamento) => void;
+  onContinue?: (item: AgendaAgendamento) => void;
 }) {
   if (!item) return null;
   const summary = summarizeContractVisitForTechnician(item);
@@ -103,7 +92,7 @@ export function ContractVisitDetailsDialog({ item, onClose, onEdit }: {
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{item.contrato_visita_numero || ""}ª visita · {item.cliente}</DialogTitle>
-          <DialogDescription>{item.contrato_tipo_nome || "Visita contratual"} · {visitStatus(item)}</DialogDescription>
+          <DialogDescription>{contractVisitActivity(item)} · {visitStatus(item)}</DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Contrato</dt><dd>{item.contrato_nome || "Não identificado"}</dd>
@@ -123,7 +112,10 @@ export function ContractVisitDetailsDialog({ item, onClose, onEdit }: {
         </dl>
         {item.descricao && <p className="whitespace-pre-wrap text-sm">{item.descricao}</p>}
         {item.previsao_detalhes && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{item.previsao_detalhes}</p>}
-        {!completed && <Button onClick={() => { onClose(); onEdit(item); }}>Editar previsão</Button>}
+        {!completed && <div className="flex flex-wrap gap-2">
+          <Button onClick={() => { onClose(); onEdit(item); }}>Editar previsão</Button>
+          {onContinue && <Button variant="outline" onClick={() => { onClose(); onContinue(item); }}>Prever continuação</Button>}
+        </div>}
       </DialogContent>
     </Dialog>
   );

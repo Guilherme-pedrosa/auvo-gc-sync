@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3, Tags as TagsIcon, X, History, ChevronUp, Loader2, Link2, CircleCheckBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,8 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
-import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle } from "@/components/operacional/ContractVisitCardContent";
+import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCardTitle, contractVisitActivity } from "@/components/operacional/ContractVisitCardContent";
+import { buildAgendaContractIndicators } from "@/lib/agendaContractIndicators";
 import {
   AGENDA_TASK_SYNC_FIELDS,
   agendaTaskSnapshotChanged,
@@ -87,6 +88,17 @@ import {
 } from "@/lib/previsaoChegada";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+
+function scrollAgendaToToday(behavior: ScrollBehavior = "auto", scope: ParentNode = document) {
+  scope.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((header) => {
+    const container = header.closest<HTMLElement>("[data-agenda-scroll='1']");
+    if (!container || !container.getBoundingClientRect().width) return;
+    const personWidth = container.querySelector<HTMLElement>("thead th")?.getBoundingClientRect().width ?? 0;
+    const left = container.scrollLeft + header.getBoundingClientRect().left
+      - container.getBoundingClientRect().left - container.clientLeft - personWidth;
+    container.scrollTo({ left: Math.max(0, left), behavior });
+  });
+}
 
 const norm = (s: string) =>
   (s ?? "")
@@ -180,6 +192,7 @@ const getStatusColor = (a: AgendaAgendamento) => {
 
 interface CelulaProps {
   itens: AgendaAgendamento[];
+  contractIndicators?: ReturnType<typeof buildAgendaContractIndicators>;
   onSalvar: (v: string) => void;
   onAbrirTarefa: (a: AgendaAgendamento) => void;
   onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
@@ -195,8 +208,9 @@ interface CelulaProps {
   chegadas?: ChegadaItem[];
 }
 
-function Celula({
+export function Celula({
   itens,
+  contractIndicators,
   onSalvar,
   onAbrirTarefa,
   onAbrirAgendamento,
@@ -213,6 +227,14 @@ function Celula({
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const [visitaDetalhe, setVisitaDetalhe] = useState<AgendaAgendamento | null>(null);
+  const [mostrarTodas, setMostrarTodas] = useState(false);
+  const { indicatorsByItemId, hiddenContractCardIds } = useMemo(
+    () => contractIndicators ?? buildAgendaContractIndicators(itens), [contractIndicators, itens],
+  );
+  const itensApresentados = itens.filter((item) => !hiddenContractCardIds.has(item.id)
+    || (tagsPorAgendamento.get(item.id)?.length ?? 0) > 0);
+  const itensVisiveis = mostrarTodas ? itensApresentados : itensApresentados.slice(0, 5);
+  const itensOcultos = itensApresentados.length - itensVisiveis.length;
 
   const manual = itens.find((i) => !i.auvo_task_id && (!i.origem || i.origem === "MANUAL"));
 
@@ -265,14 +287,20 @@ function Celula({
         e.currentTarget.classList.remove("bg-primary/5");
         onDrop();
       }}
-      className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
+      data-agenda-day-cell
+      className="group relative min-w-0 overflow-hidden border border-border p-1 align-top h-16 transition-colors"
     >
-      <div className="flex flex-col gap-0.5 h-full">
+      <div className="flex min-w-0 flex-col gap-0.5">
         {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0 || horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
-          <div className="flex flex-wrap gap-1 normal-case">
+          <details className="mb-0.5 min-w-0 text-[11px] leading-4 normal-case">
+            <summary className="cursor-pointer truncate text-muted-foreground" title="Abrir resumo de horas do dia">
+              Prev. {formatWorkedMinutes(comparativoOs.plannedMinutes)} · Real {formatWorkedMinutes(horasTrabalhadas.totalMinutes)}
+              {comparativoOs.missingPlannedOsCount > 0 && <span className="text-amber-700 dark:text-amber-300"> · {comparativoOs.missingPlannedOsCount} sem duração</span>}
+            </summary>
+            <div className="mt-1 space-y-1 rounded border bg-muted/40 p-2">
             {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0) && (
               <div
-                className="flex items-center gap-1 rounded-sm border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                className="flex flex-wrap items-center gap-1 text-[11px] text-indigo-800 dark:text-indigo-200"
                 title="Soma a duração planejada de todas as tarefas do dia (OS do GestãoClick, Preventivas no Auvo, Contratos e Previsões)."
               >
                 <CalendarClock className="h-3 w-3 shrink-0" />
@@ -293,7 +321,7 @@ function Celula({
             )}
             {(horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
               <div
-                className="flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-1 text-[10px] font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                className="flex flex-wrap items-center gap-1 text-[11px] text-sky-800 dark:text-sky-200"
                 title="Tempo efetivamente trabalhado no Auvo. Previsões e duração planejada não entram neste total."
               >
                 <Clock3 className="h-3 w-3 shrink-0" />
@@ -306,7 +334,7 @@ function Celula({
             {comparativoOs.completedOsCount > 0 && (
               <div
                 className={cn(
-                  "flex items-center gap-1 rounded-sm border px-1.5 py-1 text-[10px] font-bold",
+                  "flex flex-wrap items-center gap-1 text-[11px] font-medium",
                   comparativoOs.differenceMinutes > 0
                     ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
                     : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
@@ -319,9 +347,10 @@ function Celula({
                 <span>· {formatSignedAgendaMinutes(comparativoOs.differenceMinutes)}</span>
               </div>
             )}
-          </div>
+            </div>
+          </details>
         )}
-        {itens.map((a) => {
+        {itensVisiveis.map((a) => {
           const chegadaAtual = a.previsao_continuidade ? chegadaDoAgendamento(a, chegadas) : null;
           const dataChegadaAtual = chegadaAtual?.data_chegada?.slice(0, 10) || null;
           const dataPrevista = a.data;
@@ -330,11 +359,8 @@ function Celula({
           const previsaoAntesDaChegada = previsaoAtrasada;
           const visitaContratualRealizada = a.previsao_tipo === "CONTRATO_REALIZADO";
           const visitaContratualPlanejada = a.previsao_tipo === "CONTRATO";
-          const visitaContratualCumprida = visitaContratualPlanejada
-            && Boolean(a.contrato_visita_execucao_id || a.contrato_visita_realizada_em);
-          const visitaContratualAlinhada = visitaContratualPlanejada
-            && (a.contrato_visita_tarefa_ids?.length ?? 0) > 0;
           const visitaContratualBloqueada = visitaContratualRealizada;
+          const indicadoresContrato = indicatorsByItemId.get(a.id) ?? [];
           const itemTags = tagsPorAgendamento.get(a.id) ?? [];
           const correspondeAoFiltro = agendaMatchesTagFilter(itemTags, tagsSelecionadas);
           const statusColor = getStatusColor(a);
@@ -348,29 +374,20 @@ function Celula({
           const clienteDivergente = Boolean(
             a.auvo_task_id && clienteGc && a.cliente && a.vinculo_status !== "vinculado" && areNamesDivergent(a.cliente, clienteGc),
           );
-          const identificadoresAntesSituacao = [
-            visitaContratualRealizada
-              ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · REALIZADA`
-              : visitaContratualPlanejada
-                ? `VISITA CONTRATUAL · ${a.contrato_visita_numero || ""}ª VISITA · ${visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"}`
-                : null,
-            tipoTarefa,
-            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
-          ].filter(Boolean);
-          const identificadoresDepoisSituacao = [
-            a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
-            !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
-              ? `Orç ${a.gc_orcamento_codigo}`
-              : null,
-          ].filter(Boolean);
-          const possuiIdentificador = identificadoresAntesSituacao.length > 0
-            || identificadoresDepoisSituacao.length > 0;
+          const documentoLabel = a.gc_os_codigo ? `OS ${a.gc_os_codigo}`
+            : a.gc_orcamento_codigo ? `Orç ${a.gc_orcamento_codigo}`
+            : a.auvo_task_id ? `#${a.auvo_task_id}` : null;
+          const tarefaTitle = [a.cliente, tipoTarefa, documentoLabel,
+            a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : null,
+            situacaoGc ? `Situação GC: ${situacaoGc}` : null, a.descricao,
+          ].filter(Boolean).join(" · ");
 
           return (
             <div
               key={a.id}
+              data-agenda-item={a.id}
               className={cn(
-                "group/item relative flex items-center rounded-sm transition-all",
+                "group/item relative flex min-w-0 flex-col items-stretch rounded-sm transition-all",
                 ((tagsSelecionadas.length > 0 && !correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo !== "ORCAMENTO_EXECUCAO")) && "opacity-20 grayscale",
                 ((tagsSelecionadas.length > 0 && correspondeAoFiltro) || (apenasPrevisaoOrcamento && a.previsao_tipo === "ORCAMENTO_EXECUCAO")) && "ring-2 ring-primary/70 ring-offset-1",
               )}
@@ -387,11 +404,9 @@ function Celula({
                   ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
-                  : a.auvo_task_id
-                    ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}${situacaoGc ? ` · Situação GC: ${situacaoGc}` : ""}`
-                    : "Agendamento manual"}
+                  : tarefaTitle || "Agendamento manual"}
                 onClick={() => {
-                  if (visitaContratualBloqueada) { setVisitaDetalhe(a); return; }
+                  if (visitaContratualPlanejada || visitaContratualRealizada) { setVisitaDetalhe(a); return; }
                   if (a.auvo_task_id) onAbrirTarefa(a);
                   else onAbrirAgendamento(a);
                 }}
@@ -401,10 +416,9 @@ function Celula({
                   }
                 }}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
+                  "min-w-0 w-full overflow-hidden text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent transition-all",
                   visitaContratualRealizada && "cursor-pointer active:cursor-pointer border-violet-500",
-                  (visitaContratualPlanejada || visitaContratualRealizada) && "pr-7",
-                  visitaContratualAlinhada && "border-2 border-sky-500 shadow-sm",
+                  (visitaContratualPlanejada || visitaContratualRealizada) && "py-0.5 cursor-pointer active:cursor-pointer",
                   a.previsao_continuidade && !visitaContratualPlanejada && "border border-dashed border-primary/50 opacity-80",
                   a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && "border-2 border-primary shadow-[0_0_8px_rgba(var(--primary),0.4)] animate-pulse-subtle",
                   previsaoAntesDaChegada && "border-2 border-destructive bg-destructive/10 text-destructive ring-2 ring-destructive/30",
@@ -429,31 +443,14 @@ function Celula({
                     )}
                   </>
                 ) : <div className="flex flex-col">
-                  <span className="truncate">
-                    {identificadoresAntesSituacao.join(" · ")}
-                    {situacaoGc && a.gc_os_codigo && (
-                      <>
-                        {" "}
-                        <span
-                          className={cn(
-                            destacarSituacaoGc
-                              && "font-extrabold text-yellow-600 dark:text-yellow-300",
-                          )}
-                          title={destacarSituacaoGc
-                            ? "Tarefa finalizada no Auvo, mas a OS ainda não está executada no GestãoClick."
-                            : undefined}
-                        >
-                          [{situacaoGc}]
-                        </span>
-                      </>
-                    )}
-                    {identificadoresDepoisSituacao.length > 0 && (
-                      <>
-                        {identificadoresAntesSituacao.length > 0 ? " · " : ""}
-                        {identificadoresDepoisSituacao.join(" · ")}
-                      </>
-                    )}
-                    {possuiIdentificador ? ` - ${a.cliente}` : a.cliente}
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate" title={a.cliente}>{a.cliente}</span>
+                    {documentoLabel && <span
+                      className={cn("shrink-0", destacarSituacaoGc && "font-extrabold text-yellow-600 dark:text-yellow-300")}
+                      title={destacarSituacaoGc
+                        ? `${documentoLabel} · Tarefa finalizada no Auvo, mas a OS ainda não está executada no GestãoClick.`
+                        : `${documentoLabel}${situacaoGc ? ` · ${situacaoGc}` : ""}`}
+                    >{documentoLabel}</span>}
                   </span>
                   {clienteDivergente && a.vinculo_status !== "vinculado" && (
                     <span
@@ -490,7 +487,7 @@ function Celula({
                       {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
                     </span>
                   )}
-                  {a.previsao_detalhes && !visitaContratualRealizada && !visitaContratualCumprida && (
+                  {a.previsao_detalhes && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
                     </span>
@@ -525,14 +522,32 @@ function Celula({
                   </span>
                 )}
               </button>
-              {(visitaContratualPlanejada || visitaContratualRealizada) && (
-                <button type="button" className="absolute right-0.5 top-0.5 rounded p-1 text-current opacity-70 hover:bg-black/5 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-primary"
-                  aria-label={`Detalhes da ${a.contrato_visita_numero || ""}ª visita de ${a.cliente}`} title="Detalhes da visita"
-                  onClick={() => setVisitaDetalhe(a)}>
-                  <Info className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {!visitaContratualBloqueada && <div className="absolute -right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-0.5 group-hover/item:flex">
+              {indicadoresContrato.length > 0 && <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 px-1 py-0.5">
+                {indicadoresContrato.map((indicator) => {
+                  const contabilizada = indicator.status === "contabilizada";
+                  const label = contabilizada ? "Contabilizado" : "Conta no contrato";
+                  const activity = contractVisitActivity(indicator.contractCard);
+                  return <button key={indicator.contractCard.id} type="button" data-contract-visit-recognition
+                    draggable={indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO"}
+                    onDragStart={() => {
+                      if (indicator.contractCard.previsao_tipo !== "CONTRATO_REALIZADO") onDragStart(indicator.contractCard);
+                    }}
+                    onClick={() => setVisitaDetalhe(indicator.contractCard)}
+                    aria-label={`${label} · ${activity} · ${a.cliente}`}
+                    title={`${contabilizada ? "Esta tarefa já foi reconhecida na execução do contrato." : "Tarefa vinculada à previsão do contrato; as horas serão reconhecidas após a execução válida."}\n${contractVisitCardTitle(indicator.contractCard)}`}
+                    className={cn("flex max-w-full items-center gap-1 rounded px-1 text-[10px] font-medium leading-4 normal-case hover:underline focus-visible:ring-2 focus-visible:ring-primary",
+                      contabilizada ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200")}
+                  >
+                    {contabilizada ? <CircleCheckBig className="h-3 w-3 shrink-0" /> : <Link2 className="h-3 w-3 shrink-0" />}
+                    <span className="shrink-0">{label}</span>
+                    <span className="truncate opacity-80">· {activity}</span>
+                  </button>;
+                })}
+              </div>}
+              {!visitaContratualBloqueada && !visitaContratualPlanejada && <div className={cn(
+                "absolute z-20 hidden items-center gap-0.5 group-hover/item:flex",
+                visitaContratualPlanejada ? "bottom-0 right-0" : "-right-1 top-1/2 -translate-y-1/2",
+              )}>
                 {(
                   <button
                     type="button"
@@ -563,20 +578,29 @@ function Celula({
             </div>
           );
         })}
+        {itensApresentados.length > 5 && (
+          <button
+            type="button"
+            className="py-1 text-left text-[11px] font-semibold text-primary hover:underline"
+            aria-expanded={mostrarTodas}
+            onClick={() => setMostrarTodas((value) => !value)}
+          >
+            {mostrarTodas ? "Recolher atividades" : `Ver mais ${itensOcultos} atividade${itensOcultos === 1 ? "" : "s"}`}
+          </button>
+        )}
         
         {/* Espaço clicável para nova tarefa sempre disponível, mesmo com itens */}
         <button
           type="button"
           onClick={() => onNovaTarefaAuvo()}
           className={cn(
-            "w-full text-[11px] opacity-25 hover:opacity-100 transition-opacity min-h-[1.5rem] flex-1 flex items-center justify-center hover:bg-primary/5 rounded-sm border border-transparent hover:border-primary/20",
-            itens.length > 0 && "mt-auto py-1"
+            "w-full text-[11px] opacity-25 hover:opacity-100 transition-opacity h-5 flex items-center justify-center hover:bg-primary/5 rounded-sm border border-transparent hover:border-primary/20"
           )}
           aria-label="Nova tarefa ou previsão"
         >
           <Plus className="h-3 w-3" />
         </button>
-        <ContractVisitDetailsDialog item={visitaDetalhe} onClose={() => setVisitaDetalhe(null)} onEdit={onAbrirAgendamento} />
+        <ContractVisitDetailsDialog item={visitaDetalhe} onClose={() => setVisitaDetalhe(null)} onEdit={onAbrirAgendamento} onContinue={onPreverProximoDia} />
       </div>
     </td>
   );
@@ -651,6 +675,20 @@ export default function AgendamentoEquipePage() {
   const [clienteFiltro, setClienteFiltro] = useState<AgendaClientFilter | null>(null);
   const [mostrarPrevisoes, setMostrarPrevisoes] = useState(true);
   const [mostrarVisitasContratuais, setMostrarVisitasContratuais] = useState(true);
+  const [veiculosRecolhidos, setVeiculosRecolhidos] = useState(() => {
+    try { return localStorage.getItem("agenda-equipe:veiculos-recolhidos") === "true"; }
+    catch { return false; }
+  });
+  const alternarVeiculos = () => {
+    const recolhidos = !veiculosRecolhidos;
+    setVeiculosRecolhidos(recolhidos);
+    try { localStorage.setItem("agenda-equipe:veiculos-recolhidos", String(recolhidos)); }
+    catch { /* A seção continua utilizável se o navegador bloquear o armazenamento. */ }
+    if (!recolhidos) requestAnimationFrame(() => {
+      const grid = document.getElementById("agenda-veiculos-grade");
+      if (grid) scrollAgendaToToday("auto", grid);
+    });
+  };
   const saveAgendamento = useSaveAgendamento();
   const [logExpanded, setLogExpanded] = useState(false);
 
@@ -1163,6 +1201,12 @@ export default function AgendamentoEquipePage() {
     return m;
   }, [data, mostrarPrevisoes, mostrarVisitasContratuais, filtroTexto, clienteFiltro]);
 
+  // Uma execução antecipada pode estar em outro dia da previsão nominal.
+  // O vínculo usa toda a grade filtrada; a faixa só some na própria célula.
+  const contractIndicators = useMemo(
+    () => buildAgendaContractIndicators([...mapTec.values()].flat()), [mapTec],
+  );
+
   // Técnicos exibidos: com filtro ativo (texto ou cliente), mantém apenas quem
   // tem atividade correspondente na agenda — ou quem bate pelo próprio nome.
   const tecnicos = useMemo(() => {
@@ -1258,12 +1302,7 @@ export default function AgendamentoEquipePage() {
   useEffect(() => {
     if (carregando) return;
     const id = window.setTimeout(() => {
-      document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
-        const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-        if (!container) return;
-        const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-        container.scrollLeft = Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0));
-      });
+      scrollAgendaToToday();
     }, 0);
     return () => window.clearTimeout(id);
   }, [carregando, mostrarHistorico]);
@@ -1278,17 +1317,7 @@ export default function AgendamentoEquipePage() {
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <LastSyncBadge />
-          <Button variant="outline" size="sm" onClick={() => {
-            document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
-              const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
-              if (!container) return;
-              const primeiraColuna = container.querySelector<HTMLElement>("thead th");
-              container.scrollTo({
-                left: Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0)),
-                behavior: "smooth",
-              });
-            });
-          }}>
+          <Button variant="outline" size="sm" onClick={() => scrollAgendaToToday("smooth")}>
             Ir para Hoje
           </Button>
           <Button
@@ -1429,10 +1458,18 @@ export default function AgendamentoEquipePage() {
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
               <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[70vh] md:max-h-[600px] overflow-y-auto">
-                <table className="w-full border-collapse">
+                <table
+                  data-agenda-team-grid
+                  className="max-w-none table-fixed border-collapse [--agenda-person-width:112px] [--agenda-day-width:180px] md:[--agenda-person-width:144px] md:[--agenda-day-width:240px]"
+                  style={{ width: `calc(var(--agenda-person-width) + ${dias.length} * var(--agenda-day-width))` }}
+                >
+                  <colgroup>
+                    <col style={{ width: "var(--agenda-person-width)" }} />
+                    {dias.map((dia) => <col key={dia} style={{ width: "var(--agenda-day-width)" }} />)}
+                  </colgroup>
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-28 md:w-60 sticky left-0 top-0 bg-muted z-20">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase sticky left-0 top-0 bg-muted z-20">
                         Técnico
                       </th>
                       {dias.map((diaStr) => {
@@ -1444,7 +1481,7 @@ export default function AgendamentoEquipePage() {
                             id={isHoje ? "hoje-col" : undefined}
                             data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[170px] md:min-w-[240px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[11px] font-bold uppercase sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
@@ -1460,7 +1497,7 @@ export default function AgendamentoEquipePage() {
                   <tbody>
                     {tecnicos.map((t) => (
                       <tr key={t.id}>
-                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
+                        <td className="border border-border p-2 align-top break-words text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
                           {t.nome}
                         </td>
                         {dias.map((dia) => {
@@ -1468,6 +1505,7 @@ export default function AgendamentoEquipePage() {
                           const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
                           return (
                             <Celula
+                              contractIndicators={contractIndicators}
                               key={dia}
                               itens={itens}
                               clientesInfo={rhClientes}
@@ -1478,8 +1516,8 @@ export default function AgendamentoEquipePage() {
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
-                                 setSelectedDate(parseISO(dia));
-                                 setSelectedColabId(t.id);
+                                 setSelectedDate(parseISO(a?.data || dia));
+                                 setSelectedColabId(a?.colaborador_id || t.id);
                                  setDialogOpen(true);
                                }}
                               onSalvar={(v) =>
@@ -1568,11 +1606,17 @@ export default function AgendamentoEquipePage() {
 
             <section>
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-bold uppercase tracking-wide">Veículos</h2>
-                </div>
-                <div className="flex items-center gap-2">
+                <h2>
+                  <button type="button" onClick={alternarVeiculos}
+                    aria-expanded={!veiculosRecolhidos} aria-controls="agenda-veiculos-grade"
+                    className="flex items-center gap-2 rounded py-1 text-sm font-bold uppercase tracking-wide hover:text-primary focus-visible:ring-2 focus-visible:ring-primary">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Veículos
+                    <ChevronRight className={cn("h-4 w-4 transition-transform", !veiculosRecolhidos && "rotate-90")} />
+                    <span className="text-[11px] font-normal normal-case text-muted-foreground">{veiculosRecolhidos ? "Expandir" : "Recolher"}</span>
+                  </button>
+                </h2>
+                <div className={cn("flex items-center gap-2", veiculosRecolhidos && "hidden")}>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1588,7 +1632,7 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
+              <div id="agenda-veiculos-grade" hidden={veiculosRecolhidos} data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">

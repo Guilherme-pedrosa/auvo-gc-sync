@@ -814,10 +814,11 @@ BEGIN
          )
        )
        OR (
-         -- O questionario pode chegar em um novo espelho ainda pausado depois
-         -- do espelho finalizado. Isso nao transforma tarefas incompletas em
-         -- realizadas: a reconciliacao continua escolhendo a linha finalizada.
-         TG_OP = 'INSERT'
+         -- O questionario pode chegar em um espelho ainda pausado depois do
+         -- espelho finalizado, inclusive por correcao de cliente/data. Isso
+         -- nao transforma tarefas incompletas em realizadas: a reconciliacao
+         -- continua escolhendo a linha finalizada.
+         TG_OP IN ('INSERT', 'UPDATE')
          AND EXISTS (
            SELECT 1 FROM public.tarefas_central espelho
            WHERE espelho.auvo_task_id = NEW.auvo_task_id

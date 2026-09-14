@@ -284,7 +284,8 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(cardMigration).toContain("previsao_continuidade = false");
     expect(cardMigration).toContain("duracao_planejada_minutos = NULL");
     expect(agendaPage).toContain('a.previsao_tipo === "CONTRATO_REALIZADO"');
-    expect(agendaPage).toContain("ª VISITA · REALIZADA");
+    // Estado realizado e detalhe são cobertos por contract-visit-card-content
+    // e agendamento-equipe-cell; não fixar o cabeçalho extenso antigo.
     expect(agendaPage).toContain("bg-violet-100 text-violet-900 border-violet-500");
     expect(agendaPage).not.toContain("Visitas contratuais realizadas");
   });
@@ -304,7 +305,7 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(scheduledMigration).toContain("visita extra alem das");
     expect(scheduledMigration).toContain("generate_series(1, v_config.qtd_visitas)");
     expect(scheduledMigration).toContain("trg_tarefa_reconciliar_visita_contratual_agendada");
-    expect(agendaPage).toContain('visitaContratualCumprida ? "REALIZADA NO MÊS" : "PROGRAMADA"');
+    // O selo por ID e a execução antecipada têm cobertura de DOM na célula.
     expect(agendaPage).toContain("bg-sky-100 text-sky-950 border-sky-500");
   });
 

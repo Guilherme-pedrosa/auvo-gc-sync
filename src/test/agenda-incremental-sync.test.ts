@@ -89,10 +89,8 @@ describe("sincronização incremental do Agendamento Equipe", () => {
 
     expect(page).not.toContain("!sourceKeys.has(taskKey(row))");
     expect(page).toContain("existingByTaskId");
-    expect(page).toContain('a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null');
-    expect(page).toContain("[{situacaoGc}]");
-    expect(page).toContain('Situação GC: ${situacaoGc}');
-    expect(page).toContain('a.auvo_task_id ? `Tarefa ${a.auvo_task_id}`');
+    // Identificação da OS/tarefa é validada pela célula renderizada em
+    // agendamento-equipe-cell.test.tsx, sem fixar a concatenação do layout.
     expect(central).not.toContain("Mirror Auvo: removidas");
     expect(central).not.toContain("vínculos de OS inválidos (não-73343)");
     expect(central).toContain("if (!row.gc_os_id && existing.gc_os_id)");

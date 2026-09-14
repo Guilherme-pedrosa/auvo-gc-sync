@@ -57,6 +57,41 @@ DO $$ BEGIN
     'Questionario e horas sem conclusao nao realizam a visita';
 END; $$;
 
+-- UPDATE que corrige a data de um espelho incompleto tambem precisa levar
+-- sua evidencia ao destino, onde o espelho finalizado ja existe.
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
+  check_out,status_auvo,duracao_decimal,questionario_id) VALUES
+  ('concluida-destino-data','500004','Cliente A',current_date-8,'Tecnico A',true,'Finalizada',5,NULL),
+  ('questionario-origem-data','500004','Cliente A',current_date-9,'Tecnico A',false,'Pausada',4.9,'215148');
+UPDATE tarefas_central SET data_tarefa=current_date-8
+WHERE mirror_key='questionario-origem-data';
+DO $$ BEGIN
+  ASSERT (SELECT horas_trabalhadas FROM contratos_visitas_execucoes WHERE data_realizada=current_date-8) = 5,
+    'UPDATE da data deve reconciliar o destino usando o espelho finalizado';
+  ASSERT (SELECT count(*) FROM contratos_visitas_execucoes WHERE data_realizada=current_date-9) = 0,
+    'O espelho incompleto nao pode deixar execucao na data anterior';
+END; $$;
+
+-- O mesmo vale para a correcao de cliente. A apropriacao de manutencao no
+-- destino deve dar lugar a coifa, sem atribuir uma visita ao cliente antigo.
+INSERT INTO tarefas_central(mirror_key,auvo_task_id,cliente,data_tarefa,tecnico,
+  check_out,status_auvo,duracao_decimal,questionario_id) VALUES
+  ('concluida-destino-cliente','500005','Cliente B',current_date-10,'Tecnico A',true,'Finalizada',6,NULL),
+  ('questionario-origem-cliente','500005','Cliente A',current_date-10,'Tecnico A',false,'Pausada',5.9,'215148');
+UPDATE tarefas_central SET cliente='Cliente B'
+WHERE mirror_key='questionario-origem-cliente';
+DO $$ BEGIN
+  ASSERT (SELECT horas_trabalhadas FROM contratos_visitas_execucoes
+    WHERE data_realizada=current_date-10 AND contrato_id='20000000-0000-0000-0000-000000000002') = 6,
+    'UPDATE do cliente deve reconciliar o destino usando o espelho finalizado';
+  ASSERT (SELECT count(*) FROM contratos_visitas_execucoes
+    WHERE data_realizada=current_date-10 AND contrato_id='20000000-0000-0000-0000-000000000003') = 0,
+    'A apropriacao de manutencao anterior no destino deve ser removida';
+  ASSERT (SELECT count(*) FROM contratos_visitas_execucoes
+    WHERE data_realizada=current_date-10 AND cliente='Cliente A') = 0,
+    'O espelho incompleto nao pode deixar execucao no cliente anterior';
+END; $$;
+
 -- Evidencia que chega apenas em outros_questionarios transfere a execucao
 -- da manutencao para a coifa, sem deixar a apropriacao antiga duplicada.
 UPDATE tarefas_central SET outros_questionarios = '[{"questionnaireId":215148}]'
@@ -65,7 +100,7 @@ DO $$ BEGIN
   ASSERT (SELECT count(*) FROM contratos_visitas_execucoes
     WHERE contrato_id='20000000-0000-0000-0000-000000000003') = 0;
   ASSERT (SELECT horas_trabalhadas FROM contratos_visitas_execucoes
-    WHERE contrato_id='20000000-0000-0000-0000-000000000002') = 2;
+    WHERE contrato_id='20000000-0000-0000-0000-000000000002' AND data_realizada=current_date-2) = 2;
 END; $$;
 
 -- Agendada: evidencia no espelho mais antigo e novos dados operacionais no GC.

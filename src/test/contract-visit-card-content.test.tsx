@@ -13,13 +13,14 @@ const item: AgendaAgendamento = {
 afterEach(cleanup);
 
 describe("resumo compacto de visita contratual", () => {
-  it("mantém cliente, atividade, número, status e progresso sem repetir os totais", () => {
+  it("mostra uma faixa de contrato sem repetir horas, visitas e descrição na grade", () => {
     const { container } = render(<ContractVisitCardContent item={item} />);
     expect(screen.getByText("RESTAURANTE EXEMPLO LTDA")).toBeTruthy();
-    expect(screen.getByText("Coifas")).toBeTruthy();
-    expect(screen.getByText("2ª visita")).toBeTruthy();
-    expect(screen.getByText("Prevista")).toBeTruthy();
-    expect(screen.getAllByText("1/2 visitas · 4h/8h")).toHaveLength(1);
+    expect(screen.getByText("Contrato previsto")).toBeTruthy();
+    expect(screen.getByTitle("RESTAURANTE EXEMPLO LTDA · Coifas")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Visita programada" })).toBeTruthy();
+    expect(container.textContent).not.toContain("4h/8h");
+    expect(container.textContent).not.toContain("Descrição detalhada");
     expect(container.textContent).not.toContain("Contrato seguido");
     expect(contractVisitCardTitle(item)).toContain("03/09/2026");
     expect(contractVisitCardTitle(item)).toContain("HIGIENIZAÇÃO COIFA RESTAURANTE EXEMPLO");
@@ -27,8 +28,7 @@ describe("resumo compacto de visita contratual", () => {
 
   it("distingue dutos de coifas mesmo compartilhando o tipo cadastrado", () => {
     render(<ContractVisitCardContent item={{ ...item, contrato_nome: "HIGIENIZAÇÃO DUTOS COZINHA EXEMPLO" }} />);
-    expect(screen.getByText("Dutos")).toBeTruthy();
-    expect(screen.queryByText("Coifas")).toBeNull();
+    expect(screen.getByTitle("RESTAURANTE EXEMPLO LTDA · Dutos")).toBeTruthy();
   });
 
   it("oferece detalhe acessível de execução sem permitir editar a execução", () => {
@@ -60,10 +60,9 @@ describe("resumo compacto de visita contratual", () => {
       contrato_horas_cumpridas: 8,
     };
     const { rerender } = render(<ContractVisitCardContent item={fulfilled} />);
-    expect(screen.getByText("Coifas")).toBeTruthy();
-    expect(screen.getByText("Realizada")).toBeTruthy();
-    expect(screen.getByText("2/2 visitas · 8h/8h")).toBeTruthy();
-    expect(screen.getByTitle("Carga mensal cumprida")).toBeTruthy();
+    expect(screen.getByText("Contabilizado")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Visita realizada" })).toBeTruthy();
+    expect(screen.queryByText("2/2 visitas · 8h/8h")).toBeNull();
 
     const edit = vi.fn();
     const close = vi.fn();
@@ -83,5 +82,18 @@ describe("resumo compacto de visita contratual", () => {
       { tecnico: "TECNICO B", tarefa_id: "124", horas: 8 },
     ] });
     expect(summary).toEqual({ hours: 0, taskIds: ["123"], technicianMatched: true });
+  });
+
+  it("mantém as horas reconhecidas do técnico no detalhe, fora da faixa", () => {
+    const completed = { ...item, previsao_tipo: "CONTRATO_REALIZADO", contrato_visita_tarefas_detalhes: [
+      { tecnico: "TECNICO A", tarefa_id: "123", horas: 2.5 },
+      { tecnico: "TECNICO B", tarefa_id: "124", horas: 8 },
+    ] };
+    const { rerender } = render(<ContractVisitCardContent item={completed} />);
+    expect(screen.getByRole("img", { name: "Visita realizada" })).toBeTruthy();
+    expect(screen.queryByText("2h30 do técnico")).toBeNull();
+    rerender(<ContractVisitDetailsDialog item={completed} onClose={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByText("2h30 do técnico")).toBeTruthy();
+    expect(screen.getByText("#123")).toBeTruthy();
   });
 });
