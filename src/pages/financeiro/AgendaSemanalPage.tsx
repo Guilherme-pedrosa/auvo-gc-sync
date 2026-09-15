@@ -1,3 +1,6 @@
+import { requireAuvoDurationConfirmation } from "@/lib/auvoDurationConfirmation";
+import { refreshMovedAgendaTask } from "@/lib/agendaTaskMove";
+import { saveConfirmedAgendaDuration } from "@/lib/confirmedAgendaDuration";
 import React, { useState, useMemo, useCallback, useEffect, DragEvent, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -537,53 +540,43 @@ export default function AgendaSemanalPage() {
             }}
             onResize={async (taskId, newEndMinutes) => {
               setMovingTaskId(taskId);
+              let auvoConfirmed = false;
               try {
                 const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
                 if (!oldTarefa) throw new Error("Tarefa não encontrada");
                 const startMin = parseTimeToMinutes(oldTarefa.hora_inicio);
                 if (startMin < 0) throw new Error("Hora de início não definida");
 
-                const updatedHoraFim = `${minutesToTime(newEndMinutes)}:00`;
-                const newDurationDecimal = (newEndMinutes - startMin) / 60;
+                const durationMinutes = newEndMinutes - startMin;
 
-                // A API v2 não grava taskEndDate/estimatedDuration diretamente.
-                // O backend troca a tarefa para uma variante oficial do mesmo
-                // tipo com standartTime correspondente e confirma no Auvo.
+                // Only persist planned time after the backend confirms it on
+                // the task itself; a matching task type is insufficient.
                 const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
                   body: {
                     action: "set-task-duration",
                     taskId: Number(taskId),
-                    durationMinutes: newEndMinutes - startMin,
+                    durationMinutes,
                   },
                 });
                 if (error) throw error;
                 if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
-                if (!patchResult?.success) throw new Error(patchResult?.error || "Auvo não confirmou a alteração da duração");
+                requireAuvoDurationConfirmation(patchResult, durationMinutes);
+                auvoConfirmed = true;
                 if (patchResult?.warning) toast.warning(patchResult.warning);
-
-                // Update local cache
-                queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
-                  if (!old) return old;
-                  return old.map(t => t.auvo_task_id !== taskId ? t : {
-                    ...t,
-                    hora_fim: updatedHoraFim,
-                    duracao_decimal: newDurationDecimal,
-                  });
-                });
-
-                // Persist
-                await supabase.functions.invoke("auvo-task-update", {
-                  body: { action: "persist-central", row: {
-                    auvo_task_id: taskId,
-                    hora_fim: updatedHoraFim,
-                    duracao_decimal: newDurationDecimal,
-                  }},
-                });
+                await saveConfirmedAgendaDuration(supabase, taskId, durationMinutes);
+                await refreshMovedAgendaTask(supabase.functions.invoke.bind(supabase.functions), taskId);
+                await queryClient.invalidateQueries({ queryKey });
 
                 toast.success(`Duração alterada: ${oldTarefa.hora_inicio?.substring(0, 5)}–${minutesToTime(newEndMinutes)}`);
               } catch (err: any) {
-                toast.error(`Erro ao redimensionar: ${err.message}`);
+                if (auvoConfirmed) {
+                  toast.warning(`Duração confirmada no Auvo; atualização local pendente. ${err.message}`);
+                } else {
+                  toast.error(`Erro ao redimensionar: ${err.message}`);
+                }
               } finally {
+                void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
+                void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
                 setMovingTaskId(null);
               }
             }}

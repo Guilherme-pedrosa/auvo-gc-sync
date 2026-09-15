@@ -1,3 +1,4 @@
+import { isAuvoDurationConfirmed } from "@/lib/auvoDurationConfirmation";
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -187,6 +188,10 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       toast.error("Preencha tipo, técnico, data e hora");
       return;
     }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 10080) {
+      toast.error("Informe uma duração válida para a tarefa.");
+      return;
+    }
     const openerAuvoId = String(profile?.auvo_user_id || "").trim();
     if (!openerAuvoId) {
       toast.error("Seu usuário não está vinculado ao Auvo. Cadastre o Auvo User ID em Admin > Usuários.");
@@ -210,14 +215,17 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
         },
       });
       if (error) throw error;
-      const okStatus = data?.status === 200 || data?.status === 201;
-      if (data?.success || okStatus) {
+      if (data?.success === true) {
         const tid = data?.taskId ? String(data.taskId) : null;
-        const verifiedDuration = data?.duration?.verified === true;
+        const verifiedDuration = isAuvoDurationConfirmed(data, durationMinutes);
         const durationSuffix = verifiedDuration
           ? ` · ${formatDuration(Number(data.duration.actualMinutes || durationMinutes))} confirmada`
-          : "";
-        toast.success(tid ? `Tarefa criada no Auvo (#${tid})${durationSuffix}` : `Tarefa criada no Auvo${durationSuffix}`, {
+          : `, mas a duração de ${formatDuration(durationMinutes)} ainda não foi confirmada.`;
+        (verifiedDuration ? toast.success : toast.warning)(tid ? `Tarefa criada no Auvo (#${tid})${durationSuffix}` : `Tarefa criada no Auvo${durationSuffix}`, {
+          ...(verifiedDuration ? {} : {
+            description: "Não crie novamente. Ajuste a duração da tarefa existente.",
+            duration: 12000,
+          }),
           action: tid
             ? {
                 label: "Abrir",
@@ -225,7 +233,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               }
             : undefined,
         });
-        if (data?.warning) toast.warning(data.warning);
+        if (verifiedDuration && data?.warning) toast.warning(data.warning);
         onCreated?.(tid);
         onOpenChange(false);
       } else {
