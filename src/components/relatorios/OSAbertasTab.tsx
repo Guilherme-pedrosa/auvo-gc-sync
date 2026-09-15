@@ -1624,9 +1624,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             </a>
                                           )}
                                           {(() => {
-                                            const execId = liveExecMap.get(String(item.gc_os_id))?.execTaskId || parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+                                            const execId = parseExecIds(getItemExecution(item)?.auvo_task_id || item.gc_os_tarefa_exec)[0] || null;
+                                            const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
+                                            const osTaskId = parseExecIds(osTask?.auvo_task_id || item.gc_os_tarefa_os)[0] || null;
                                             const execUrl = execId ? `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${execId}` : null;
-                                            const osUrl = item.auvo_task_url || item.auvo_link || (item.auvo_task_id ? `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${item.auvo_task_id}` : null);
+                                            const osUrl = osTaskId ? `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${osTaskId}` : null;
                                             return (
                                               <>
                                                 {execUrl && (
@@ -1637,7 +1639,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                                   </a>
                                                 )}
                                                 {osUrl && (
-                                                  <a href={osUrl} target="_blank" rel="noopener noreferrer" title={`Tarefa OS #${item.auvo_task_id}`}>
+                                                  <a href={osUrl} target="_blank" rel="noopener noreferrer" title={`Tarefa OS #${osTaskId}`}>
                                                     <Button size="icon" variant="ghost" className="h-6 w-6">
                                                       <ExternalLink className="h-3 w-3" />
                                                     </Button>

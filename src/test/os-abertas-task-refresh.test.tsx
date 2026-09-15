@@ -36,7 +36,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("Controle OS — atualização dos vínculos e do cache visual", () => {
   it("OS 10222 mantém execução 79667772 sem agenda mesmo com diagnóstico 70949049 finalizado", async () => {
-    const current = { ...order, gc_os_id: "397842014", gc_os_codigo: "10222", auvo_task_id: "70949049",
+    const current = { ...order, gc_os_id: "397842014", gc_os_codigo: "10222", auvo_task_id: "79667772",
+      status_auvo: "Pendente vínculo Auvo", auvo_task_url: "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/79667772",
       gc_os_tarefa_os: "70949049", gc_os_tarefa_exec: "79667772", data_tarefa: "2026-06-01" };
     const previousDiagnosis = { ...diagnosis, auvo_task_id: "70949049", data_tarefa: "2026-06-01" };
     mocks.invoke.mockResolvedValue({ data: { data: { taskID: 79667772, taskStatus: 1,
@@ -50,6 +51,21 @@ describe("Controle OS — atualização dos vínculos e do cache visual", () => 
     expect(within(row).getAllByRole("cell")[7]).toHaveTextContent("—");
     expect(screen.queryByText("Nome antigo não atribuído")).not.toBeInTheDocument();
     expect(within(row).queryByText("Finalizada")).not.toBeInTheDocument();
+    expect(within(row).getByTitle("Tarefa OS #70949049")).toHaveAttribute("href", "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/70949049");
+    expect(within(row).getByTitle("Tarefa Execução #79667772")).toHaveAttribute("href", "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/79667772");
+    expect(within(row).queryByTitle("Tarefa OS #79667772")).not.toBeInTheDocument();
+  });
+
+  it("ações de múltiplas execuções usam um único ID e não reutilizam o link histórico do espelho", async () => {
+    const current = { ...order, gc_os_tarefa_exec: "21/22", auvo_task_url: "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/10" };
+    const executions = ["21", "22"].map(auvo_task_id => ({ auvo_task_id, status_auvo: "Aberta", tecnico: "Executor", data_tarefa: null }));
+    render(<OSAbertasTab {...props} data={[current]} allTasks={[current, diagnosis, ...executions]} />);
+    fireEvent.click(screen.getByText("Cliente teste"));
+    const row = screen.getByText("10235").closest("tr")!;
+    await waitFor(() => expect(within(row).getByTitle("Tarefa Execução #21")).toHaveAttribute("href", "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/21"));
+    expect(within(row).getByTitle("Tarefa OS #11")).toHaveAttribute("href", "https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/11");
+    expect(within(row).queryByTitle("Tarefa Execução #21/22")).not.toBeInTheDocument();
+    expect(within(row).queryByTitle("Tarefa OS #10")).not.toBeInTheDocument();
   });
 
   it("troca o resultado live anterior pelo novo espelho e acompanha mudanças de 73343/73344", async () => {
