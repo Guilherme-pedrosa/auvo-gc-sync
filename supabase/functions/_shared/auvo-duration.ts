@@ -1,5 +1,29 @@
 const MANAGED_TASK_TYPE_PATTERN = /^\[WEDO:(\d+):(\d+)\]\s*/i;
 
+/** Auvo uses the type's default when no positive individual duration is set.
+ * Verified against the task detail/editor: API 00:00:00 can display 01:00.
+ * A positive individual duration wins even when the type has a different default.
+ * Never infer confirmation from a managed type's name or the requested duration.
+ */
+export function resolveAuvoPlannedDuration(task: any, taskType?: any): {
+  minutes: number;
+  source: "task" | "task_type" | "unconfirmed";
+} {
+  const individual = parseAuvoDurationMinutes(task?.estimatedDuration ?? task?.estimated_duration);
+  if (individual > 0) return { minutes: individual, source: "task" };
+  const actualTypeId = Number(task?.taskType?.id ?? task?.taskTypeId ?? task?.taskType);
+  const fetchedTypeId = Number(taskType?.id ?? taskType?.taskTypeId);
+  if (!(actualTypeId > 0) || actualTypeId !== fetchedTypeId) {
+    return { minutes: 0, source: "unconfirmed" };
+  }
+  const standard = parseAuvoDurationMinutes(
+    taskType?.standartTime ?? taskType?.standardTime ?? taskType?.defaultTime,
+  );
+  return standard > 0
+    ? { minutes: standard, source: "task_type" }
+    : { minutes: 0, source: "unconfirmed" };
+}
+
 export function parseAuvoDurationMinutes(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value > 0 ? Math.round(value) : 0;

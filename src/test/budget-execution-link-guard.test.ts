@@ -3,6 +3,12 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import * as helpers from "../../supabase/functions/_shared/agenda-forecast-promotion";
+import { resolveAuvoPlannedDuration } from "../../supabase/functions/_shared/auvo-duration";
+import { auvoTaskTypeDescription } from "../../supabase/functions/_shared/auvo-task-type";
+import { promoteBudgetExecutionForecast } from "@/lib/budgetForecastPromotion";
+
+const { invokePromotion } = vi.hoisted(() => ({ invokePromotion: vi.fn() }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke: invokePromotion } } }));
 
 const executionId = "79721161";
 const diagnosticId = "77509677";
@@ -18,6 +24,28 @@ const rawOrder = {
 };
 const rawBudget = { codigo: "6563", situacao_id: "7109779", nome_situacao: "APROVADO - OS GERADA" };
 const gcEnvelope = (orders: any[] = [rawOrder]) => ({ data: { status: 200, stale: false, data: { data: orders } }, error: null });
+
+describe("chamada de promoção após edição da execução", () => {
+  it("envia o modo preservação com apenas o campo confirmado na edição", async () => {
+    invokePromotion.mockReset().mockResolvedValue({ data: { success: true, promoted: true }, error: null });
+    await promoteBudgetExecutionForecast({
+      budgetCode: "ORC 6563", osCode: "OS 10234", execTaskId: executionId,
+      preserveTaskSchedule: true, expectedSchedule: { durationMinutes: 90 },
+    });
+    expect(invokePromotion).toHaveBeenCalledWith("auvo-task-update", { body: {
+      action: "promote-budget-forecast", gcOrcamentoCodigo: "6563", gcOsCodigo: "10234", execTaskId: executionId,
+      preserveTaskSchedule: true, expectedSchedule: { durationMinutes: 90 },
+    } });
+  });
+
+  it("mantém a promoção automática existente quando a chamada não decorre de uma edição", async () => {
+    invokePromotion.mockReset().mockResolvedValue({ data: { success: true }, error: null });
+    await promoteBudgetExecutionForecast({ budgetCode: "6563", osCode: "10234", execTaskId: executionId });
+    expect(invokePromotion.mock.calls[0][1].body).toEqual({
+      action: "promote-budget-forecast", gcOrcamentoCodigo: "6563", gcOsCodigo: "10234", execTaskId: executionId,
+    });
+  });
+});
 
 describe("vínculo explícito da execução do orçamento", () => {
   it("deduplica IDs do atributo execução sem aceitar números inválidos", () => {
@@ -114,7 +142,8 @@ const compiledHandler = ts.transpile(handlerSource, { target: ts.ScriptTarget.ES
 const forecast = { id: "75a7006a", gc_orcamento_codigo: "6563", previsao_continuidade: true, previsao_tipo: "ORCAMENTO_EXECUCAO",
   data: "2026-09-17", hora_inicio: "08:00:00", hora_fim: "10:00:00", colaborador_id: "rh-fred", criado_em: "2026-09-08" };
 
-function promotionHarness(providerResult = gcEnvelope(), budget = rawBudget, latestForecast: any = forecast) {
+function promotionHarness(providerResult = gcEnvelope(), budget = rawBudget, latestForecast: any = forecast,
+  collaborator = { id: "rh-fred", nome: "Fred", auvo_user_id: 184612 }) {
   const writes: Array<{ kind: string; value?: any }> = [];
   const invoke = vi.fn(async (_name, { body }) => body.endpoint.includes("/orcamentos?") ? gcEnvelope([budget]) : providerResult);
   let agendaReads = 0;
@@ -123,7 +152,7 @@ function promotionHarness(providerResult = gcEnvelope(), budget = rawBudget, lat
     from: vi.fn((table: string) => {
       const query: any = {
         select: () => query, eq: () => query, is: () => query,
-        maybeSingle: async () => ({ data: table === "agenda_agendamentos" ? (++agendaReads === 1 ? forecast : latestForecast) : { id: "rh-fred", nome: "Fred", auvo_user_id: 184612 }, error: null }),
+        maybeSingle: async () => ({ data: table === "agenda_agendamentos" ? (++agendaReads === 1 ? forecast : latestForecast) : collaborator, error: null }),
         update: (value: any) => { writes.push({ kind: `update:${table}`, value }); return query; },
         single: async () => ({ data: { ...forecast, previsao_continuidade: false, auvo_task_id: executionId }, error: null }),
         upsert: async (value: any) => { writes.push({ kind: `upsert:${table}`, value }); return { error: null }; },
@@ -136,15 +165,93 @@ function promotionHarness(providerResult = gcEnvelope(), budget = rawBudget, lat
   const verifiedTask = { ...initialTask, taskDate: "2026-09-17T08:00:00", idUserTo: 184612, taskType: 246203, customerDescription: "FILIAL CEBRASA" };
   const fetchTaskById = vi.fn().mockResolvedValueOnce(initialTask).mockResolvedValueOnce(verifiedTask);
   const ensureTaskTypeDuration = vi.fn().mockResolvedValue({ id: 246203, description: "EXECUÇÃO - 2h" });
+  const resolveEffectiveTaskDuration = vi.fn(async (task) => resolveAuvoPlannedDuration(task));
+  const fetchTaskTypeById = vi.fn(async (id: number) => ({ id, description: "HIGIENIZAÇÃO DE COIFA" }));
   const patchWithRetry = vi.fn().mockResolvedValue({ ok: true, text: async () => "{}" });
   const markForecastConversion = vi.fn().mockResolvedValue(true);
-  const dependencies = { ...helpers, fetchTaskById, ensureTaskTypeDuration, patchWithRetry, markForecastConversion, AUVO_BASE_URL: "https://test.auvo.invalid" };
+  const dependencies = { ...helpers, auvoTaskTypeDescription, fetchTaskById, fetchTaskTypeById, ensureTaskTypeDuration, resolveEffectiveTaskDuration, patchWithRetry, markForecastConversion, AUVO_BASE_URL: "https://test.auvo.invalid" };
   const handler = new Function(...Object.keys(dependencies), `${compiledHandler}; return promoteBudgetForecast;`)(...Object.values(dependencies));
-  return { run: (body = { gcOrcamentoCodigo: "6563", gcOsCodigo: "10234", execTaskId: executionId }) => handler(admin, {}, body, "test"),
-    writes, admin, fetchTaskById, ensureTaskTypeDuration, patchWithRetry, markForecastConversion };
+  return { run: (body: any = { gcOrcamentoCodigo: "6563", gcOsCodigo: "10234", execTaskId: executionId }) => handler(admin, {}, body, "test"),
+    writes, admin, fetchTaskById, fetchTaskTypeById, ensureTaskTypeDuration, resolveEffectiveTaskDuration, patchWithRetry, markForecastConversion };
 }
 
 describe("promoção real com provedores simulados", () => {
+  const editedTask = {
+    taskID: Number(executionId), taskDate: "2026-09-18T13:30:00", idUserTo: 184612,
+    taskType: 180177, taskStatus: 3, checkIn: true,
+    estimatedDuration: "01:30:00", customerDescription: "FILIAL CEBRASA",
+  };
+  const preserveBody = {
+    gcOrcamentoCodigo: "6563", gcOsCodigo: "10234", execTaskId: executionId,
+    preserveTaskSchedule: true,
+  };
+
+  it("preserva a edição confirmada mesmo após início, sem reaplicar a reserva antiga no Auvo", async () => {
+    const actualOwner = { id: "rh-daniel", nome: "Daniel", auvo_user_id: 204602 };
+    const test = promotionHarness(gcEnvelope(), rawBudget, forecast, actualOwner);
+    test.fetchTaskById.mockReset().mockResolvedValue({ ...editedTask, idUserTo: actualOwner.auvo_user_id });
+    expect(await test.run({ ...preserveBody, expectedSchedule: {
+      taskDate: editedTask.taskDate, idUserTo: actualOwner.auvo_user_id, durationMinutes: 90,
+    } })).toMatchObject({ promoted: true, patches: [] });
+    expect(test.patchWithRetry).not.toHaveBeenCalled();
+    expect(test.ensureTaskTypeDuration).not.toHaveBeenCalled();
+    expect(test.admin.rpc).toHaveBeenCalledTimes(1);
+    expect(test.writes.find(write => write.kind === "update:agenda_agendamentos")?.value).toEqual({
+      data: "2026-09-18", hora_inicio: "13:30", hora_fim: "15:00",
+      colaborador_id: "rh-daniel", colaborador_nome: "Daniel", duracao_planejada_minutos: 90,
+    });
+    expect(test.writes[0].value).toMatchObject({ task_type_id: 180177, descricao: "HIGIENIZAÇÃO DE COIFA", data_tarefa: "2026-09-18", check_in: true, duracao_decimal: 0 });
+    expect(test.markForecastConversion.mock.calls.some(call => call[2] === "BLOQUEADA")).toBe(false);
+  });
+
+  it("edição apenas de duração preserva data/técnico atuais, sem compará-los à previsão antiga", async () => {
+    const test = promotionHarness();
+    test.fetchTaskById.mockReset().mockResolvedValue(editedTask);
+    expect(await test.run({ ...preserveBody, expectedSchedule: { durationMinutes: 90 } })).toMatchObject({ promoted: true });
+    expect(test.patchWithRetry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { taskDate: "2026-09-17T08:00:00" },
+    { idUserTo: 999999 },
+    { durationMinutes: 120 },
+  ])("rejeita alteração concorrente de campo confirmado sem tocar na tarefa: %j", async (expectedSchedule) => {
+    const test = promotionHarness();
+    test.fetchTaskById.mockReset().mockResolvedValue(editedTask);
+    expect(await test.run({ ...preserveBody, expectedSchedule })).toMatchObject({
+      promoted: false, reason: "promotion_failed", error: expect.stringContaining("mudou no Auvo"),
+    });
+    expect(test.patchWithRetry).not.toHaveBeenCalled();
+    expect(test.admin.rpc).not.toHaveBeenCalled();
+    expect(test.writes).toEqual([]);
+  });
+
+  it("usa duração efetiva do tipo confirmado quando a duração individual retorna zero", async () => {
+    const test = promotionHarness();
+    test.fetchTaskById.mockReset().mockResolvedValue({ ...editedTask, estimatedDuration: "00:00:00" });
+    test.resolveEffectiveTaskDuration.mockImplementation(async task => resolveAuvoPlannedDuration(task, { id: 180177, standardTime: "01:00:00" }));
+    expect(await test.run({ ...preserveBody, expectedSchedule: { durationMinutes: 60 } })).toMatchObject({ promoted: true });
+    expect(test.writes.find(write => write.kind === "update:agenda_agendamentos")?.value).toMatchObject({
+      duracao_planejada_minutos: 60, hora_inicio: "13:30", hora_fim: "14:30",
+    });
+    expect(test.patchWithRetry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...editedTask, taskID: Number(diagnosticId) },
+    { ...editedTask, estimatedDuration: undefined },
+    { ...editedTask, estimatedDuration: "00:00:00" },
+    { ...editedTask, taskDate: "0001-01-01T00:00:00" },
+    { ...editedTask, idUserTo: 0 },
+  ])("exige execução e planejamento atuais verificáveis antes de converter: %j", async (task) => {
+    const test = promotionHarness();
+    test.fetchTaskById.mockReset().mockResolvedValue(task);
+    expect(await test.run(preserveBody)).toMatchObject({ promoted: false, reason: "promotion_failed" });
+    expect(test.admin.rpc).not.toHaveBeenCalled();
+    expect(test.patchWithRetry).not.toHaveBeenCalled();
+    expect(test.writes).toEqual([]);
+  });
+
   it.each([
     { ...rawBudget, situacao_id: "9348312" },
     { ...rawBudget, nome_situacao: "Aprovado - Baixa Parcial" },

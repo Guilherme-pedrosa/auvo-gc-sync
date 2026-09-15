@@ -1,4 +1,5 @@
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
+import { isAuvoDurationConfirmed } from "@/lib/auvoDurationConfirmation";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -145,6 +146,10 @@ export default function CriarTarefaGeralDialog({
       toast.error("Preencha cliente, tipo de tarefa, técnico, data e hora.");
       return;
     }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 10080) {
+      toast.error("Informe uma duração válida para a tarefa.");
+      return;
+    }
     const openerAuvoId = String(profile?.auvo_user_id || "").trim();
     if (!openerAuvoId) {
       toast.error("Seu usuário não está vinculado ao Auvo. Cadastre o Auvo User ID em Admin > Usuários.");
@@ -175,13 +180,21 @@ export default function CriarTarefaGeralDialog({
       }
       if (data?.success) {
         const tid = data.taskId ? String(data.taskId) : null;
-        toast.success(tid ? `Tarefa criada no Auvo (#${tid})` : "Tarefa criada no Auvo", {
+        const durationConfirmed = isAuvoDurationConfirmed(data, durationMinutes);
+        const creationMessage = tid ? `Tarefa criada no Auvo (#${tid})` : "Tarefa criada no Auvo";
+        (durationConfirmed ? toast.success : toast.warning)(durationConfirmed
+          ? creationMessage
+          : `${creationMessage}, mas a duração de ${minutesToClock(durationMinutes)} ainda não foi confirmada.`, {
+          ...(durationConfirmed ? {} : {
+            description: "Não crie novamente. Ajuste a duração da tarefa existente.",
+            duration: 12000,
+          }),
           action: tid ? {
             label: "Abrir",
             onClick: () => window.open(`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${tid}`, "_blank"),
           } : undefined,
         });
-        if (data?.warning) toast.warning(data.warning);
+        if (durationConfirmed && data?.warning) toast.warning(data.warning);
         // O POST no Auvo já foi confirmado. Falha ao importar a agenda não
         // transforma a criação em falha nem pode levar a repetir esse POST.
         try {
@@ -315,11 +328,12 @@ export default function CriarTarefaGeralDialog({
               <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label className="text-xs">Duração (HH:mm) *</Label>
+              <Label htmlFor="task-duration" className="text-xs">Duração (HH:mm) *</Label>
               <Input
                 type="time"
                 step={300}
                 value={minutesToClock(durationMinutes)}
+                id="task-duration"
                 onChange={e => setDurationMinutes(clockToMinutes(e.target.value))}
               />
             </div>

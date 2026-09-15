@@ -8,6 +8,11 @@ const files = [
   'src/test/agendamento-equipe-dialog.test.tsx',
   'src/test/agendamento-equipe-drag.test.tsx',
   'src/test/agenda-task-move.test.ts',
+  'src/test/auvo-duration-confirmation.test.ts',
+  'src/test/auvo-duration.test.ts',
+  'src/test/confirmed-agenda-duration.test.ts',
+  'src/test/os-duration-edit.test.tsx',
+  'src/test/tarefas-agendadas-duration.test.tsx',
   'src/test/criar-tarefa-agenda-sync.test.tsx',
   'src/test/agenda-auvo-reconciliation.test.ts',
   'src/test/agenda-forecast-link-guard.test.ts',
@@ -27,6 +32,8 @@ const files = [
   'src/test/os-abertas-task-refresh.test.tsx',
 ];
 for (const file of files) accessSync(file);
-const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', ...files], { stdio: 'inherit' });
+// Bound concurrent workers so the full release suite does not exhaust memory
+// alongside the desktop app/browser on the Windows workspace.
+const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', ...files], { stdio: 'inherit' });
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);

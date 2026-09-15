@@ -39,6 +39,9 @@ import {
   isOpenOsSituation,
 } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
+import { requireAuvoDurationConfirmation } from "@/lib/auvoDurationConfirmation";
+import { refreshMovedAgendaTask } from "@/lib/agendaTaskMove";
+import { saveConfirmedAgendaDuration } from "@/lib/confirmedAgendaDuration";
 import {
   SITUACAO_EXCLUIDA,
   isGcOsMissingResponse,
@@ -132,7 +135,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [editMinute, setEditMinute] = useState("00");
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editDuration, setEditDuration] = useState("01:00");
+  const [editDurationTouched, setEditDurationTouched] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const originalEditSchedule = useRef<{ taskDate: string; userId: string; duration: string } | null>(null);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
@@ -950,8 +955,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     setEditHour("08");
     setEditMinute("00");
     setEditDuration("01:00");
-    const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
-    setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
+    setEditDurationTouched(false);
+    originalEditSchedule.current = null;
+    setEditTecnicoId("");
     setShowEditModal(true);
 
     const forecast = await loadBudgetExecutionForecast(card.gc_orcamento_codigo).catch((error) => {
@@ -969,15 +975,15 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       if (osTaskId && fetchedExecTaskId === osTaskId) {
         toast.error("A tarefa de execução (73344) está igual à tarefa OS (73343). Verifique os campos no GC.");
       }
-      setExecTaskId(fetchedExecTaskId);
-
       const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "get", taskId: Number(fetchedExecTaskId) },
       });
-      if (!taskError) {
+      if (!taskError && extractLiveTaskResolution(taskData, fetchedExecTaskId)) {
+        setExecTaskId(fetchedExecTaskId);
         const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
         const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
-        if (rawTaskDate) {
+        const validTaskDate = rawTaskDate && Number(String(rawTaskDate).slice(0, 4)) >= 2000;
+        if (validTaskDate) {
           const parsedDate = new Date(rawTaskDate);
           if (!isNaN(parsedDate.getTime())) {
             setEditDate(parsedDate);
@@ -986,16 +992,25 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           }
         }
         const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
-        if (rawUserTo) setEditTecnicoId(String(rawUserTo));
+        const actualUser = Number(rawUserTo) > 0 ? String(rawUserTo) : "";
+        setEditTecnicoId(actualUser);
+        originalEditSchedule.current = { taskDate: validTaskDate ? String(rawTaskDate).slice(0, 16) : "", userId: actualUser, duration: "01:00" };
         const rawDuration = taskObj?.estimatedDuration ?? taskObj?.estimated_duration ?? null;
         if (rawDuration && typeof rawDuration === "string") {
           const parts = rawDuration.split(":");
           if (parts.length >= 2) {
             const hh = parts[0].padStart(2, "0");
             const mm = parts[1].padStart(2, "0");
-            if (`${hh}:${mm}` !== "00:00") setEditDuration(`${hh}:${mm}`);
+            if (`${hh}:${mm}` !== "00:00") {
+              setEditDuration(`${hh}:${mm}`);
+              originalEditSchedule.current.duration = `${hh}:${mm}`;
+            }
           }
         }
+      } else {
+        toast.error("Não foi possível confirmar os dados atuais da tarefa de execução no Auvo.");
+        setExecTaskLoading(false);
+        return;
       }
     }
     if (forecast) {
@@ -1015,20 +1030,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       return;
     }
     setEditSaving(true);
+    let auvoConfirmed = false;
     try {
       const h = editHour.padStart(2, "0");
       const m = editMinute.padStart(2, "0");
       const [durationHours, durationRemainder] = editDuration.split(":").map(Number);
       const durationMinutes = Math.max(15, (durationHours || 0) * 60 + (durationRemainder || 0));
-      const taskDate = editDate ? format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) : undefined;
+      const selectedTaskDate = editDate ? format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) : undefined;
+      const taskDate = selectedTaskDate?.slice(0, 16) !== originalEditSchedule.current?.taskDate ? selectedTaskDate : undefined;
+      const technicianChanged = editTecnicoId !== originalEditSchedule.current?.userId;
+      const durationChanged = editDurationTouched || editDuration !== originalEditSchedule.current?.duration;
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "edit-schedule",
           taskId: Number(execTaskId),
-          taskDate,
-          idUserTo: editTecnicoId ? Number(editTecnicoId) : undefined,
-          durationMinutes,
+          ...(taskDate ? { taskDate } : {}),
+          ...(technicianChanged && editTecnicoId ? { idUserTo: Number(editTecnicoId) } : {}),
+          ...(durationChanged ? { durationMinutes } : {}),
         },
       });
       if (error) throw error;
@@ -1036,41 +1055,27 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         throw new Error(data?.error || JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
       }
       if (!data?.success) throw new Error(data?.error || "Auvo não confirmou a atualização");
+      if (durationChanged) requireAuvoDurationConfirmation(data, durationMinutes);
+      auvoConfirmed = true;
       if (data?.warning) toast.warning(data.warning);
 
-      const startMinutes = Number(h) * 60 + Number(m);
-      const endMinutes = (startMinutes + durationMinutes) % (24 * 60);
-      const endHour = String(Math.floor(endMinutes / 60)).padStart(2, "0");
-      const endMinute = String(endMinutes % 60).padStart(2, "0");
-
       const tecnicoSelecionado = auvoUsers?.find((user) => String(user.userID) === editTecnicoId);
-      const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
-        body: {
-          action: "persist-central",
-          row: {
-            auvo_task_id: execTaskId,
-            mirror_key: editingCard.mirror_key,
-            gc_os_id: editingCard.gc_os_id,
-            gc_orcamento_id: editingCard.gc_orcamento_id,
-            data_tarefa: editDate ? format(editDate, "yyyy-MM-dd") : editingCard.data_tarefa,
-            hora_inicio: `${h}:${m}:00`,
-            hora_fim: `${endHour}:${endMinute}:00`,
-            duracao_decimal: durationMinutes / 60,
-            tecnico_id: editTecnicoId || editingCard.tecnico_id,
-            tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || editingCard.tecnico,
-          },
-        },
-      });
-
-      if (persistError) {
-        console.warn("Falha ao persistir espelho local após edição:", persistError);
-      }
+      if (durationChanged) await saveConfirmedAgendaDuration(supabase, execTaskId, durationMinutes, taskDate);
+      // Fetch factual execution data. Planned time must never become worked hours,
+      // and the OS card's mirror may belong to its diagnostic task.
+      await refreshMovedAgendaTask(supabase.functions.invoke.bind(supabase.functions), execTaskId);
 
       if (editingCard.gc_orcamento_codigo) {
         await promoteBudgetExecutionForecast({
           budgetCode: editingCard.gc_orcamento_codigo,
           osCode: editingCard.gc_os_codigo,
           execTaskId,
+          preserveTaskSchedule: true,
+          expectedSchedule: {
+            ...(taskDate ? { taskDate } : {}),
+            ...(technicianChanged && editTecnicoId ? { idUserTo: Number(editTecnicoId) } : {}),
+            ...(durationChanged ? { durationMinutes } : {}),
+          },
         });
         void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
         void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
@@ -1085,6 +1090,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           const atual = next.get(String(editingCard.gc_os_id));
           next.set(String(editingCard.gc_os_id), {
             execTaskId: atual?.execTaskId || String(execTaskId),
+            resolvedTaskId: String(execTaskId),
             tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || atual?.tecnico || "",
             dataTarefa: novaData || atual?.dataTarefa || "",
             status: atual?.status || "",
@@ -1096,11 +1102,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       setShowEditModal(false);
       setEditingCard(null);
     } catch (err: any) {
-      toast.error(`Erro: ${err.message || "Falha ao atualizar"}`);
+      if (auvoConfirmed) {
+        toast.warning(`Tarefa #${execTaskId} atualizada no Auvo, mas a atualização local ficou pendente.`, {
+          description: err.message || "Sincronize novamente para atualizar o Sync.", duration: 12000,
+        });
+        onRefresh?.();
+        setShowEditModal(false);
+      } else {
+        toast.error(`Erro: ${err.message || "Falha ao atualizar"}`);
+      }
     } finally {
+      void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
       setEditSaving(false);
     }
-  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editDuration, editingCard, execTaskId, onRefresh, queryClient]);
+  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editDuration, editDurationTouched, editingCard, execTaskId, onRefresh, queryClient]);
 
   if (isLoading) {
     return (
@@ -2329,7 +2345,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
               <div className="space-y-2">
                 <Label>Duração da Atividade</Label>
-                <Select value={editDuration} onValueChange={setEditDuration}>
+                <Select value={editDuration} onValueChange={(value) => { setEditDuration(value); setEditDurationTouched(true); }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecionar duração" />
                   </SelectTrigger>

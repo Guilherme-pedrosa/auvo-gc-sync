@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { requireAuvoDurationConfirmation } from "@/lib/auvoDurationConfirmation";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -35,6 +36,8 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
   const [edits, setEdits] = useState<Record<string, EditState>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [durationTouched, setDurationTouched] = useState<Set<string>>(new Set());
+  const originalEdits = useRef<Record<string, EditState>>({});
 
   const { data: auvoUsers = [] } = useQuery({
     queryKey: ["auvo-users"],
@@ -52,6 +55,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
   // Carrega hora e técnico atuais direto do Auvo (igual ao Kanban de OS)
   useEffect(() => {
     if (!open || tarefas.length === 0) return;
+    setDurationTouched(new Set());
     let cancelled = false;
     setLoadingDetails(true);
     (async () => {
@@ -100,6 +104,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         next[t.id] = { date, hour, minute, tecnicoId, durationMinutes };
       }
       if (!cancelled) {
+        originalEdits.current = next;
         setEdits(next);
         setLoadingDetails(false);
       }
@@ -119,14 +124,17 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       const mm = st.minute.padStart(2, "0");
       const startISO = `${st.date}T${hh}:${mm}:00`;
       const dur = Math.max(15, Number(st.durationMinutes) || 120);
+      const original = originalEdits.current[t.id];
+      const dateChanged = st.date !== original?.date || st.hour !== original?.hour || st.minute !== original?.minute;
+      const technicianChanged = st.tecnicoId !== original?.tecnicoId;
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "edit-schedule",
           taskId: Number(t.id),
-          taskDate: startISO,
-          idUserTo: st.tecnicoId ? Number(st.tecnicoId) : undefined,
-          durationMinutes: dur,
+          ...(dateChanged ? { taskDate: startISO } : {}),
+          ...(technicianChanged && st.tecnicoId ? { idUserTo: Number(st.tecnicoId) } : {}),
+          ...(durationTouched.has(t.id) ? { durationMinutes: dur } : {}),
         },
       });
 
@@ -148,8 +156,10 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         console.error("[TarefasAgendadasDialog] Auvo API error:", detail);
         throw new Error(`Erro ${status} no Auvo: ${detail}`);
       }
+      if (data?.success !== true) throw new Error(data?.error || "Auvo não confirmou a atualização");
+      if (durationTouched.has(t.id)) requireAuvoDurationConfirmation(data, dur);
       if (data?.warning) toast.warning(data.warning);
-      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
+      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm}${durationTouched.has(t.id) ? ` (${dur} min)` : ""}`);
       
       // Update local state immediately so the user sees the change without waiting for a re-sync
       setEdits(prev => ({
@@ -252,7 +262,10 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
                       step={15}
                       className="w-[110px]"
                       value={st?.durationMinutes ?? 120}
-                      onChange={(e) => setField(t.id, { durationMinutes: Number(e.target.value) })}
+                      onChange={(e) => {
+                        setDurationTouched(prev => new Set(prev).add(t.id));
+                        setField(t.id, { durationMinutes: Number(e.target.value) });
+                      }}
                     />
                     <p className="text-[10px] text-muted-foreground mt-1">
                       Fim: {st?.date

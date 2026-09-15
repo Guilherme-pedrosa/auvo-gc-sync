@@ -1,4 +1,5 @@
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
+import { requireAuvoDurationConfirmation } from "@/lib/auvoDurationConfirmation";
 import { useEffect, useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -84,6 +85,7 @@ export default function AgendamentoEquipeDialog({
   const [data, setData] = useState("");
   const [horaInicio, setHoraInicio] = useState("08:00");
   const [duracaoMin, setDuracaoMin] = useState(60);
+  const [duracaoEditada, setDuracaoEditada] = useState(false);
   const [colaboradorId, setColaboradorId] = useState("");
   const [veiculoId, setVeiculoId] = useState("");
   const [cliente, setCliente] = useState("");
@@ -189,6 +191,7 @@ export default function AgendamentoEquipeDialog({
 
   useEffect(() => {
     if (!open) return;
+    setDuracaoEditada(false);
     if (agendamento) {
       setData(agendamento.data);
       setHoraInicio(agendamento.hora_inicio.slice(0, 5));
@@ -197,7 +200,7 @@ export default function AgendamentoEquipeDialog({
           ? Number(agendamento.duracao_planejada_minutos)
           : Math.max(
             15,
-            clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)),
+            (clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)) + 1440) % 1440,
           ),
       );
       setColaboradorId(agendamento.colaborador_id ?? "");
@@ -255,20 +258,21 @@ export default function AgendamentoEquipeDialog({
       return;
     }
 
+    let auvoUpdated = false;
     try {
       // 1. Se for AUVO, atualiza primeiro agenda/duração e depois os metadados.
-      if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
+      if (agendamento?.auvo_task_id && !agendamento.previsao_continuidade) {
         const originalStart = clockToMinutes(agendamento.hora_inicio.slice(0, 5));
         const originalEnd = clockToMinutes(agendamento.hora_fim.slice(0, 5));
         const originalDuration = Number(agendamento.duracao_planejada_minutos) > 0
           ? Number(agendamento.duracao_planejada_minutos)
-          : Math.max(15, originalEnd > originalStart
-            ? originalEnd - originalStart
-            : originalEnd + 24 * 60 - originalStart);
+          : Math.max(15, (originalEnd - originalStart + 1440) % 1440);
         const technicianChanged = colaboradorId !== agendamento.colaborador_id;
-        const scheduleChanged = data !== agendamento.data
-          || horaInicio !== agendamento.hora_inicio.slice(0, 5)
-          || duracaoMin !== originalDuration
+        const dateChanged = data !== agendamento.data
+          || horaInicio !== agendamento.hora_inicio.slice(0, 5);
+        const durationChanged = duracaoMin !== originalDuration || duracaoEditada;
+        const scheduleChanged = dateChanged
+          || durationChanged
           || technicianChanged;
 
         if (technicianChanged && !colab?.auvo_user_id) {
@@ -280,14 +284,16 @@ export default function AgendamentoEquipeDialog({
             body: {
               action: "edit-schedule",
               taskId: agendamento.auvo_task_id,
-              taskDate: `${data}T${horaInicio}:00`,
-              durationMinutes: duracaoMin,
+              ...(dateChanged ? { taskDate: `${data}T${horaInicio}:00` } : {}),
+              ...(durationChanged ? { durationMinutes: duracaoMin } : {}),
               ...(technicianChanged ? { idUserTo: Number(colab?.auvo_user_id) } : {}),
             },
           });
-          if (scheduleError || scheduleResult?.success === false || scheduleResult?.status >= 400) {
+          if (scheduleError || scheduleResult?.success !== true || scheduleResult?.status >= 400) {
             throw new Error(scheduleResult?.data?.message || scheduleResult?.error || "Erro ao atualizar agenda no Auvo");
           }
+          if (durationChanged) requireAuvoDurationConfirmation(scheduleResult, duracaoMin);
+          auvoUpdated = true;
           if (scheduleResult?.warning) toast.warning(scheduleResult.warning);
         }
 
@@ -333,7 +339,7 @@ export default function AgendamentoEquipeDialog({
         id: agendamento?.id,
         data,
         hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
-        hora_fim: `${minutesToClock(clockToMinutes(horaInicio) + duracaoMin)}:00`,
+        hora_fim: `${minutesToClock((clockToMinutes(horaInicio) + duracaoMin) % 1440)}:00`,
         duracao_planejada_minutos: duracaoMin,
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
@@ -355,7 +361,13 @@ export default function AgendamentoEquipeDialog({
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      toast.error(err.message || (ehPrevisao ? "Erro ao salvar previsão" : "Erro ao salvar agendamento"));
+      if (auvoUpdated) {
+        toast.warning(`Tarefa #${agendamento?.auvo_task_id} atualizada no Auvo, mas o salvamento no Sync ficou pendente.`, {
+          description: err.message || "Atualize a agenda para conferir os dados.", duration: 12000,
+        });
+      } else {
+        toast.error(err.message || (ehPrevisao ? "Erro ao salvar previsão" : "Erro ao salvar agendamento"));
+      }
     }
   };
 
@@ -441,7 +453,7 @@ export default function AgendamentoEquipeDialog({
                 type="time"
                 step={300}
                 value={minutesToClock(duracaoMin)}
-                onChange={(e) => setDuracaoMin(clockToMinutes(e.target.value))}
+                onChange={(e) => { setDuracaoMin(clockToMinutes(e.target.value)); setDuracaoEditada(true); }}
               />
             </div>
           </div>
