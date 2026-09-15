@@ -33,6 +33,7 @@ import { ContractVisitCardContent, ContractVisitDetailsDialog, contractVisitCard
 import { AgendaContractBadge } from "@/components/operacional/AgendaContractBadge";
 import { buildAgendaContractIndicators, buildVisibleAgendaContractIndicators } from "@/lib/agendaContractIndicators";
 import { findManualAgendaEntry, selectFutureContractVisitMoves } from "@/lib/agendaCellActions";
+import { confirmAgendaTaskMove, createAgendaWriteQueue, refreshMovedAgendaTask } from "@/lib/agendaTaskMove";
 import { agendaDateIsInRange, scrollAgendaToDate } from "@/lib/agendaDateNavigation";
 import {
   AGENDA_TASK_SYNC_FIELDS,
@@ -639,6 +640,7 @@ function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: 
 
 export default function AgendamentoEquipePage() {
   const qc = useQueryClient();
+  const queueAgendaWrite = useMemo(() => createAgendaWriteQueue(), []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAgendamento, setSelectedAgendamento] = useState<AgendaAgendamento | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -784,11 +786,11 @@ export default function AgendamentoEquipePage() {
   // A sincronização é dividida em janelas: a primeira cobre os próximos dias
   // (o que o usuário realmente enxerga) e volta rápido; o restante do horizonte
   // é processado em segundo plano, sem travar a tela.
-  const sincronizarJanela = async (
+  const sincronizarJanela = (
     startDate: string,
     endDate: string,
     opcoes?: { permitirRemocao?: boolean },
-  ) => {
+  ) => queueAgendaWrite(async () => {
       const permitirRemocao = opcoes?.permitirRemocao !== false;
       // Uma única leitura do RH; o retorno é usado nesta sincronização para
       // evitar trabalhar com o estado anterior do React Query.
@@ -943,7 +945,7 @@ export default function AgendamentoEquipePage() {
       }
 
       return { linhas: linhas.length, tarefas: tarefas.length, importedTaskIds: lineTaskIds, removedAuvoIds, semTecnico, syncComplete };
-  };
+  });
 
   const DIAS_JANELA_RAPIDA = 21;
   // Dias passados reprocessados junto com a escala: sem isso, tarefas concluídas
@@ -1045,95 +1047,107 @@ export default function AgendamentoEquipePage() {
     dragItem.current = null;
   };
 
-  const executeMove = async (item: AgendaAgendamento, date: string, colabId: string, updateFuture: boolean = false) => {
+  const executeMove = async (draggedItem: AgendaAgendamento, date: string, colabId: string, updateFuture: boolean = false) => {
     const colab = colaboradores.find((c) => c.id === colabId);
     if (!colab) return;
 
-    const ehPrevisao = Boolean(item.previsao_continuidade);
+    let ehPrevisao = Boolean(draggedItem.previsao_continuidade);
     const toastId = toast.loading(updateFuture ? "Atualizando responsável em todas as visitas..." : (ehPrevisao ? "Movendo previsão..." : "Atualizando agendamento..."));
     
-    try {
-      if (updateFuture && item.contrato_visita_config_id) {
-        // Busca todas as previsões futuras deste contrato a partir da data atual do item movido
-        const { data: futuras, error: fetchErr } = await supabase
-          .from("agenda_agendamentos")
-          .select("*")
-          .eq("contrato_visita_config_id", item.contrato_visita_config_id)
-          .eq("previsao_tipo", "CONTRATO")
-          .is("contrato_visita_execucao_id", null)
-          .gte("data", item.data)
-          .order("data", { ascending: true });
+    return queueAgendaWrite(async () => {
+      let auvoMoved = false;
+      let agendaSaved = false;
+      let mirrorRefreshFailed = false;
+      try {
+        // The preceding queued sync may have promoted or enriched this card.
+        // Read its current identity before deciding whether Auvo must be edited.
+        const { data: currentItem, error: readError } = await supabase
+          .from("agenda_agendamentos").select("*").eq("id", draggedItem.id).maybeSingle();
+        if (readError) throw readError;
+        if (!currentItem) throw new Error("O agendamento não está mais disponível. Atualize a escala antes de mover.");
+        const item = currentItem as AgendaAgendamento;
+        ehPrevisao = Boolean(item.previsao_continuidade);
+        if (updateFuture && item.contrato_visita_config_id) {
+          // Busca todas as previsões futuras deste contrato a partir da data atual do item movido
+          const { data: futuras, error: fetchErr } = await supabase
+            .from("agenda_agendamentos")
+            .select("*")
+            .eq("contrato_visita_config_id", item.contrato_visita_config_id)
+            .eq("previsao_tipo", "CONTRATO")
+            .is("contrato_visita_execucao_id", null)
+            .gte("data", item.data)
+            .order("data", { ascending: true });
 
-        if (fetchErr) throw fetchErr;
+          if (fetchErr) throw fetchErr;
 
-        for (const futura of selectFutureContractVisitMoves(item, futuras ?? [])) {
-          const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
-            p_agendamento_id: futura.id,
-            p_data: futura.id === item.id ? date : futura.data,
-            p_colaborador_id: colabId,
-            p_colaborador_nome: colab.nome,
-          });
-          if (moveError) throw moveError;
-        }
-      } else {
-        // Movimentação individual (Lógica original)
-        if (item.origem === "CONTRATO" && item.previsao_tipo === "CONTRATO") {
-          const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
-            p_agendamento_id: item.id,
-            p_data: date,
-            p_colaborador_id: colabId,
-            p_colaborador_nome: colab.nome,
-          });
-          if (moveError) throw moveError;
-        } else if (item.auvo_task_id && item.origem === "AUVO") {
-          const patches = [
-            { op: "replace", path: "taskDate", value: `${date}T${item.hora_inicio.slice(0, 5)}:00` },
-          ];
-          
-          if (colab.auvo_user_id) {
-            patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+          for (const futura of selectFutureContractVisitMoves(item, futuras ?? [])) {
+            const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+              p_agendamento_id: futura.id,
+              p_data: futura.id === item.id ? date : futura.data,
+              p_colaborador_id: colabId,
+              p_colaborador_nome: colab.nome,
+            });
+            if (moveError) throw moveError;
+          }
+        } else {
+          // Movimentação individual (Lógica original)
+          if (item.origem === "CONTRATO" && item.previsao_tipo === "CONTRATO") {
+            const { error: moveError } = await supabase.rpc("mover_previsao_visita_contratual", {
+              p_agendamento_id: item.id,
+              p_data: date,
+              p_colaborador_id: colabId,
+              p_colaborador_nome: colab.nome,
+            });
+            if (moveError) throw moveError;
+          } else if (item.auvo_task_id && !item.previsao_continuidade) {
+            await confirmAgendaTaskMove((name, options) => supabase.functions.invoke(name, options), {
+              taskId: item.auvo_task_id,
+              auvoUserId: colab.auvo_user_id,
+              date,
+              startTime: item.hora_inicio,
+            });
+            auvoMoved = true;
           }
 
-          const { data: auvoRes, error: auvoErr } = await supabase.functions.invoke("auvo-task-update", {
-            body: { action: "edit", taskId: item.auvo_task_id, patches },
-          });
-
-          if (auvoErr || auvoRes?.status >= 400) {
-            throw new Error(auvoRes?.data?.message || "Erro ao atualizar no Auvo");
+          // Move only the fields controlled by the gesture; preserve fresh GC links and metadata.
+          if (item.origem !== "CONTRATO" || item.previsao_tipo !== "CONTRATO") {
+            await saveAgendamento.mutateAsync({
+              id: item.id,
+              data: date,
+              colaborador_id: colabId,
+              colaborador_nome: colab.nome,
+            });
+            agendaSaved = true;
+            if (auvoMoved) {
+              try {
+                await refreshMovedAgendaTask((name, options) => supabase.functions.invoke(name, options), String(item.auvo_task_id));
+              } catch {
+                mirrorRefreshFailed = true;
+              }
+              await Promise.all([
+                qc.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] }),
+                qc.invalidateQueries({ queryKey: ["relatorios-tarefas-referenciadas"] }),
+                qc.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] }),
+                qc.invalidateQueries({ queryKey: ["agenda_semana"] }),
+              ]);
+            }
           }
         }
 
-        // Se for PREVISAO, atualizamos o registro original (id: item.id)
-        // Se item.id não existir (não deveria ocorrer em drag&drop de item existente), ele cria um novo.
-        if (item.origem !== "CONTRATO" || item.previsao_tipo !== "CONTRATO") {
-          await saveAgendamento.mutateAsync({
-            id: item.id || undefined,
-            data: date,
-            colaborador_id: colabId,
-            colaborador_nome: colab.nome,
-            hora_inicio: item.hora_inicio,
-            hora_fim: item.hora_fim,
-            duracao_planejada_minutos: item.duracao_planejada_minutos,
-            veiculo_id: item.veiculo_id,
-            cliente: item.cliente,
-            descricao: item.descricao,
-            status: item.status,
-            auvo_task_id: item.auvo_task_id,
-            origem: item.origem,
-            gc_os_codigo: item.gc_os_codigo,
-            gc_orcamento_codigo: item.gc_orcamento_codigo,
-            previsao_continuidade: item.previsao_continuidade,
-            previsao_detalhes: item.previsao_detalhes,
-          });
-        }
+        const refreshed = await refetchLocal();
+        if (refreshed.error) throw refreshed.error;
+        if (mirrorRefreshFailed) {
+          toast.warning("Responsável e data atualizados no Auvo e na agenda. Os relatórios ainda precisam ser sincronizados.", { id: toastId });
+        } else toast.success(updateFuture ? "Responsável atualizado em todas as visitas futuras!" : (ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!"), { id: toastId });
+      } catch (err: any) {
+        console.error("Erro ao mover agendamento:", err);
+        toast.error(auvoMoved
+          ? agendaSaved
+            ? "O Auvo e a agenda foram atualizados, mas a tela não pôde ser recarregada. Atualize a escala."
+            : "O responsável e a data já foram alterados no Auvo, mas não foi possível salvar a agenda local. Atualize a escala para reconciliar a tarefa."
+          : err.message || "Erro ao mover agendamento", { id: toastId });
       }
-
-      toast.success(updateFuture ? "Responsável atualizado em todas as visitas futuras!" : (ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!"), { id: toastId });
-      refetchLocal();
-    } catch (err: any) {
-      console.error("Erro ao mover agendamento:", err);
-      toast.error(err.message || "Erro ao mover agendamento", { id: toastId });
-    }
+    });
   };
 
   const tecnicosBase = useMemo(

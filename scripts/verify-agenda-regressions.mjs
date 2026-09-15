@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 const files = [
   'src/test/agendamento-equipe-pagination.test.tsx',
   'src/test/agendamento-equipe-dialog.test.tsx',
+  'src/test/agendamento-equipe-drag.test.tsx',
+  'src/test/agenda-task-move.test.ts',
   'src/test/criar-tarefa-agenda-sync.test.tsx',
   'src/test/agenda-auvo-reconciliation.test.ts',
   'src/test/agenda-forecast-link-guard.test.ts',
