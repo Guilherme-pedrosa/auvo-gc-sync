@@ -7,6 +7,7 @@ import {
   minutesToAuvoTimeSpan,
   normalizeRequestedDurationMinutes,
   parseAuvoDurationMinutes,
+  resolveAuvoPlannedDuration,
 } from "../_shared/auvo-duration.ts";
 import {
   auvoCheckInDate,
@@ -29,6 +30,7 @@ import {
   isUnchangedBudgetExecutionForecast,
   normalizeClock,
   normalizeGcDocumentCode,
+  preservedExecutionSchedule,
   promotedExecutionMirrorRow,
   readBudgetExecutionTaskLink,
   taskAssignedUserId,
@@ -119,6 +121,15 @@ async function fetchTaskTypeById(
     return data?.result || data;
   }
   throw new Error(lastError || `Tipo de tarefa Auvo ${taskTypeId} não encontrado`);
+}
+
+async function resolveEffectiveTaskDuration(task: any, headers: Record<string, string>) {
+  const individual = resolveAuvoPlannedDuration(task);
+  if (individual.minutes > 0) return individual;
+  const id = taskTypeId(task);
+  if (!(id > 0)) return individual;
+  const actualType = await fetchTaskTypeById(id, headers);
+  return resolveAuvoPlannedDuration(task, actualType);
 }
 
 async function listTaskTypesFromAuvo(
@@ -241,19 +252,7 @@ async function ensureTaskTypeDurationStrict(
     console.warn(`[auvo-task-update][reqId=${reqId}] falha de rede ao criar tipo gerenciado:`, err);
   }
   if (!response || !response.ok) {
-    // Auvo pode recusar a criação do tipo (500). Não bloquear a tarefa:
-    // seguir com o tipo base e sua duração padrão.
-    console.warn(
-      `[auvo-task-update][reqId=${reqId}] Auvo recusou tipo com duração ${durationMinutes} min (${response?.status ?? "network"}): ${JSON.stringify(data).substring(0, 300)} — usando tipo base ${baseId}`,
-    );
-    return {
-      id: baseId,
-      baseId,
-      description: baseDescription,
-      durationMinutes: taskTypeDurationMinutes(base) || durationMinutes,
-      managed: false,
-      raw: base,
-    };
+    throw new Error(`Auvo recusou tipo com duração ${durationMinutes} min (${response?.status ?? "network"})`);
   }
   const created = data?.result || data;
   let createdId = Number(created?.id ?? created?.taskTypeId);
@@ -269,15 +268,12 @@ async function ensureTaskTypeDurationStrict(
     createdRecord = createdFromList || created;
   }
   if (!Number.isFinite(createdId) || createdId <= 0) {
-    console.warn(`[auvo-task-update][reqId=${reqId}] tipo criado sem ID retornado — usando tipo base ${baseId}`);
-    return {
-      id: baseId,
-      baseId,
-      description: baseDescription,
-      durationMinutes: taskTypeDurationMinutes(base) || durationMinutes,
-      managed: false,
-      raw: base,
-    };
+    throw new Error(`Auvo não confirmou o ID do tipo criado para ${durationMinutes} min`);
+  }
+  createdRecord = await fetchTaskTypeById(createdId, headers);
+  if (Number(createdRecord?.id ?? createdRecord?.taskTypeId) !== createdId ||
+      taskTypeDurationMinutes(createdRecord) !== durationMinutes) {
+    throw new Error(`Auvo não confirmou ${durationMinutes} min no tipo ${createdId}`);
   }
   console.log(`[auvo-task-update][reqId=${reqId}] tipo gerenciado criado id=${createdId} base=${baseId} duração=${durationMinutes}`);
   return {
@@ -325,7 +321,11 @@ async function fetchTaskByIdImpl(taskId: number, headers: Record<string, string>
   if (!response.ok) {
     throw new Error(`Falha ao buscar tarefa Auvo ${taskId} (${response.status}): ${JSON.stringify(data).substring(0, 400)}`);
   }
-  return data?.result || data;
+  const task = data?.result || data;
+  if (Number(task?.taskID ?? task?.taskId ?? task?.id) !== taskId) {
+    throw new Error(`Auvo não confirmou a identidade da tarefa ${taskId}`);
+  }
+  return task;
 }
 
 function getAdminClient() {
@@ -478,90 +478,134 @@ async function promoteBudgetForecast(
     if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
       return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
     }
-    const startTime = normalizeClock(forecast.hora_inicio);
-    const durationMinutes = forecastDurationMinutes(forecast.hora_inicio, forecast.hora_fim);
-    if (!startTime || durationMinutes < 15) {
-      throw new Error("A previsão não possui horário/duração válidos");
-    }
-    if (!forecast.colaborador_id) {
-      throw new Error("A previsão não possui técnico do RH");
-    }
-
-    const { data: collaborator, error: collaboratorError } = await admin
-      .from("rh_colaboradores")
-      .select("id,nome,auvo_user_id")
-      .eq("id", forecast.colaborador_id)
-      .maybeSingle();
-    if (collaboratorError) throw collaboratorError;
-    const auvoUserId = Number(collaborator?.auvo_user_id);
-    if (!collaborator || !Number.isFinite(auvoUserId) || auvoUserId <= 0) {
-      await markForecastConversion(
-        admin,
-        forecast.id,
-        "BLOQUEADA",
-        "O técnico previsto não possui usuário Auvo vinculado no RH",
-        osCode,
-      );
-      return { success: false, promoted: false, reason: "technician_not_linked", forecastId: forecast.id };
-    }
-
     const numericTaskId = Number(execTaskId);
-    const currentTask = await fetchTaskById(numericTaskId, headers);
-    if (auvoTaskHasStarted(currentTask)) {
-      await markForecastConversion(
-        admin,
-        forecast.id,
-        "BLOQUEADA",
-        `A tarefa Auvo ${execTaskId} já foi iniciada ou finalizada`,
-        osCode,
-      );
-      return { success: false, promoted: false, reason: "task_started", forecastId: forecast.id, execTaskId };
-    }
-
-    const currentTaskTypeId = taskTypeId(currentTask);
-    if (!currentTaskTypeId) throw new Error(`Tarefa ${execTaskId} não devolveu um tipo de tarefa válido`);
-    const durationResolution = await ensureTaskTypeDuration(
-      currentTaskTypeId,
-      durationMinutes,
-      headers,
-      reqId,
-    );
-
-    const desiredStart = `${forecast.data}T${startTime}:00`;
     const patches: Array<{ op: string; path: string; value: unknown }> = [];
-    if (taskStartMinuteKey(currentTask) !== desiredStart.slice(0, 16)) {
-      patches.push({ op: "replace", path: "/taskDate", value: desiredStart });
-    }
-    if (taskAssignedUserId(currentTask) !== auvoUserId) {
-      patches.push({ op: "replace", path: "/idUserTo", value: auvoUserId });
-    }
-    if (taskTypeId(currentTask) !== durationResolution.id) {
-      patches.push({ op: "replace", path: "/taskType", value: durationResolution.id });
-    }
+    let durationMinutes: number;
+    let collaborator: any;
+    let verifiedTask: any;
+    let verifiedTypeDescription = "";
+    let preservedAgenda: Record<string, unknown> = {};
 
-    if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
-      return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
-    }
-    if (patches.length) {
-      const response = await patchWithRetry(`${AUVO_BASE_URL}/tasks/${numericTaskId}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(patches),
-      }, reqId);
-      const raw = await response.text();
-      if (!response.ok) {
-        throw new Error(`Auvo recusou o agendamento (${response.status}): ${raw.substring(0, 400)}`);
+    if (body?.preserveTaskSchedule === true) {
+      // A user just edited this execution. Reconcile the reservation from Auvo
+      // without replaying its stale date, owner or duration onto the real task.
+      verifiedTask = await fetchTaskById(numericTaskId, headers);
+      const currentDuration = await resolveEffectiveTaskDuration(verifiedTask, headers);
+      const schedule = preservedExecutionSchedule(verifiedTask, execTaskId, body?.expectedSchedule ?? {}, currentDuration);
+      const currentTypeId = taskTypeId(verifiedTask);
+      if (!currentTypeId) throw new Error("Auvo não confirmou o tipo atual da tarefa de execução");
+      const currentType = await fetchTaskTypeById(currentTypeId, headers);
+      if (Number(currentType?.id ?? currentType?.taskTypeId) !== currentTypeId) {
+        throw new Error("Auvo devolveu outro tipo ao confirmar a tarefa de execução");
       }
-    }
+      verifiedTypeDescription = String(currentType?.description ?? "").trim();
+      if (!verifiedTypeDescription && !auvoTaskTypeDescription(verifiedTask)) {
+        throw new Error("Auvo não confirmou a descrição do tipo da tarefa de execução");
+      }
+      const { data, error } = await admin.from("rh_colaboradores")
+        .select("id,nome,auvo_user_id")
+        .eq("auvo_user_id", String(schedule.auvoUserId))
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("O responsável atual da tarefa Auvo não possui técnico vinculado no RH");
+      collaborator = data;
+      durationMinutes = schedule.durationMinutes;
+      preservedAgenda = {
+        data: schedule.data,
+        hora_inicio: schedule.hora_inicio,
+        hora_fim: schedule.hora_fim,
+        colaborador_id: collaborator.id,
+        colaborador_nome: collaborator.nome,
+      };
+      if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
+        return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
+      }
+    } else {
+      const startTime = normalizeClock(forecast.hora_inicio);
+      durationMinutes = forecastDurationMinutes(forecast.hora_inicio, forecast.hora_fim);
+      if (!startTime || durationMinutes < 15) {
+        throw new Error("A previsão não possui horário/duração válidos");
+      }
+      if (!forecast.colaborador_id) {
+        throw new Error("A previsão não possui técnico do RH");
+      }
 
-    const verifiedTask = await fetchTaskById(numericTaskId, headers);
-    const verifiedStart = taskStartMinuteKey(verifiedTask) === desiredStart.slice(0, 16);
-    const verifiedUser = taskAssignedUserId(verifiedTask) === auvoUserId;
-    const verifiedType = taskTypeId(verifiedTask) === durationResolution.id;
-    if (!verifiedStart || !verifiedUser || !verifiedType) {
-      throw new Error(
-        `Auvo não confirmou o planejamento completo (data=${verifiedStart}, técnico=${verifiedUser}, duração=${verifiedType})`,
+      const { data: forecastCollaborator, error: collaboratorError } = await admin
+        .from("rh_colaboradores")
+        .select("id,nome,auvo_user_id")
+        .eq("id", forecast.colaborador_id)
+        .maybeSingle();
+      if (collaboratorError) throw collaboratorError;
+      collaborator = forecastCollaborator;
+      const auvoUserId = Number(collaborator?.auvo_user_id);
+      if (!collaborator || !Number.isFinite(auvoUserId) || auvoUserId <= 0) {
+        await markForecastConversion(
+          admin,
+          forecast.id,
+          "BLOQUEADA",
+          "O técnico previsto não possui usuário Auvo vinculado no RH",
+          osCode,
+        );
+        return { success: false, promoted: false, reason: "technician_not_linked", forecastId: forecast.id };
+      }
+
+      const currentTask = await fetchTaskById(numericTaskId, headers);
+      if (auvoTaskHasStarted(currentTask)) {
+        await markForecastConversion(
+          admin,
+          forecast.id,
+          "BLOQUEADA",
+          `A tarefa Auvo ${execTaskId} já foi iniciada ou finalizada`,
+          osCode,
+        );
+        return { success: false, promoted: false, reason: "task_started", forecastId: forecast.id, execTaskId };
+      }
+
+      const currentTaskTypeId = taskTypeId(currentTask);
+      if (!currentTaskTypeId) throw new Error(`Tarefa ${execTaskId} não devolveu um tipo de tarefa válido`);
+      const durationResolution = await ensureTaskTypeDuration(
+        currentTaskTypeId,
+        durationMinutes,
+        headers,
+        reqId,
       );
+
+      const desiredStart = `${forecast.data}T${startTime}:00`;
+      if (taskStartMinuteKey(currentTask) !== desiredStart.slice(0, 16)) {
+        patches.push({ op: "replace", path: "/taskDate", value: desiredStart });
+      }
+      if (taskAssignedUserId(currentTask) !== auvoUserId) {
+        patches.push({ op: "replace", path: "/idUserTo", value: auvoUserId });
+      }
+      if (taskTypeId(currentTask) !== durationResolution.id) {
+        patches.push({ op: "replace", path: "/taskType", value: durationResolution.id });
+      }
+
+      if (!isUnchangedBudgetExecutionForecast(forecast, await currentForecast())) {
+        return { success: true, promoted: false, reason: "forecast_changed", forecastId: forecast.id };
+      }
+      if (patches.length) {
+        const response = await patchWithRetry(`${AUVO_BASE_URL}/tasks/${numericTaskId}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify(patches),
+        }, reqId);
+        const raw = await response.text();
+        if (!response.ok) {
+          throw new Error(`Auvo recusou o agendamento (${response.status}): ${raw.substring(0, 400)}`);
+        }
+      }
+
+      verifiedTask = await fetchTaskById(numericTaskId, headers);
+      const verifiedStart = taskStartMinuteKey(verifiedTask) === desiredStart.slice(0, 16);
+      const verifiedUser = taskAssignedUserId(verifiedTask) === auvoUserId;
+      const verifiedType = taskTypeId(verifiedTask) === durationResolution.id;
+      if (!verifiedStart || !verifiedUser || !verifiedType) {
+        throw new Error(
+          `Auvo não confirmou o planejamento completo (data=${verifiedStart}, técnico=${verifiedUser}, duração=${verifiedType})`,
+        );
+      }
+      verifiedTypeDescription = durationResolution.description;
     }
 
     // An unassigned execution can be absent from the mirror. Persist provider
@@ -570,7 +614,7 @@ async function promoteBudgetForecast(
       { ...verifiedTask, taskID: numericTaskId },
       linkedOs,
       collaborator.nome,
-      durationResolution.description,
+      verifiedTypeDescription,
     );
     const { error: centralError } = await admin.from("tarefas_central").upsert({
       ...centralRow, atualizado_em: new Date().toISOString(),
@@ -588,8 +632,10 @@ async function promoteBudgetForecast(
     const promotedRow = Array.isArray(promoted) ? promoted[0] : promoted;
     const { data: plannedAgenda, error: plannedAgendaError } = await admin
       .from("agenda_agendamentos")
-      .update({ duracao_planejada_minutos: durationMinutes })
+      .update({ duracao_planejada_minutos: durationMinutes, ...preservedAgenda })
       .eq("id", forecast.id)
+      .eq("auvo_task_id", execTaskId)
+      .eq("previsao_continuidade", false)
       .select("*")
       .single();
     if (plannedAgendaError) throw plannedAgendaError;
@@ -616,11 +662,9 @@ function hasOwn(obj: any, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
-// A API v2 do Auvo NÃO aceita estimatedDuration/taskEndDate em nenhuma escrita:
-// - PATCH /tasks/{id} devolve 400 "The target location specified by path segment ... was not found"
-// - PUT /tasks (upsert) ignora silenciosamente o campo (verificado em produção)
-// A duração da tarefa no Auvo vem do "standardTime" do Tipo de Tarefa (/taskTypes).
-// Portanto esses caminhos são descartados antes do PATCH para não quebrar a edição.
+// TaskPatch does not expose estimatedDuration/taskEndDate. A positive individual
+// duration takes precedence; otherwise Auvo displays the task type's standardTime.
+// Do not use PUT/upsert to guess a duration override or recreate an execution task.
 const PATCH_UNSUPPORTED_PATHS = ["estimatedDuration", "taskEndDate"];
 
 function setIfProvided(result: any, row: any, key: string, targetKey: string = key) {
@@ -838,9 +882,7 @@ Deno.serve(async (req) => {
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
       const orientation = String(task?.orientation ?? task?.description ?? "").trim();
       const userReport = String(task?.report ?? "").trim();
-      const plannedDurationMinutes = parseAuvoDurationMinutes(
-        task?.estimatedDuration ?? task?.estimated_duration,
-      );
+      const plannedDurationMinutes = (await resolveEffectiveTaskDuration(task, headers)).minutes;
       const currentTaskTypeId = taskTypeId(task);
       let currentTaskTypeDescription = auvoTaskTypeDescription(task);
       if (currentTaskTypeId && !currentTaskTypeDescription) {
@@ -909,7 +951,8 @@ Deno.serve(async (req) => {
         const { error: agendaDurationError } = await admin
           .from("agenda_agendamentos")
           .update({ duracao_planejada_minutos: plannedDurationMinutes })
-          .eq("auvo_task_id", String(taskId));
+          .eq("auvo_task_id", String(taskId))
+          .or("previsao_continuidade.is.null,previsao_continuidade.eq.false");
         if (agendaDurationError) throw agendaDurationError;
       }
 
@@ -1172,12 +1215,30 @@ Deno.serve(async (req) => {
       );
       const patches: Array<{ op: string; path: string; value: unknown }> = [];
       let durationResolution: AuvoTaskTypeResolution | null = null;
+      const requestedDurationMinutes = body?.durationMinutes === undefined
+        ? null : normalizeRequestedDurationMinutes(body.durationMinutes);
 
       if (body?.durationMinutes !== undefined) {
         if (!Number.isFinite(currentTaskTypeId) || currentTaskTypeId <= 0) {
           throw new Error(`Tarefa ${taskId} não devolveu um tipo de tarefa válido`);
         }
-        durationResolution = await ensureTaskTypeDuration(
+        const individualMinutes = resolveAuvoPlannedDuration(task).minutes;
+        if (individualMinutes > 0 && individualMinutes !== requestedDurationMinutes) {
+          return new Response(JSON.stringify({
+            success: false, status: 409, taskId,
+            duration: { requestedMinutes: requestedDurationMinutes, actualMinutes: individualMinutes, verified: false, source: "task" },
+            error: `Esta tarefa tem duração individual de ${individualMinutes} min no Auvo. A API de tarefas não permite alterar esse campo; ajuste a duração no Auvo antes de sincronizar. Nenhuma alteração foi aplicada.`,
+            reqId,
+          }), { status: 200, headers: respHeaders });
+        }
+        durationResolution = individualMinutes > 0 ? {
+          id: currentTaskTypeId,
+          baseId: currentTaskTypeId,
+          description: auvoTaskTypeDescription(task),
+          durationMinutes: individualMinutes,
+          managed: isManagedTaskType(auvoTaskTypeDescription(task)),
+          raw: null,
+        } : await ensureTaskTypeDurationStrict(
           currentTaskTypeId,
           body.durationMinutes,
           headers,
@@ -1227,10 +1288,10 @@ Deno.serve(async (req) => {
       }
 
       const verifiedTask = await fetchTaskById(taskId, headers);
-      const actualDurationMinutes = parseAuvoDurationMinutes(
-        verifiedTask?.estimatedDuration ?? verifiedTask?.estimated_duration,
-      );
-      const requestedDurationMinutes = durationResolution?.durationMinutes || null;
+      const actualDuration = durationResolution
+        ? await resolveEffectiveTaskDuration(verifiedTask, headers)
+        : resolveAuvoPlannedDuration(verifiedTask);
+      const actualDurationMinutes = actualDuration.minutes;
       const durationVerified = requestedDurationMinutes === null || actualDurationMinutes === requestedDurationMinutes;
 
       return new Response(
@@ -1243,6 +1304,7 @@ Deno.serve(async (req) => {
             requestedMinutes: requestedDurationMinutes,
             actualMinutes: actualDurationMinutes || null,
             verified: durationVerified,
+            source: actualDuration.source,
             taskTypeId: durationResolution.id,
             baseTaskTypeId: durationResolution.baseId,
             managedTaskType: durationResolution.managed,
@@ -1397,9 +1459,9 @@ Deno.serve(async (req) => {
       }
 
       // 3) Resolver o tipo que representa a duração solicitada.
-      // A API v2 deriva estimatedDuration de tasktypes.standartTime. Para
-      // manter duração por agendamento sem alterar o tipo original, usamos
-      // uma variante gerenciada e reutilizável do tipo selecionado.
+      // Auvo uses the type's default when the task has no individual duration.
+      // Verify the effective duration after creation; the API can return zero
+      // while the Auvo agenda correctly displays the type's default.
       const durationResolution = await ensureTaskTypeDuration(
         requestedTaskTypeId,
         durationMinutes,
@@ -1477,19 +1539,19 @@ Deno.serve(async (req) => {
         data?.taskID ?? data?.taskId ?? data?.id ?? null;
       console.log(`[auvo-task-update][reqId=${reqId}] create-preventive-task status=${response.status} taskId=${newTaskId} body=`, respText.substring(0, 800));
 
-      let actualDurationMinutes = parseAuvoDurationMinutes(
-        r?.estimatedDuration ?? r?.estimated_duration,
-      );
-      if (response.ok && newTaskId && !actualDurationMinutes) {
+      let actualDuration = { minutes: 0, source: "unconfirmed" } as ReturnType<typeof resolveAuvoPlannedDuration>;
+      if (response.ok && newTaskId) {
         try {
           const verifiedTask = await fetchTaskById(Number(newTaskId), headers);
-          actualDurationMinutes = parseAuvoDurationMinutes(
-            verifiedTask?.estimatedDuration ?? verifiedTask?.estimated_duration,
-          );
+          if (Number(verifiedTask?.taskID ?? verifiedTask?.taskId ?? verifiedTask?.id) !== Number(newTaskId)) {
+            throw new Error("Auvo devolveu outra tarefa ao confirmar a criação");
+          }
+          actualDuration = await resolveEffectiveTaskDuration(verifiedTask, headers);
         } catch (verifyError) {
           console.warn(`[auvo-task-update][reqId=${reqId}] não foi possível verificar duração da tarefa ${newTaskId}:`, verifyError);
         }
       }
+      const actualDurationMinutes = actualDuration.minutes;
       const durationVerified = actualDurationMinutes === durationResolution.durationMinutes;
 
       return new Response(
@@ -1514,6 +1576,7 @@ Deno.serve(async (req) => {
             requestedMinutes: durationResolution.durationMinutes,
             actualMinutes: actualDurationMinutes || null,
             verified: durationVerified,
+            source: actualDuration.source,
             taskTypeId: durationResolution.id,
             baseTaskTypeId: durationResolution.baseId,
             managedTaskType: durationResolution.managed,
@@ -1758,9 +1821,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      // A API v2 calcula estimatedDuration a partir de tasktypes.standartTime.
-      // Resolve uma variante gerenciada para que a duração escolhida pelo
-      // usuário seja realmente aplicada também nas tarefas gerais.
+      // Resolve the default without modifying the original task type.
+      // Confirm the effective duration from the created task and its actual type.
       const durationResolution = await ensureTaskTypeDuration(
         requestedTaskTypeId,
         dur,
@@ -1889,19 +1951,19 @@ Deno.serve(async (req) => {
       console.log(`[auvo-task-update][reqId=${reqId}] create-task status=${response.status} taskId=${newId}`);
       const auvoError = response.ok ? null : extractAuvoError(data, response.status);
 
-      let actualDurationMinutes = parseAuvoDurationMinutes(
-        r?.estimatedDuration ?? r?.estimated_duration,
-      );
-      if (response.ok && newId && !actualDurationMinutes) {
+      let actualDuration = { minutes: 0, source: "unconfirmed" } as ReturnType<typeof resolveAuvoPlannedDuration>;
+      if (response.ok && newId) {
         try {
           const verifiedTask = await fetchTaskById(Number(newId), headers);
-          actualDurationMinutes = parseAuvoDurationMinutes(
-            verifiedTask?.estimatedDuration ?? verifiedTask?.estimated_duration,
-          );
+          if (Number(verifiedTask?.taskID ?? verifiedTask?.taskId ?? verifiedTask?.id) !== Number(newId)) {
+            throw new Error("Auvo devolveu outra tarefa ao confirmar a criação");
+          }
+          actualDuration = await resolveEffectiveTaskDuration(verifiedTask, headers);
         } catch (verifyError) {
           console.warn(`[auvo-task-update][reqId=${reqId}] não foi possível verificar duração da tarefa ${newId}:`, verifyError);
         }
       }
+      const actualDurationMinutes = actualDuration.minutes;
       const durationVerified = actualDurationMinutes === durationResolution.durationMinutes;
 
       return new Response(
@@ -1926,6 +1988,7 @@ Deno.serve(async (req) => {
             requestedMinutes: durationResolution.durationMinutes,
             actualMinutes: actualDurationMinutes || null,
             verified: durationVerified,
+            source: actualDuration.source,
             taskTypeId: durationResolution.id,
             baseTaskTypeId: durationResolution.baseId,
             managedTaskType: durationResolution.managed,

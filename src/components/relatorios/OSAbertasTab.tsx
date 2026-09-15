@@ -1070,6 +1070,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           budgetCode: editingCard.gc_orcamento_codigo,
           osCode: editingCard.gc_os_codigo,
           execTaskId,
+          preserveTaskSchedule: true,
+          expectedSchedule: {
+            ...(taskDate ? { taskDate } : {}),
+            ...(technicianChanged && editTecnicoId ? { idUserTo: Number(editTecnicoId) } : {}),
+            ...(durationChanged ? { durationMinutes } : {}),
+          },
         });
         void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
         void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });

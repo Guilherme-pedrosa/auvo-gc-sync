@@ -9,6 +9,7 @@ const files = [
   'src/test/agendamento-equipe-drag.test.tsx',
   'src/test/agenda-task-move.test.ts',
   'src/test/auvo-duration-confirmation.test.ts',
+  'src/test/auvo-duration.test.ts',
   'src/test/confirmed-agenda-duration.test.ts',
   'src/test/os-duration-edit.test.tsx',
   'src/test/tarefas-agendadas-duration.test.tsx',

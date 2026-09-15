@@ -60,6 +60,8 @@ export async function promoteBudgetExecutionForecast(input: {
   budgetCode: unknown;
   osCode: unknown;
   execTaskId: unknown;
+  preserveTaskSchedule?: boolean;
+  expectedSchedule?: { taskDate?: string; idUserTo?: number; durationMinutes?: number };
 }) {
   const { data, error } = await supabase.functions.invoke("auvo-task-update", {
     body: {
@@ -67,6 +69,10 @@ export async function promoteBudgetExecutionForecast(input: {
       gcOrcamentoCodigo: normalizeCode(input.budgetCode),
       gcOsCodigo: normalizeCode(input.osCode),
       execTaskId: normalizeCode(input.execTaskId),
+      ...(input.preserveTaskSchedule ? {
+        preserveTaskSchedule: true,
+        expectedSchedule: input.expectedSchedule ?? {},
+      } : {}),
     },
   });
   if (error) throw error;

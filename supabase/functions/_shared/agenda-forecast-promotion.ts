@@ -1,6 +1,7 @@
 import { auvoTaskTypeDescription, auvoTaskTypeId } from "./auvo-task-type.ts";
 import { auvoTaskStatus } from "./auvo-task-status.ts";
 import { auvoCheckInDate, auvoCheckOutDate, computeAuvoWorkedHours } from "./auvo-worked-time.ts";
+import { resolveAuvoPlannedDuration } from "./auvo-duration.ts";
 
 export const BUDGET_EXECUTION_FORECAST = "ORCAMENTO_EXECUCAO";
 
@@ -242,6 +243,44 @@ export function taskStartMinuteKey(task: any): string {
 export function taskAssignedUserId(task: any): number | null {
   const value = Number(task?.idUserTo ?? task?.id_user_to ?? task?.userTo?.id);
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** Read the execution's actual plan after an edit; never reapply its old reservation. */
+export function preservedExecutionSchedule(
+  task: any,
+  expectedTaskId: string,
+  expected: { taskDate?: string; idUserTo?: number; durationMinutes?: number } = {},
+  duration: ReturnType<typeof resolveAuvoPlannedDuration> = resolveAuvoPlannedDuration(task),
+) {
+  const actualTaskId = normalizeGcDocumentCode(task?.taskID ?? task?.taskId ?? task?.id);
+  if (actualTaskId !== expectedTaskId) throw new Error("Auvo não confirmou a tarefa de execução solicitada");
+  const taskDate = taskStartMinuteKey(task);
+  const startTime = normalizeClock(taskDate.slice(11));
+  const date = taskDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(taskDate) || Number(date.slice(0, 4)) < 2000
+    || !startTime || !Number.isFinite(Date.parse(`${taskDate}:00`))) {
+    throw new Error("Auvo não confirmou a data atual da tarefa de execução");
+  }
+  const auvoUserId = taskAssignedUserId(task);
+  if (!auvoUserId) throw new Error("Auvo não confirmou o responsável atual da tarefa de execução");
+  if (duration.source === "unconfirmed" || !Number.isFinite(duration.minutes) || duration.minutes <= 0) {
+    throw new Error("Auvo não confirmou a duração atual da tarefa de execução");
+  }
+  const durationMinutes = duration.minutes;
+  if ((expected.taskDate !== undefined && String(expected.taskDate).slice(0, 16) !== taskDate)
+    || (expected.idUserTo !== undefined && expected.idUserTo !== auvoUserId)
+    || (expected.durationMinutes !== undefined && expected.durationMinutes !== durationMinutes)) {
+    throw new Error("O planejamento da tarefa mudou no Auvo após a edição; atualize os dados antes de converter a previsão");
+  }
+  const [hours, minutes] = startTime.split(":").map(Number);
+  const endMinutes = (hours * 60 + minutes + durationMinutes) % (24 * 60);
+  return {
+    auvoUserId,
+    durationMinutes,
+    data: date,
+    hora_inicio: startTime,
+    hora_fim: `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`,
+  };
 }
 
 export function taskTypeId(task: any): number | null {
