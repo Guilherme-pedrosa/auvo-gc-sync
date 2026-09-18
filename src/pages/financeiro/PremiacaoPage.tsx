@@ -288,6 +288,21 @@ export default function PremiacaoPage() {
   const tecnicos = data?.tecnicos || [];
   const totais = data?.totais;
 
+  // Colaboradores ativos do RH também podem receber fatia de uma OS
+  const { data: colaboradoresRh } = useQuery({
+    queryKey: ["rh-colaboradores-ativos"],
+    staleTime: 300_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rh_colaboradores")
+        .select("nome")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return (data || []).map((r: { nome: string }) => String(r.nome || "").trim()).filter(Boolean);
+    },
+  });
+
   const normalize = (s: string) =>
     (s || "")
       .toString()
@@ -697,7 +712,17 @@ export default function PremiacaoPage() {
         <OsDetailDialog
           os={selectedOs}
           onClose={() => setSelectedOs(null)}
-          tecnicos={tecnicos.map((t) => ({ value: t.tecnico, label: t.tecnico }))}
+          tecnicos={(() => {
+            const vistos = new Set<string>();
+            const lista: Array<{ value: string; label: string }> = [];
+            for (const nome of [...tecnicos.map((t) => t.tecnico), ...(colaboradoresRh || [])]) {
+              const chave = normalize(String(nome || "").trim());
+              if (!chave || vistos.has(chave)) continue;
+              vistos.add(chave);
+              lista.push({ value: nome, label: nome });
+            }
+            return lista.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+          })()}
           onChanged={() => refetch()}
         />
       </div>
