@@ -428,7 +428,7 @@ export default function FollowUpKanbanPage() {
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs px-2"
-                    onClick={() => definirColunas(colunas.map((c) => c.id))}
+                    onClick={() => definirColunas([...colunas.map((c) => c.id), COL_APROVADOS])}
                   >
                     Todas
                   </Button>
