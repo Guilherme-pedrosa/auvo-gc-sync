@@ -913,6 +913,7 @@ Deno.serve(async (req) => {
 
             // Distribui as fatias para cada técnico secundário (uma única vez por OS)
             for (const s of jaDistribuido ? [] : validSplits) {
+              if (isNaoPremiado(s.tecnico)) continue;
               const fator = (s.pct * escala) / 100;
               const secKey = normalize(s.tecnico).split(/\s+/)[0];
               const secAgg = findOrCreateAgg(s.tecnico, secKey);
