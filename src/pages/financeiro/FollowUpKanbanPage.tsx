@@ -107,6 +107,34 @@ export default function FollowUpKanbanPage() {
     return COLUNAS_VISIVEIS_PADRAO;
   });
 
+  const [aprovacoes, setAprovacoes] = useState<AprovacaoLog[]>([]);
+  const [carregandoAprovacoes, setCarregandoAprovacoes] = useState(false);
+  const [aprovDe, setAprovDe] = useState<string>(() => isoMesesAtras(12));
+  const [aprovAte, setAprovAte] = useState<string>(() => hojeISO());
+  const [aprovacaoDetalhe, setAprovacaoDetalhe] = useState<AprovacaoLog | null>(null);
+
+  const carregarAprovacoes = useCallback(async () => {
+    setCarregandoAprovacoes(true);
+    const { data, error } = await supabase
+      .from("orcamento_aprovacao_log")
+      .select("id,gc_orcamento_id,gc_orcamento_codigo,cliente,user_nome,user_email,ip,user_agent,termo_aceito,observacao,criado_em")
+      .eq("acao", "approve")
+      .gte("criado_em", `${aprovDe}T00:00:00-03:00`)
+      .lte("criado_em", `${aprovAte}T23:59:59-03:00`)
+      .order("criado_em", { ascending: false })
+      .limit(1000);
+    setCarregandoAprovacoes(false);
+    if (error) {
+      toast.error("Erro ao carregar histórico de aprovações");
+      return;
+    }
+    setAprovacoes((data as AprovacaoLog[]) || []);
+  }, [aprovDe, aprovAte]);
+
+  useEffect(() => {
+    carregarAprovacoes();
+  }, [carregarAprovacoes]);
+
   const toggleColuna = (id: string) => {
     setColunasVisiveis((prev) => {
       const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
