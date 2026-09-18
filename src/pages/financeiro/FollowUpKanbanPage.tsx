@@ -500,7 +500,7 @@ export default function FollowUpKanbanPage() {
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="text-center text-muted-foreground py-8">Carregando...</div>
-        ) : colunasExibidas.length === 0 ? (
+        ) : colunasExibidas.length === 0 && !mostrarAprovados ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
             Nenhuma coluna selecionada. Use o filtro "Colunas" para escolher o que exibir.
           </div>
