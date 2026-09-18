@@ -827,12 +827,16 @@ Deno.serve(async (req) => {
 
 
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
+            // Fatia reservada a custos não mapeados: sai do técnico principal
+            // mas não vira premiação de ninguém.
+            const isNaoPremiado = (nome: string) =>
+              normalize(nome).replace(/[^a-z]+/g, " ").trim().startsWith("nao premiado");
 
             // Ignora fatias duplicadas; separa a fatia do próprio técnico principal
             const seen = new Set<string>();
             let pctPrincipalCadastrado: number | null = null;
             const validSplits = splits.filter((s) => {
-              const k = normalize(s.tecnico).split(/\s+/)[0];
+              const k = isNaoPremiado(s.tecnico) ? "__nao_premiado__" : normalize(s.tecnico).split(/\s+/)[0];
               if (!k || seen.has(k)) return false;
               seen.add(k);
               if (k === mainKey) {
