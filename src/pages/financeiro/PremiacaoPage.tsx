@@ -712,7 +712,17 @@ export default function PremiacaoPage() {
         <OsDetailDialog
           os={selectedOs}
           onClose={() => setSelectedOs(null)}
-          tecnicos={tecnicos.map((t) => ({ value: t.tecnico, label: t.tecnico }))}
+          tecnicos={(() => {
+            const vistos = new Set<string>();
+            const lista: Array<{ value: string; label: string }> = [];
+            for (const nome of [...tecnicos.map((t) => t.tecnico), ...(colaboradoresRh || [])]) {
+              const chave = normalize(String(nome || "").trim());
+              if (!chave || vistos.has(chave)) continue;
+              vistos.add(chave);
+              lista.push({ value: nome, label: nome });
+            }
+            return lista.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+          })()}
           onChanged={() => refetch()}
         />
       </div>
