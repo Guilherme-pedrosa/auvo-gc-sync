@@ -507,6 +507,47 @@ export default function FollowUpKanbanPage() {
         ) : (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-3 min-h-full">
+              {mostrarAprovados && (
+                <div className="flex-shrink-0 w-72 bg-muted/40 rounded-lg flex flex-col max-h-full">
+                  <div className="px-3 py-2 border-b flex items-center gap-2">
+                    <Lock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm font-medium flex-1 truncate">Aprovado pelo cliente</span>
+                    <Badge variant="secondary" className="text-xs">{aprovacoesFiltradas.length}</Badge>
+                  </div>
+                  <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">
+                    Aprovações feitas no portal (com IP e horário)
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                    {carregandoAprovacoes ? (
+                      <div className="text-center text-xs text-muted-foreground/60 py-6">carregando…</div>
+                    ) : aprovacoesFiltradas.length === 0 ? (
+                      <div className="text-center text-xs text-muted-foreground/60 py-6">
+                        nenhuma aprovação no período
+                      </div>
+                    ) : (
+                      aprovacoesFiltradas.map((a) => (
+                        <div
+                          key={a.id}
+                          onClick={() => setAprovacaoDetalhe(a)}
+                          className="bg-card rounded-md border p-2 cursor-pointer hover:border-primary transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-mono text-muted-foreground">
+                              #{a.gc_orcamento_codigo || a.gc_orcamento_id}
+                            </span>
+                            <Badge variant="outline" className="text-[10px]">Aprovado</Badge>
+                          </div>
+                          <div className="text-sm font-medium mt-1 line-clamp-2">{a.cliente || "—"}</div>
+                          <div className="flex items-center justify-between mt-1.5 text-[11px] text-muted-foreground">
+                            <span className="truncate">{a.user_nome || a.user_email || "—"}</span>
+                            <span>{formatDateTimeBR(a.criado_em)}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
               {colunasExibidas.map((col) => {
                 const arr = itensPorColuna.get(col.id) || [];
                 return (
