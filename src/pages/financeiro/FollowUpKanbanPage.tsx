@@ -46,7 +46,31 @@ const formatBRL = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
 
 const COLUNAS_VISIVEIS_KEY = "followup-kanban-colunas-visiveis";
-const COLUNAS_VISIVEIS_PADRAO = ["7063588", "8757598"]; // Ag. Aprovação e Ag. Informações / Correções
+const COL_APROVADOS = "__aprovados_sistema";
+const COLUNAS_VISIVEIS_PADRAO = ["7063588", "8757598", COL_APROVADOS]; // Ag. Aprovação, Ag. Informações e Aprovados pelo cliente
+
+type AprovacaoLog = {
+  id: string;
+  gc_orcamento_id: string;
+  gc_orcamento_codigo: string | null;
+  cliente: string | null;
+  user_nome: string | null;
+  user_email: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  termo_aceito: boolean | null;
+  observacao: string | null;
+  criado_em: string;
+};
+
+const hojeISO = () => new Date().toISOString().slice(0, 10);
+const isoMesesAtras = (meses: number) => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - meses);
+  return d.toISOString().slice(0, 10);
+};
+const formatDateTimeBR = (s: string) =>
+  new Date(s).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
 const formatDate = (s: string) => {
   if (!s) return "";
