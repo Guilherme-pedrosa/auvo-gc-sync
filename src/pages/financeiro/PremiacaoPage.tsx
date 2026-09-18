@@ -705,6 +705,9 @@ export default function PremiacaoPage() {
   );
 }
 
+/** Fatia que não vai para nenhum técnico (custos não mapeados). */
+const NAO_PREMIADO = "(NÃO PREMIADO)";
+
 function OsDetailDialog({
   os,
   onClose,
@@ -1039,7 +1042,7 @@ function OsDetailDialog({
                       <div>
                         <label className="text-xs text-muted-foreground block mb-1">Adicionar técnico</label>
                         <SearchableSelect
-                          options={tecnicos}
+                          options={[{ value: NAO_PREMIADO, label: "(não premiado) — custos não mapeados" }, ...tecnicos]}
                           value={tecCompart}
                           onValueChange={setTecCompart}
                           placeholder="Selecionar técnico…"

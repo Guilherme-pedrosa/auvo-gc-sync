@@ -3813,8 +3813,34 @@ export type Database = {
         Args: { p_cliente_a: string; p_cliente_b: string }
         Returns: boolean
       }
+      consolidar_escopos_visita: {
+        Args: { p_escopos: boolean[] }
+        Returns: boolean
+      }
       contrato_e_limpeza_coifa: {
         Args: { p_contrato_nome: string }
+        Returns: boolean
+      }
+      escopo_agendado_visita: {
+        Args: {
+          p_descricao: string
+          p_outros_questionarios: Json
+          p_questionario_id: string
+          p_questionario_respostas: Json
+          p_task_type_id: string
+        }
+        Returns: boolean
+      }
+      escopo_questionarios_visita: {
+        Args: {
+          p_outros_questionarios: Json
+          p_questionario_id: string
+          p_questionario_respostas: Json
+        }
+        Returns: boolean
+      }
+      escopo_realizado_visita: {
+        Args: { p_escopos_questionarios: boolean[]; p_tipo_coifa: boolean }
         Returns: boolean
       }
       excluir_previsao_visita_contratual: {
@@ -4003,6 +4029,10 @@ export type Database = {
       save_budget_kanban_positions: {
         Args: { p_custom_columns?: Json; p_positions: Json }
         Returns: number
+      }
+      tipo_tarefa_visita_e_coifa: {
+        Args: { p_descricao: string; p_task_type_id: string }
+        Returns: boolean
       }
       upsert_budget_kanban_sync_items: {
         Args: { p_items: Json }
