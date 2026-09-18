@@ -451,6 +451,37 @@ export default function FollowUpKanbanPage() {
         </Button>
       </header>
 
+      {mostrarAprovados && (
+        <div className="border-b bg-muted/20 px-6 py-2 flex items-center gap-2 text-sm">
+          <span className="text-xs text-muted-foreground">Aprovações pelo sistema de</span>
+          <Input
+            type="date"
+            value={aprovDe}
+            onChange={(e) => setAprovDe(e.target.value)}
+            className="h-8 w-40"
+          />
+          <span className="text-xs text-muted-foreground">até</span>
+          <Input
+            type="date"
+            value={aprovAte}
+            onChange={(e) => setAprovAte(e.target.value)}
+            className="h-8 w-40"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={carregarAprovacoes}
+            disabled={carregandoAprovacoes}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${carregandoAprovacoes ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {carregandoAprovacoes ? "Carregando…" : `${aprovacoesFiltradas.length} aprovação(ões)`}
+          </span>
+        </div>
+      )}
+
       {showNova && (
         <div className="border-b bg-muted/30 px-6 py-2 flex items-center gap-2">
           <Input
