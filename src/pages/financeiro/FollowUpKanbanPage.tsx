@@ -396,7 +396,7 @@ export default function FollowUpKanbanPage() {
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm">
               <Columns3 className="h-4 w-4 mr-1" />
-              Colunas ({colunasExibidas.length}/{colunas.length})
+              Colunas ({colunasExibidas.length + (mostrarAprovados ? 1 : 0)}/{colunas.length + 1})
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-3 space-y-2">
