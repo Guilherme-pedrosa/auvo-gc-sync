@@ -61,6 +61,48 @@ type AprovacaoLog = {
   termo_aceito: boolean | null;
   observacao: string | null;
   criado_em: string;
+  user_id: string | null;
+  situacao_id_antes: string | null;
+  situacao_id_depois: string | null;
+  detalhes: Record<string, unknown> | null;
+};
+
+type PerfilAprovador = { id: string; nome: string | null; email: string | null };
+
+const SITUACOES_NOMES: Record<string, string> = {
+  "7063588": "Aguardando Aprovação",
+  "7063587": "Aguardando Envio",
+  "7084340": "Aguardando Análise Supervisão",
+  "9153484": "Aprovado pelo cliente (portal)",
+  "7109779": "Aprovado - OS Gerada",
+  "7706107": "Aprovado - Venda Gerada",
+  "8743484": "Aprovado - Aguardando Compra",
+  "7841143": "Não Aprovado",
+};
+const nomeSituacao = (id: string | null) => (id ? SITUACOES_NOMES[id] || `Situação ${id}` : "—");
+
+const ipsDaAprovacao = (ip: string | null) => {
+  const lista = (ip || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const unicos = Array.from(new Set(lista));
+  return { cliente: unicos[0] || null, todos: unicos };
+};
+
+const valorAprovado = (log: AprovacaoLog): string | null => {
+  const data = (log.detalhes as any)?.gc_response?.data;
+  const valor = data?.valor_total;
+  if (valor == null) return null;
+  const n = Number(valor);
+  return Number.isFinite(n)
+    ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : String(valor);
+};
+
+const linkGcOrcamento = (log: AprovacaoLog): string | null => {
+  const hash = (log.detalhes as any)?.gc_response?.data?.hash;
+  return hash ? `https://www.gestaoclick.com/orcamentos/impressao/${hash}` : null;
 };
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
@@ -113,11 +155,15 @@ export default function FollowUpKanbanPage() {
   const [aprovAte, setAprovAte] = useState<string>(() => hojeISO());
   const [aprovacaoDetalhe, setAprovacaoDetalhe] = useState<AprovacaoLog | null>(null);
 
+  const [perfis, setPerfis] = useState<Record<string, PerfilAprovador>>({});
+
   const carregarAprovacoes = useCallback(async () => {
     setCarregandoAprovacoes(true);
     const { data, error } = await supabase
       .from("orcamento_aprovacao_log")
-      .select("id,gc_orcamento_id,gc_orcamento_codigo,cliente,user_nome,user_email,ip,user_agent,termo_aceito,observacao,criado_em")
+      .select(
+        "id,gc_orcamento_id,gc_orcamento_codigo,cliente,user_id,user_nome,user_email,ip,user_agent,termo_aceito,observacao,criado_em,situacao_id_antes,situacao_id_depois,detalhes",
+      )
       .eq("acao", "approve")
       .gte("criado_em", `${aprovDe}T00:00:00-03:00`)
       .lte("criado_em", `${aprovAte}T23:59:59-03:00`)
@@ -128,7 +174,18 @@ export default function FollowUpKanbanPage() {
       toast.error("Erro ao carregar histórico de aprovações");
       return;
     }
-    setAprovacoes((data as AprovacaoLog[]) || []);
+    const linhas = (data as unknown as AprovacaoLog[]) || [];
+    setAprovacoes(linhas);
+    const ids = Array.from(new Set(linhas.map((l) => l.user_id).filter(Boolean) as string[]));
+    if (ids.length) {
+      const { data: perfisData } = await supabase
+        .from("profiles")
+        .select("id,nome,email")
+        .in("id", ids);
+      const mapa: Record<string, PerfilAprovador> = {};
+      for (const p of (perfisData as PerfilAprovador[]) || []) mapa[p.id] = p;
+      setPerfis(mapa);
+    }
   }, [aprovDe, aprovAte]);
 
   useEffect(() => {
@@ -821,39 +878,128 @@ export default function FollowUpKanbanPage() {
       </Dialog>
 
       <Dialog open={!!aprovacaoDetalhe} onOpenChange={(v) => !v && setAprovacaoDetalhe(null)}>
-        <DialogContent className="max-w-lg">
-          {aprovacaoDetalhe && (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  Aprovação do orçamento #{aprovacaoDetalhe.gc_orcamento_codigo || aprovacaoDetalhe.gc_orcamento_id}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-2 text-sm">
-                <div><span className="text-muted-foreground">Cliente:</span> {aprovacaoDetalhe.cliente || "—"}</div>
-                <div><span className="text-muted-foreground">Aprovado por:</span> {aprovacaoDetalhe.user_nome || "—"}</div>
-                <div><span className="text-muted-foreground">E-mail:</span> {aprovacaoDetalhe.user_email || "—"}</div>
-                <div><span className="text-muted-foreground">Data e hora:</span> {formatDateTimeBR(aprovacaoDetalhe.criado_em)}</div>
-                <div><span className="text-muted-foreground">IP:</span> {aprovacaoDetalhe.ip || "—"}</div>
-                <div>
-                  <span className="text-muted-foreground">Termo aceito:</span>{" "}
-                  {aprovacaoDetalhe.termo_aceito ? "Sim" : "Não"}
-                </div>
-                {aprovacaoDetalhe.observacao && (
-                  <div>
-                    <span className="text-muted-foreground">Observação:</span>
-                    <p className="whitespace-pre-wrap mt-1">{aprovacaoDetalhe.observacao}</p>
-                  </div>
-                )}
-                {aprovacaoDetalhe.user_agent && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">Dispositivo / navegador</summary>
-                    <p className="mt-1 break-words">{aprovacaoDetalhe.user_agent}</p>
-                  </details>
-                )}
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          {aprovacaoDetalhe && (() => {
+            const log = aprovacaoDetalhe;
+            const perfil = log.user_id ? perfis[log.user_id] : undefined;
+            const ips = ipsDaAprovacao(log.ip);
+            const valor = valorAprovado(log);
+            const link = linkGcOrcamento(log);
+            const codigo = log.gc_orcamento_codigo || log.gc_orcamento_id;
+            const linhas = [
+              `COMPROVANTE DE APROVAÇÃO DE ORÇAMENTO`,
+              `Orçamento: #${codigo}`,
+              `Cliente: ${log.cliente || "—"}`,
+              valor ? `Valor aprovado: ${valor}` : null,
+              ``,
+              `Aprovado por (responsável): ${log.user_nome || perfil?.nome || "—"}`,
+              `E-mail informado na aprovação: ${log.user_email || "—"}`,
+              `Conta de acesso no portal: ${perfil?.email || log.user_email || "—"}`,
+              `Identificador do usuário: ${log.user_id || "—"}`,
+              ``,
+              `Data e hora (horário de Brasília): ${formatDateTimeBR(log.criado_em)}`,
+              `Registro em UTC: ${new Date(log.criado_em).toISOString()}`,
+              `IP de origem: ${ips.cliente || "—"}`,
+              ips.todos.length > 1 ? `Cadeia de IPs registrada: ${ips.todos.join(" › ")}` : null,
+              `Dispositivo / navegador: ${log.user_agent || "—"}`,
+              `Termo de aceite: ${log.termo_aceito ? "Aceito" : "Não aceito"}`,
+              ``,
+              `Situação antes: ${nomeSituacao(log.situacao_id_antes)}`,
+              `Situação depois: ${nomeSituacao(log.situacao_id_depois)}`,
+              log.observacao ? `Observação do cliente: ${log.observacao}` : null,
+              link ? `Documento do orçamento: ${link}` : null,
+              `Identificador do registro de auditoria: ${log.id}`,
+            ].filter(Boolean).join("\n");
+
+            const Linha = ({ label, children }: { label: string; children: React.ReactNode }) => (
+              <div className="grid grid-cols-[170px_1fr] gap-2 py-1 border-b border-border/50 last:border-0">
+                <span className="text-muted-foreground text-xs">{label}</span>
+                <span className="break-words">{children}</span>
               </div>
-            </>
-          )}
+            );
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Comprovante de aprovação — orçamento #{codigo}</DialogTitle>
+                </DialogHeader>
+                <div className="text-sm">
+                  <p className="text-xs font-medium text-muted-foreground uppercase mt-1 mb-1">Orçamento</p>
+                  <Linha label="Cliente">{log.cliente || "—"}</Linha>
+                  <Linha label="Valor aprovado">{valor || "—"}</Linha>
+                  <Linha label="Situação antes">{nomeSituacao(log.situacao_id_antes)}</Linha>
+                  <Linha label="Situação depois">{nomeSituacao(log.situacao_id_depois)}</Linha>
+                  {link && (
+                    <Linha label="Documento">
+                      <a href={link} target="_blank" rel="noreferrer" className="text-primary underline break-all">
+                        abrir orçamento
+                      </a>
+                    </Linha>
+                  )}
+
+                  <p className="text-xs font-medium text-muted-foreground uppercase mt-4 mb-1">Responsável pela aprovação</p>
+                  <Linha label="Nome">{log.user_nome || perfil?.nome || "—"}</Linha>
+                  <Linha label="E-mail da aprovação">{log.user_email || "—"}</Linha>
+                  <Linha label="Conta de acesso">{perfil?.email || log.user_email || "—"}</Linha>
+                  <Linha label="Identificador do usuário">
+                    <span className="font-mono text-xs">{log.user_id || "—"}</span>
+                  </Linha>
+
+                  <p className="text-xs font-medium text-muted-foreground uppercase mt-4 mb-1">Evidências do aceite</p>
+                  <Linha label="Data e hora (Brasília)">{formatDateTimeBR(log.criado_em)}</Linha>
+                  <Linha label="Registro em UTC">
+                    <span className="font-mono text-xs">{new Date(log.criado_em).toISOString()}</span>
+                  </Linha>
+                  <Linha label="IP de origem">
+                    <span className="font-mono text-xs">{ips.cliente || "—"}</span>
+                  </Linha>
+                  {ips.todos.length > 1 && (
+                    <Linha label="Cadeia de IPs">
+                      <span className="font-mono text-xs">{ips.todos.join(" › ")}</span>
+                    </Linha>
+                  )}
+                  <Linha label="Termo de aceite">
+                    <Badge variant={log.termo_aceito ? "default" : "destructive"} className="text-[10px]">
+                      {log.termo_aceito ? "Aceito" : "Não aceito"}
+                    </Badge>
+                  </Linha>
+                  <Linha label="Dispositivo / navegador">
+                    <span className="text-xs break-all">{log.user_agent || "—"}</span>
+                  </Linha>
+                  {log.observacao && <Linha label="Observação do cliente">{log.observacao}</Linha>}
+                  <Linha label="Registro de auditoria">
+                    <span className="font-mono text-xs">{log.id}</span>
+                  </Linha>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(linhas);
+                      toast.success("Comprovante copiado");
+                    }}
+                  >
+                    Copiar comprovante
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const blob = new Blob([linhas], { type: "text/plain;charset=utf-8" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `comprovante-aprovacao-${codigo}.txt`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Baixar comprovante
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
