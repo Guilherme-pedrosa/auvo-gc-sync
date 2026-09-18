@@ -303,15 +303,46 @@ export default function PremiacaoPage() {
     },
   });
 
+  // Amarração oficial Auvo ↔ GC cadastrada no RH: é ela quem diz que
+  // "Ayrton Carvalho" (Auvo) e "AYRTON EULER" (GC) são a mesma pessoa.
+  const { data: vinculos } = useQuery({
+    queryKey: ["auvo-gc-usuario-map-ativos"],
+    staleTime: 300_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("auvo_gc_usuario_map")
+        .select("id, auvo_user_nome, gc_vendedor_nome, ativo")
+        .eq("ativo", true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const normalize = (s: string) =>
     (s || "")
       .toString()
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
-  // Auvo, GC e RH podem guardar sobrenomes diferentes para a mesma pessoa.
-  // A premiação já consolida técnicos pelo primeiro nome; a lista deve seguir a mesma regra.
-  const tecnicoKey = (nome: string) => normalize(nome).trim().split(/\s+/)[0] || "";
+
+  // nome normalizado -> chave canônica do vínculo do RH
+  const vinculoPorNome = (() => {
+    const m = new Map<string, string>();
+    for (const v of vinculos || []) {
+      const chave = `rh:${v.id}`;
+      for (const n of [v.auvo_user_nome, v.gc_vendedor_nome]) {
+        const k = normalize(String(n || "")).trim();
+        if (k) m.set(k, chave);
+      }
+    }
+    return m;
+  })();
+
+  // Prioridade: vínculo do RH; se não houver cadastro, cai no primeiro nome.
+  const tecnicoKey = (nome: string) => {
+    const norm = normalize(nome).trim();
+    return vinculoPorNome.get(norm) || norm.split(/\s+/)[0] || "";
+  };
   const nomesTecnicosUnicos = (() => {
     const vistos = new Set<string>();
     return tecnicos
@@ -323,6 +354,7 @@ export default function PremiacaoPage() {
         return true;
       });
   })();
+
   const searchNorm = normalize(search.trim());
   const tecnicosFiltrados = searchNorm
     ? tecnicos
