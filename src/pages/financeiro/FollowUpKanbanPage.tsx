@@ -12,6 +12,7 @@ import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
+import { gerarComprovanteAprovacaoPdf } from "@/lib/comprovanteAprovacaoPdf";
 
 type Coluna = {
   id: string;
