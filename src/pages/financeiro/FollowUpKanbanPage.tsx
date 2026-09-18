@@ -983,6 +983,7 @@ export default function FollowUpKanbanPage() {
                     Copiar comprovante
                   </Button>
                   <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => {
                       const blob = new Blob([linhas], { type: "text/plain;charset=utf-8" });
@@ -994,7 +995,39 @@ export default function FollowUpKanbanPage() {
                       URL.revokeObjectURL(url);
                     }}
                   >
-                    Baixar comprovante
+                    Baixar em texto
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      try {
+                        gerarComprovanteAprovacaoPdf({
+                          codigo: String(codigo),
+                          cliente: log.cliente,
+                          valorAprovado: valor,
+                          situacaoAntes: nomeSituacao(log.situacao_id_antes),
+                          situacaoDepois: nomeSituacao(log.situacao_id_depois),
+                          link,
+                          responsavelNome: log.user_nome || perfil?.nome || null,
+                          emailAprovacao: log.user_email,
+                          contaAcesso: perfil?.email || log.user_email || null,
+                          userId: log.user_id,
+                          dataHoraBR: formatDateTimeBR(log.criado_em),
+                          dataHoraUTC: new Date(log.criado_em).toISOString(),
+                          ipOrigem: ips.cliente,
+                          cadeiaIps: ips.todos,
+                          userAgent: log.user_agent,
+                          termoAceito: !!log.termo_aceito,
+                          observacaoCliente: log.observacao,
+                          logId: log.id,
+                          gcData: (log.detalhes as any)?.gc_response?.data || null,
+                        });
+                      } catch {
+                        toast.error("Não foi possível gerar o PDF do orçamento");
+                      }
+                    }}
+                  >
+                    Baixar orçamento em PDF
                   </Button>
                 </div>
               </>
