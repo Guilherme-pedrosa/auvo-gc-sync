@@ -273,6 +273,17 @@ export default function FollowUpKanbanPage() {
     [colunas, colunasVisiveis],
   );
 
+  const mostrarAprovados = colunasVisiveis.includes(COL_APROVADOS);
+
+  const aprovacoesFiltradas = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return aprovacoes;
+    return aprovacoes.filter((a) =>
+      [a.cliente, a.gc_orcamento_codigo, a.user_nome, a.user_email]
+        .some((v) => (v || "").toLowerCase().includes(q)),
+    );
+  }, [aprovacoes, search]);
+
   const onDragEnd = async (result: DropResult) => {
     const { source, destination, draggableId } = result;
     if (!destination) return;
