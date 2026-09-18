@@ -401,6 +401,13 @@ export default function FollowUpKanbanPage() {
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-3 space-y-2">
             <p className="text-xs font-medium">Colunas visíveis</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={mostrarAprovados}
+                onCheckedChange={() => toggleColuna(COL_APROVADOS)}
+              />
+              <span className="truncate">Aprovado pelo cliente (sistema)</span>
+            </label>
             {colunas.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma coluna disponível.</p>
             ) : (
