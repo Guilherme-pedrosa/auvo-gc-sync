@@ -61,6 +61,48 @@ type AprovacaoLog = {
   termo_aceito: boolean | null;
   observacao: string | null;
   criado_em: string;
+  user_id: string | null;
+  situacao_id_antes: string | null;
+  situacao_id_depois: string | null;
+  detalhes: Record<string, unknown> | null;
+};
+
+type PerfilAprovador = { id: string; nome: string | null; email: string | null };
+
+const SITUACOES_NOMES: Record<string, string> = {
+  "7063588": "Aguardando Aprovação",
+  "7063587": "Aguardando Envio",
+  "7084340": "Aguardando Análise Supervisão",
+  "9153484": "Aprovado pelo cliente (portal)",
+  "7109779": "Aprovado - OS Gerada",
+  "7706107": "Aprovado - Venda Gerada",
+  "8743484": "Aprovado - Aguardando Compra",
+  "7841143": "Não Aprovado",
+};
+const nomeSituacao = (id: string | null) => (id ? SITUACOES_NOMES[id] || `Situação ${id}` : "—");
+
+const ipsDaAprovacao = (ip: string | null) => {
+  const lista = (ip || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const unicos = Array.from(new Set(lista));
+  return { cliente: unicos[0] || null, todos: unicos };
+};
+
+const valorAprovado = (log: AprovacaoLog): string | null => {
+  const data = (log.detalhes as any)?.gc_response?.data;
+  const valor = data?.valor_total;
+  if (valor == null) return null;
+  const n = Number(valor);
+  return Number.isFinite(n)
+    ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : String(valor);
+};
+
+const linkGcOrcamento = (log: AprovacaoLog): string | null => {
+  const hash = (log.detalhes as any)?.gc_response?.data?.hash;
+  return hash ? `https://www.gestaoclick.com/orcamentos/impressao/${hash}` : null;
 };
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
