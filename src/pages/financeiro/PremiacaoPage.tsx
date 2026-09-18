@@ -309,6 +309,20 @@ export default function PremiacaoPage() {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
+  // Auvo, GC e RH podem guardar sobrenomes diferentes para a mesma pessoa.
+  // A premiação já consolida técnicos pelo primeiro nome; a lista deve seguir a mesma regra.
+  const tecnicoKey = (nome: string) => normalize(nome).trim().split(/\s+/)[0] || "";
+  const nomesTecnicosUnicos = (() => {
+    const vistos = new Set<string>();
+    return tecnicos
+      .map((t) => String(t.tecnico || "").trim())
+      .filter((nome) => {
+        const chave = tecnicoKey(nome);
+        if (!chave || vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
+  })();
   const searchNorm = normalize(search.trim());
   const tecnicosFiltrados = searchNorm
     ? tecnicos
@@ -378,11 +392,11 @@ export default function PremiacaoPage() {
             </Button>
             <DemeritosManager
               month={activeMonth}
-              tecnicos={tecnicos.map((t) => t.tecnico)}
+              tecnicos={nomesTecnicosUnicos}
               onChanged={() => refetch()}
             />
             <MetasManager
-              tecnicos={tecnicos.map((t) => t.tecnico)}
+              tecnicos={nomesTecnicosUnicos}
               onChanged={() => refetch()}
             />
             <RetornoOsAntigaDialog
@@ -716,10 +730,11 @@ export default function PremiacaoPage() {
             const vistos = new Set<string>();
             const lista: Array<{ value: string; label: string }> = [];
             for (const nome of [...tecnicos.map((t) => t.tecnico), ...(colaboradoresRh || [])]) {
-              const chave = normalize(String(nome || "").trim());
+              const nomeLimpo = String(nome || "").trim();
+              const chave = tecnicoKey(nomeLimpo);
               if (!chave || vistos.has(chave)) continue;
               vistos.add(chave);
-              lista.push({ value: nome, label: nome });
+              lista.push({ value: nomeLimpo, label: nomeLimpo });
             }
             return lista.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
           })()}
