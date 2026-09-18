@@ -288,6 +288,21 @@ export default function PremiacaoPage() {
   const tecnicos = data?.tecnicos || [];
   const totais = data?.totais;
 
+  // Colaboradores ativos do RH também podem receber fatia de uma OS
+  const { data: colaboradoresRh } = useQuery({
+    queryKey: ["rh-colaboradores-ativos"],
+    staleTime: 300_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rh_colaboradores")
+        .select("nome")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return (data || []).map((r: { nome: string }) => String(r.nome || "").trim()).filter(Boolean);
+    },
+  });
+
   const normalize = (s: string) =>
     (s || "")
       .toString()
