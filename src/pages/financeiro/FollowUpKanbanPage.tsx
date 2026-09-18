@@ -155,11 +155,15 @@ export default function FollowUpKanbanPage() {
   const [aprovAte, setAprovAte] = useState<string>(() => hojeISO());
   const [aprovacaoDetalhe, setAprovacaoDetalhe] = useState<AprovacaoLog | null>(null);
 
+  const [perfis, setPerfis] = useState<Record<string, PerfilAprovador>>({});
+
   const carregarAprovacoes = useCallback(async () => {
     setCarregandoAprovacoes(true);
     const { data, error } = await supabase
       .from("orcamento_aprovacao_log")
-      .select("id,gc_orcamento_id,gc_orcamento_codigo,cliente,user_nome,user_email,ip,user_agent,termo_aceito,observacao,criado_em")
+      .select(
+        "id,gc_orcamento_id,gc_orcamento_codigo,cliente,user_id,user_nome,user_email,ip,user_agent,termo_aceito,observacao,criado_em,situacao_id_antes,situacao_id_depois,detalhes",
+      )
       .eq("acao", "approve")
       .gte("criado_em", `${aprovDe}T00:00:00-03:00`)
       .lte("criado_em", `${aprovAte}T23:59:59-03:00`)
@@ -170,7 +174,18 @@ export default function FollowUpKanbanPage() {
       toast.error("Erro ao carregar histórico de aprovações");
       return;
     }
-    setAprovacoes((data as AprovacaoLog[]) || []);
+    const linhas = (data as unknown as AprovacaoLog[]) || [];
+    setAprovacoes(linhas);
+    const ids = Array.from(new Set(linhas.map((l) => l.user_id).filter(Boolean) as string[]));
+    if (ids.length) {
+      const { data: perfisData } = await supabase
+        .from("profiles")
+        .select("id,nome,email")
+        .in("id", ids);
+      const mapa: Record<string, PerfilAprovador> = {};
+      for (const p of (perfisData as PerfilAprovador[]) || []) mapa[p.id] = p;
+      setPerfis(mapa);
+    }
   }, [aprovDe, aprovAte]);
 
   useEffect(() => {
