@@ -630,6 +630,11 @@ Deno.serve(async (req) => {
 
       techMap[groupKey].tarefas.push({
         taskId: auvoTaskId,
+        // Responsável real do Auvo repetido em cada tarefa: o normalizador do front
+        // (regroupTrackingByAuvoAssignee) usa estes campos como fonte de verdade,
+        // independentemente da versão da edge publicada.
+        _auvoTechId: techId,
+        _auvoTechName: techName,
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,

@@ -83,3 +83,51 @@ describe("regroupTrackingByAuvoAssignee", () => {
     expect((result.tecnicos[0].tarefas[0] as { gcVendedor?: string }).gcVendedor).toBe("Maria Eduarda");
   });
 });
+
+const task = (taskId: string, extra: Record<string, unknown> = {}) => ({
+  taskId, status: "Agendada", atrasada: false, ...extra,
+});
+const payload = (tecnicos: any[]) => ({
+  total_tarefas: tecnicos.reduce((n, t) => n + t.tarefas.length, 0),
+  total_tecnicos: tecnicos.length,
+  total_atrasadas: 0,
+  tecnicos,
+});
+
+describe("Agenda de Técnicos — edge publicada em 15/09/2026 (grupos por técnico Auvo com userID puro)", () => {
+  it("mantém um cartão por técnico em vez de jogar tudo em Sem técnico", () => {
+    // Formato real devolvido pela edge realtime-tracking: id "192262", nome "Elton", tarefas sem _auvoTechId.
+    const result = regroupTrackingByAuvoAssignee(payload([
+      { id: "192262", nome: "Elton", resumo: summary, tarefas: [task("1", { status: "Em andamento" }), task("2")] },
+      { id: "204602", nome: "Daniel Bean", resumo: summary, tarefas: [task("3", { gcVendedor: "ANGÉLICA" })] },
+    ]));
+    expect(result.total_tecnicos).toBe(2);
+    expect(result.tecnicos.map((t) => [t.id, t.nome, t.tarefas.length])).toEqual([
+      ["auvo::192262", "Elton", 2],
+      ["auvo::204602", "Daniel Bean", 1],
+    ]);
+    expect(result.tecnicos[0].resumo).toEqual({ total: 2, finalizadas: 0, emAndamento: 1, agendadas: 1, atrasadas: 0 });
+    expect(result.tecnicos.some((t) => t.nome === "Sem técnico")).toBe(false);
+    // vendedor do GC continua só como informação comercial da tarefa
+    expect(result.tecnicos[1].tarefas[0].gcVendedor).toBe("ANGÉLICA");
+  });
+
+  it("campos por tarefa vencem o grupo quando os dois vierem", () => {
+    const result = regroupTrackingByAuvoAssignee(payload([
+      { id: "207034", nome: "Ayrton Carvalho", resumo: summary, tarefas: [task("1"), task("2", { _auvoTechId: "238920", _auvoTechName: "Antonio Marcio" })] },
+    ]));
+    expect(result.tecnicos.map((t) => [t.id, t.nome, t.tarefas.length])).toEqual([
+      ["auvo::207034", "Ayrton Carvalho", 1],
+      ["auvo::238920", "Antonio Marcio", 1],
+    ]);
+  });
+
+  it("grupo sem id e sem responsável nas tarefas cai em Sem técnico, sem quebrar contadores", () => {
+    const result = regroupTrackingByAuvoAssignee(payload([
+      { id: "", nome: "", resumo: summary, tarefas: [task("1", { atrasada: true })] },
+    ]));
+    expect(result.tecnicos).toHaveLength(1);
+    expect(result.tecnicos[0]).toMatchObject({ id: "auvo-name::sem tecnico", nome: "Sem técnico" });
+    expect(result.total_atrasadas).toBe(1);
+  });
+});
