@@ -819,6 +819,43 @@ export default function FollowUpKanbanPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!aprovacaoDetalhe} onOpenChange={(v) => !v && setAprovacaoDetalhe(null)}>
+        <DialogContent className="max-w-lg">
+          {aprovacaoDetalhe && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Aprovação do orçamento #{aprovacaoDetalhe.gc_orcamento_codigo || aprovacaoDetalhe.gc_orcamento_id}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2 text-sm">
+                <div><span className="text-muted-foreground">Cliente:</span> {aprovacaoDetalhe.cliente || "—"}</div>
+                <div><span className="text-muted-foreground">Aprovado por:</span> {aprovacaoDetalhe.user_nome || "—"}</div>
+                <div><span className="text-muted-foreground">E-mail:</span> {aprovacaoDetalhe.user_email || "—"}</div>
+                <div><span className="text-muted-foreground">Data e hora:</span> {formatDateTimeBR(aprovacaoDetalhe.criado_em)}</div>
+                <div><span className="text-muted-foreground">IP:</span> {aprovacaoDetalhe.ip || "—"}</div>
+                <div>
+                  <span className="text-muted-foreground">Termo aceito:</span>{" "}
+                  {aprovacaoDetalhe.termo_aceito ? "Sim" : "Não"}
+                </div>
+                {aprovacaoDetalhe.observacao && (
+                  <div>
+                    <span className="text-muted-foreground">Observação:</span>
+                    <p className="whitespace-pre-wrap mt-1">{aprovacaoDetalhe.observacao}</p>
+                  </div>
+                )}
+                {aprovacaoDetalhe.user_agent && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">Dispositivo / navegador</summary>
+                    <p className="mt-1 break-words">{aprovacaoDetalhe.user_agent}</p>
+                  </details>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
