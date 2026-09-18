@@ -705,6 +705,9 @@ export default function PremiacaoPage() {
   );
 }
 
+/** Fatia que não vai para nenhum técnico (custos não mapeados). */
+const NAO_PREMIADO = "(NÃO PREMIADO)";
+
 function OsDetailDialog({
   os,
   onClose,
